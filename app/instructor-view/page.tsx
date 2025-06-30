@@ -11,23 +11,9 @@ export default function InstructorDashboard() {
   const [isAvailable, setIsAvailable] = useState(true)
   const currentDate = new Date()
 
-  // Format the date as "Day of week, Month Day, Year"
-  const formattedDate = currentDate.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  })
-
-  // Get the greeting based on time of day
-  const getGreeting = () => {
-    const hour = currentDate.getHours()
-    if (hour < 12) return "Good morning"
-    if (hour < 18) return "Good afternoon"
-    return "Good evening"
-  }
-
-  // Mock data for today's activities
+  // Centralized data - pulling from admin perspective
+  const cliniciansLoggedIn = 24
+  const availableInstructors = 3
   const todaysActivities = [
     {
       id: "1",
@@ -81,6 +67,22 @@ export default function InstructorDashboard() {
     },
   ]
 
+  // Format the date as "Day of week, Month Day, Year"
+  const formattedDate = currentDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
+
+  // Get the greeting based on time of day
+  const getGreeting = () => {
+    const hour = currentDate.getHours()
+    if (hour < 12) return "Good morning"
+    if (hour < 18) return "Good afternoon"
+    return "Good evening"
+  }
+
   // Function to get status color
   const getStatusColor = (status) => {
     switch (status) {
@@ -129,7 +131,7 @@ export default function InstructorDashboard() {
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-sm font-medium text-gray-500 uppercase">Assigned Clinicians</h3>
-                <p className="text-4xl font-semibold mt-1">12</p>
+                <p className="text-4xl font-semibold mt-1">{cliniciansLoggedIn}</p>
               </div>
               <div className="h-12 w-12 rounded-full bg-green-50 flex items-center justify-center">
                 <Users className="h-6 w-6 text-green-600" />

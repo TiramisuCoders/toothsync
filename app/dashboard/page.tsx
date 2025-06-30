@@ -27,10 +27,10 @@ export default function DashboardPage() {
   const [sortDirection, setSortDirection] = useState("asc")
   const [isReportsOpen, setIsReportsOpen] = useState(false)
 
-  // Sample data for the dashboard
-  const cliniciansLoggedIn = 24
-  const availableInstructors = 8
-  const availableChairs = 15
+  // Centralized data - Admin perspective as baseline
+  const [cliniciansLoggedIn, setCliniciansLoggedIn] = useState(24)
+  const [availableInstructors, setAvailableInstructors] = useState(3) // Changed to reflect fewer instructors
+  const [availableChairs, setAvailableChairs] = useState(15)
 
   // Initial activities data
   const [activities, setActivities] = useState([
@@ -41,7 +41,8 @@ export default function DashboardPage() {
       chair: "Chair 05",
       patient: "Juan Dela Cruz",
       instructor: "Dr. Reyes",
-      procedure: "Root Canal Treatment",
+      procedure: "Root Canal Treatment", // Keep for backward compatibility
+      procedures: ["Root Canal Treatment", "Dental Filling"],
       status: "Started",
     },
     {
@@ -62,6 +63,7 @@ export default function DashboardPage() {
       patient: "Miguel Santos",
       instructor: "Dr. Santos",
       procedure: "Dental Crown",
+      procedures: ["Dental Crown", "Teeth Cleaning"],
       status: "Started",
     },
     {
@@ -82,9 +84,33 @@ export default function DashboardPage() {
       patient: "Luis Tan",
       instructor: "Dr. Tan",
       procedure: "Dental Extraction",
+      procedures: ["Dental Extraction", "Root Canal Treatment"],
       status: "Incomplete",
     },
   ])
+
+  // Calculate distribution - ensure equal distribution with remainder handling
+  const calculateDistribution = (totalClinicians, totalInstructors) => {
+    if (totalInstructors === 0) return []
+
+    const baseCount = Math.floor(totalClinicians / totalInstructors)
+    const remainder = totalClinicians % totalInstructors
+
+    // Create array of instructors
+    const instructors = ["Dr. Reyes", "Dr. Mendoza", "Dr. Santos"]
+
+    // Create distribution array
+    return instructors.slice(0, totalInstructors).map((instructor, index) => {
+      // Add one extra to the first 'remainder' instructors to handle uneven distribution
+      return {
+        instructor,
+        clinicians: baseCount + (index < remainder ? 1 : 0),
+      }
+    })
+  }
+
+  // Generate instructor distribution
+  const instructorDistribution = calculateDistribution(cliniciansLoggedIn, availableInstructors)
 
   // Get current date
   const today = new Date()
@@ -257,6 +283,64 @@ export default function DashboardPage() {
               </Card>
             </div>
 
+            {/* Instructor-Clinician Distribution */}
+            <Card className="bg-white border border-gray-200 shadow-sm mb-6">
+              <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
+                <div>
+                  <CardTitle className="text-xl font-semibold text-[#333]">Clinician Distribution</CardTitle>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Equal distribution of {cliniciansLoggedIn} clinicians among {availableInstructors} available
+                    instructors
+                  </p>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader className="bg-white border-b border-gray-200">
+                    <TableRow className="hover:bg-white border-b-0">
+                      <TableHead className="font-medium text-[#333]">Instructor</TableHead>
+                      <TableHead className="font-medium text-[#333] text-right">Assigned Clinicians</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {instructorDistribution.length > 0 ? (
+                      instructorDistribution.map((item, index) => (
+                        <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-200">
+                          <TableCell className="font-medium text-[#333]">{item.instructor}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <span className="font-semibold text-[#333]">{item.clinicians}</span>
+                              <div className="w-24 bg-gray-200 rounded-full h-2.5">
+                                <div
+                                  className="bg-[#5C8E77] h-2.5 rounded-full"
+                                  style={{
+                                    width: `${(item.clinicians / Math.max(...instructorDistribution.map((i) => i.clinicians))) * 100}%`,
+                                  }}
+                                ></div>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={2} className="text-center py-6 text-gray-500">
+                          No instructors available today.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+                <div className="p-4 text-sm text-gray-500 border-t border-gray-200">
+                  <p>
+                    <span className="font-medium">Note:</span> Clinician distribution is automatically balanced based on
+                    the number of available instructors each day. The system ensures an equal distribution with minimal
+                    variance.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Activities Table */}
             <Card className="bg-white border border-gray-200 shadow-sm mb-6">
               <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
@@ -318,7 +402,19 @@ export default function DashboardPage() {
                           <TableCell className="text-[#333]">{activity.lastName}</TableCell>
                           <TableCell className="text-[#333]">{activity.chair}</TableCell>
                           <TableCell className="text-[#333]">{activity.instructor}</TableCell>
-                          <TableCell className="text-[#333]">{activity.procedure}</TableCell>
+                          <TableCell className="text-[#333]">
+                            {activity.procedures ? (
+                              <div className="space-y-1">
+                                {activity.procedures.map((proc, index) => (
+                                  <div key={index} className="text-sm">
+                                    {proc}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              activity.procedure
+                            )}
+                          </TableCell>
                           <TableCell>
                             <div
                               className={`px-3 py-1 rounded-full text-sm inline-flex items-center justify-center font-medium ${getStatusColor(
@@ -421,10 +517,9 @@ export default function DashboardPage() {
                         <SelectValue placeholder="Select instructor" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="reyes">Dr. Reyes</SelectItem>
-                        <SelectItem value="mendoza">Dr. Mendoza</SelectItem>
-                        <SelectItem value="santos">Dr. Santos</SelectItem>
-                        <SelectItem value="tan">Dr. Tan</SelectItem>
+                        <SelectItem value="Dr. Reyes">Dr. Reyes</SelectItem>
+                        <SelectItem value="Dr. Mendoza">Dr. Mendoza</SelectItem>
+                        <SelectItem value="Dr. Santos">Dr. Santos</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -437,20 +532,61 @@ export default function DashboardPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="procedure" className="text-[#333]">
-                    Procedure
+                    Procedures (Select up to 2)
                   </Label>
-                  <Select>
-                    <SelectTrigger id="procedure" className="border-gray-300">
-                      <SelectValue placeholder="Select procedure" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="root-canal">Root Canal Treatment</SelectItem>
-                      <SelectItem value="filling">Dental Filling</SelectItem>
-                      <SelectItem value="crown">Dental Crown</SelectItem>
-                      <SelectItem value="cleaning">Teeth Cleaning</SelectItem>
-                      <SelectItem value="extraction">Dental Extraction</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="root-canal"
+                        className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                      />
+                      <label htmlFor="root-canal" className="text-sm text-gray-700">
+                        Root Canal Treatment
+                      </label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="filling"
+                        className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                      />
+                      <label htmlFor="filling" className="text-sm text-gray-700">
+                        Dental Filling
+                      </label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="crown"
+                        className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                      />
+                      <label htmlFor="crown" className="text-sm text-gray-700">
+                        Dental Crown
+                      </label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="cleaning"
+                        className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                      />
+                      <label htmlFor="cleaning" className="text-sm text-gray-700">
+                        Teeth Cleaning
+                      </label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="extraction"
+                        className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                      />
+                      <label htmlFor="extraction" className="text-sm text-gray-700">
+                        Dental Extraction
+                      </label>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500">You can select up to 2 procedures per activity.</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="status" className="text-[#333]">
@@ -543,7 +679,6 @@ export default function DashboardPage() {
                             <SelectItem value="Dr. Reyes">Dr. Reyes</SelectItem>
                             <SelectItem value="Dr. Mendoza">Dr. Mendoza</SelectItem>
                             <SelectItem value="Dr. Santos">Dr. Santos</SelectItem>
-                            <SelectItem value="Dr. Tan">Dr. Tan</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -561,20 +696,81 @@ export default function DashboardPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="edit-procedure" className="text-[#333]">
-                        Procedure
+                        Procedures (Select up to 2)
                       </Label>
-                      <Select defaultValue={currentActivity.procedure}>
-                        <SelectTrigger id="edit-procedure" className="border-gray-300">
-                          <SelectValue placeholder={currentActivity.procedure} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Root Canal Treatment">Root Canal Treatment</SelectItem>
-                          <SelectItem value="Dental Filling">Dental Filling</SelectItem>
-                          <SelectItem value="Dental Crown">Dental Crown</SelectItem>
-                          <SelectItem value="Teeth Cleaning">Teeth Cleaning</SelectItem>
-                          <SelectItem value="Dental Extraction">Dental Extraction</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="edit-root-canal"
+                            className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                            defaultChecked={
+                              currentActivity.procedures?.includes("Root Canal Treatment") ||
+                              currentActivity.procedure === "Root Canal Treatment"
+                            }
+                          />
+                          <label htmlFor="edit-root-canal" className="text-sm text-gray-700">
+                            Root Canal Treatment
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="edit-filling"
+                            className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                            defaultChecked={
+                              currentActivity.procedures?.includes("Dental Filling") ||
+                              currentActivity.procedure === "Dental Filling"
+                            }
+                          />
+                          <label htmlFor="edit-filling" className="text-sm text-gray-700">
+                            Dental Filling
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="edit-crown"
+                            className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                            defaultChecked={
+                              currentActivity.procedures?.includes("Dental Crown") ||
+                              currentActivity.procedure === "Dental Crown"
+                            }
+                          />
+                          <label htmlFor="edit-crown" className="text-sm text-gray-700">
+                            Dental Crown
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="edit-cleaning"
+                            className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                            defaultChecked={
+                              currentActivity.procedures?.includes("Teeth Cleaning") ||
+                              currentActivity.procedure === "Teeth Cleaning"
+                            }
+                          />
+                          <label htmlFor="edit-cleaning" className="text-sm text-gray-700">
+                            Teeth Cleaning
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="edit-extraction"
+                            className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                            defaultChecked={
+                              currentActivity.procedures?.includes("Dental Extraction") ||
+                              currentActivity.procedure === "Dental Extraction"
+                            }
+                          />
+                          <label htmlFor="edit-extraction" className="text-sm text-gray-700">
+                            Dental Extraction
+                          </label>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500">You can select up to 2 procedures per activity.</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="edit-status" className="text-[#333]">

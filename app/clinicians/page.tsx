@@ -52,7 +52,7 @@ export default function CliniciansPage() {
       email: "maria.santos@example.com",
       contactNumber: "+63 912 345 6789",
       address: "123 Rizal Avenue, Manila",
-      yearLevel: "3rd Year",
+      yearLevel: "5th Year",
       section: "A",
     },
     {
@@ -65,7 +65,7 @@ export default function CliniciansPage() {
       email: "john.delacruz@example.com",
       contactNumber: "+63 917 123 4567",
       address: "456 Mabini Street, Quezon City",
-      yearLevel: "4th Year",
+      yearLevel: "6th Year",
       section: "B",
     },
     {
@@ -78,7 +78,7 @@ export default function CliniciansPage() {
       email: "anna.lim@example.com",
       contactNumber: "+63 918 765 4321",
       address: "789 Bonifacio Avenue, Makati",
-      yearLevel: "2nd Year",
+      yearLevel: "5th Year",
       section: "A",
     },
     {
@@ -91,7 +91,7 @@ export default function CliniciansPage() {
       email: "mark.aquino@example.com",
       contactNumber: "+63 919 876 5432",
       address: "321 Aguinaldo Street, Pasig",
-      yearLevel: "4th Year",
+      yearLevel: "6th Year",
       section: "C",
     },
     {
@@ -104,7 +104,7 @@ export default function CliniciansPage() {
       email: "sarah.garcia@example.com",
       contactNumber: "+63 915 432 1098",
       address: "654 Luna Road, Mandaluyong",
-      yearLevel: "3rd Year",
+      yearLevel: "5th Year",
       section: "B",
     },
   ])
@@ -684,15 +684,14 @@ export default function CliniciansPage() {
                   <Label htmlFor="yearLevel" className="text-[#333]">
                     Year Level
                   </Label>
-                  <Select>
-                    <SelectTrigger id="yearLevel" className="border-gray-300">
-                      <SelectValue placeholder="Select year level" />
+                  <Select defaultValue="all">
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Year Level" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1st">1st Year</SelectItem>
-                      <SelectItem value="2nd">2nd Year</SelectItem>
-                      <SelectItem value="3rd">3rd Year</SelectItem>
-                      <SelectItem value="4th">4th Year</SelectItem>
+                      <SelectItem value="all">All Years</SelectItem>
+                      <SelectItem value="5">5th Year</SelectItem>
+                      <SelectItem value="6">6th Year</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -870,10 +869,8 @@ export default function CliniciansPage() {
                           <SelectValue placeholder={currentClinician.yearLevel} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="1st">1st Year</SelectItem>
-                          <SelectItem value="2nd">2nd Year</SelectItem>
-                          <SelectItem value="3rd">3rd Year</SelectItem>
-                          <SelectItem value="4th">4th Year</SelectItem>
+                          <SelectItem value="5th">5th Year</SelectItem>
+                          <SelectItem value="6th">6th Year</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -29,8 +28,11 @@ export default function ClinicianForm() {
   const [formData, setFormData] = useState({
     firstName: "Maria",
     lastName: "Santos",
+    yearLevel: "5th Year", // Add year level
+    section: "A", // Add section
     patientName: "",
-    procedure: "",
+    procedure: "", // Keep for backward compatibility
+    selectedProcedures: [],
     chair: "Auto-assigned",
     instructor: "Auto-assigned",
   })
@@ -42,8 +44,43 @@ export default function ClinicianForm() {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
+  const handleProcedureCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { value, checked } = e.target
+
+    setFormData((prev) => {
+      // If checked, add to array (if not already at max 2)
+      if (checked) {
+        // If already has 2 procedures selected, don't add more
+        if (prev.selectedProcedures.length >= 2) {
+          return prev
+        }
+        return {
+          ...prev,
+          selectedProcedures: [...prev.selectedProcedures, value],
+        }
+      }
+      // If unchecked, remove from array
+      else {
+        return {
+          ...prev,
+          selectedProcedures: prev.selectedProcedures.filter((p) => p !== value),
+        }
+      }
+    })
+  }
+
   const handleProcedureChange = (value: string) => {
     setFormData((prev) => ({ ...prev, procedure: value }))
+  }
+
+  const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const { value } = e.target
+    setFormData((prev) => ({ ...prev, yearLevel: value }))
+  }
+
+  const handleSectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const { value } = e.target
+    setFormData((prev) => ({ ...prev, section: value }))
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -62,8 +99,11 @@ export default function ClinicianForm() {
       setFormData({
         firstName: "Maria",
         lastName: "Santos",
+        yearLevel: "5th Year",
+        section: "A",
         patientName: "",
         procedure: "",
+        selectedProcedures: [],
         chair: "Auto-assigned",
         instructor: "Auto-assigned",
       })
@@ -112,6 +152,42 @@ export default function ClinicianForm() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="yearLevel" className="font-medium">
+                  Year Level
+                </Label>
+                <select
+                  id="yearLevel"
+                  name="yearLevel"
+                  value={formData.yearLevel}
+                  onChange={handleYearChange}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50"
+                >
+                  <option value="5th Year">5th Year</option>
+                  <option value="6th Year">6th Year</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="section" className="font-medium">
+                  Section
+                </Label>
+                <select
+                  id="section"
+                  name="section"
+                  value={formData.section}
+                  onChange={handleSectionChange}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50"
+                >
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                </select>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="patientName" className="font-medium">
                 Patient Name
@@ -128,21 +204,37 @@ export default function ClinicianForm() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="procedure" className="font-medium">
-                Procedure
+              <Label htmlFor="procedures" className="font-medium">
+                Procedures (Select up to 2)
               </Label>
-              <Select value={formData.procedure} onValueChange={handleProcedureChange} required>
-                <SelectTrigger id="procedure" className="focus:ring-[#5C8E77]">
-                  <SelectValue placeholder="Select procedure" />
-                </SelectTrigger>
-                <SelectContent>
-                  {procedures.map((procedure) => (
-                    <SelectItem key={procedure} value={procedure}>
+              <div className="grid grid-cols-2 gap-3 border border-gray-200 rounded-md p-3">
+                {procedures.map((procedure) => (
+                  <div key={procedure} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id={`procedure-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
+                      name="procedures"
+                      value={procedure}
+                      checked={formData.selectedProcedures?.includes(procedure) || false}
+                      onChange={handleProcedureCheckboxChange}
+                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                    />
+                    <label
+                      htmlFor={`procedure-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
+                      className="text-sm text-gray-700"
+                    >
                       {procedure}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </label>
+                  </div>
+                ))}
+              </div>
+              {formData.selectedProcedures?.length > 2 && (
+                <p className="text-xs text-red-500">You can select a maximum of 2 procedures.</p>
+              )}
+              {formData.selectedProcedures?.length === 0 && (
+                <p className="text-xs text-red-500">Please select at least one procedure.</p>
+              )}
+              <p className="text-xs text-gray-500">You can select up to 2 procedures per activity.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

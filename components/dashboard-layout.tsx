@@ -15,6 +15,8 @@ import {
   RockingChairIcon as Chair,
   ClipboardList,
   FormInput,
+  AlertTriangle,
+  ActivityIcon,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -59,6 +61,8 @@ export function DashboardLayout({ children, currentRole = "admin" }: DashboardLa
     if (pathname.includes("/reports")) return "Reports"
     if (pathname.includes("/records")) return "Records"
     if (pathname.includes("/form")) return "Attendance Form"
+    if (pathname.includes("/incident-logs")) return "Incident Logs"
+    if (pathname.includes("/activity-logs")) return "Activity Logs"
 
     return "Dashboard"
   }
@@ -226,6 +230,36 @@ export function DashboardLayout({ children, currentRole = "admin" }: DashboardLa
                       className={`h-4 w-4 ${pathname.includes("/reports") ? "text-[#5C8E77]" : "text-gray-500"}`}
                     />
                     Reports
+                  </Link>
+
+                  {/* New: Incident Logs */}
+                  <Link
+                    href="/incident-logs"
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md ${
+                      pathname.includes("/incident-logs")
+                        ? "text-[#5C8E77] bg-[#e6f7eb]"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <AlertTriangle
+                      className={`h-4 w-4 ${pathname.includes("/incident-logs") ? "text-[#5C8E77]" : "text-gray-500"}`}
+                    />
+                    Incident Logs
+                  </Link>
+
+                  {/* New: Activity Logs */}
+                  <Link
+                    href="/activity-logs"
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md ${
+                      pathname.includes("/activity-logs")
+                        ? "text-[#5C8E77] bg-[#e6f7eb]"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <ActivityIcon
+                      className={`h-4 w-4 ${pathname.includes("/activity-logs") ? "text-[#5C8E77]" : "text-gray-500"}`}
+                    />
+                    Activity Logs
                   </Link>
                 </>
               )}

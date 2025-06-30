@@ -33,7 +33,8 @@ export default function ActivitiesPage() {
       chair: "Chair 05",
       patient: "Juan Dela Cruz",
       instructor: "Dr. Reyes",
-      procedure: "Root Canal Treatment",
+      procedure: "Root Canal Treatment", // Keep for backward compatibility
+      procedures: ["Root Canal Treatment", "Dental Filling"],
       status: "Started",
       date: "2025-05-08",
       history: [
@@ -86,6 +87,7 @@ export default function ActivitiesPage() {
       patient: "Miguel Santos",
       instructor: "Dr. Santos",
       procedure: "Dental Crown",
+      procedures: ["Dental Crown", "Teeth Cleaning"],
       status: "Started",
       date: "2025-05-08",
       history: [
@@ -275,6 +277,7 @@ export default function ActivitiesPage() {
       patient: "Lucia Garcia",
       instructor: "Dr. Reyes",
       procedure: "Root Canal Treatment",
+      procedures: ["Root Canal Treatment", "Dental Extraction"],
       status: "Incomplete",
       date: "2025-05-06",
       remarks: "Patient needed to reschedule due to time constraints",
@@ -654,7 +657,19 @@ export default function ActivitiesPage() {
                     <TableCell className="text-[#333]">{activity.patient}</TableCell>
                     <TableCell className="text-[#333]">{activity.chair}</TableCell>
                     <TableCell className="text-[#333]">{activity.instructor}</TableCell>
-                    <TableCell className="text-[#333]">{activity.procedure}</TableCell>
+                    <TableCell className="text-[#333]">
+                      {activity.procedures ? (
+                        <div className="space-y-1">
+                          {activity.procedures.map((proc, index) => (
+                            <div key={index} className="text-sm">
+                              {proc}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        activity.procedure
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div
                         className={`px-3 py-1 rounded-full text-sm inline-flex items-center justify-center font-medium ${getStatusColor(
@@ -771,20 +786,61 @@ export default function ActivitiesPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="procedure" className="text-[#333]">
-                  Procedure
+                  Procedures (Select up to 2)
                 </Label>
-                <Select>
-                  <SelectTrigger id="procedure" className="border-gray-300">
-                    <SelectValue placeholder="Select procedure" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="root-canal">Root Canal Treatment</SelectItem>
-                    <SelectItem value="filling">Dental Filling</SelectItem>
-                    <SelectItem value="crown">Dental Crown</SelectItem>
-                    <SelectItem value="cleaning">Teeth Cleaning</SelectItem>
-                    <SelectItem value="extraction">Dental Extraction</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="root-canal"
+                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                    />
+                    <label htmlFor="root-canal" className="text-sm text-gray-700">
+                      Root Canal Treatment
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="filling"
+                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                    />
+                    <label htmlFor="filling" className="text-sm text-gray-700">
+                      Dental Filling
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="crown"
+                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                    />
+                    <label htmlFor="crown" className="text-sm text-gray-700">
+                      Dental Crown
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="cleaning"
+                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                    />
+                    <label htmlFor="cleaning" className="text-sm text-gray-700">
+                      Teeth Cleaning
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="extraction"
+                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                    />
+                    <label htmlFor="extraction" className="text-sm text-gray-700">
+                      Dental Extraction
+                    </label>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">You can select up to 2 procedures per activity.</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="status" className="text-[#333]">
@@ -901,20 +957,81 @@ export default function ActivitiesPage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="edit-procedure" className="text-[#333]">
-                          Procedure
+                          Procedures (Select up to 2)
                         </Label>
-                        <Select defaultValue={currentActivity.procedure}>
-                          <SelectTrigger id="edit-procedure" className="border-gray-300">
-                            <SelectValue placeholder={currentActivity.procedure} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Root Canal Treatment">Root Canal Treatment</SelectItem>
-                            <SelectItem value="Dental Filling">Dental Filling</SelectItem>
-                            <SelectItem value="Dental Crown">Dental Crown</SelectItem>
-                            <SelectItem value="Teeth Cleaning">Teeth Cleaning</SelectItem>
-                            <SelectItem value="Dental Extraction">Dental Extraction</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id="edit-root-canal"
+                              className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                              defaultChecked={
+                                currentActivity.procedures?.includes("Root Canal Treatment") ||
+                                currentActivity.procedure === "Root Canal Treatment"
+                              }
+                            />
+                            <label htmlFor="edit-root-canal" className="text-sm text-gray-700">
+                              Root Canal Treatment
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id="edit-filling"
+                              className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                              defaultChecked={
+                                currentActivity.procedures?.includes("Dental Filling") ||
+                                currentActivity.procedure === "Dental Filling"
+                              }
+                            />
+                            <label htmlFor="edit-filling" className="text-sm text-gray-700">
+                              Dental Filling
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id="edit-crown"
+                              className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                              defaultChecked={
+                                currentActivity.procedures?.includes("Dental Crown") ||
+                                currentActivity.procedure === "Dental Crown"
+                              }
+                            />
+                            <label htmlFor="edit-crown" className="text-sm text-gray-700">
+                              Dental Crown
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id="edit-cleaning"
+                              className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                              defaultChecked={
+                                currentActivity.procedures?.includes("Teeth Cleaning") ||
+                                currentActivity.procedure === "Teeth Cleaning"
+                              }
+                            />
+                            <label htmlFor="edit-cleaning" className="text-sm text-gray-700">
+                              Teeth Cleaning
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id="edit-extraction"
+                              className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                              defaultChecked={
+                                currentActivity.procedures?.includes("Dental Extraction") ||
+                                currentActivity.procedure === "Dental Extraction"
+                              }
+                            />
+                            <label htmlFor="edit-extraction" className="text-sm text-gray-700">
+                              Dental Extraction
+                            </label>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500">You can select up to 2 procedures per activity.</p>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="edit-status" className="text-[#333]">

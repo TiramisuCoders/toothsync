@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, X } from "lucide-react"
+import { Check, X, Clock } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
+import { toast } from "@/components/ui/use-toast"
+import { Toaster } from "@/components/ui/toaster"
 
 // Font configuration
 const poppinsFont = {
@@ -18,7 +20,9 @@ const poppinsFont = {
 export default function ClerkAttendance() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false)
   const [attendanceToDelete, setAttendanceToDelete] = useState(null)
+  const [clinicianToTimeout, setClinicianToTimeout] = useState(null)
   const [activeFilter, setActiveFilter] = useState("all")
 
   // Sample data for attendance records
@@ -28,50 +32,65 @@ export default function ClerkAttendance() {
       firstName: "Maria",
       lastName: "Santos",
       timeIn: "08:15 AM",
-      timeOut: "05:30 PM",
+      timeOut: "",
       date: "2025-05-04",
       sanitize: "Yes",
       status: "Pending",
+      hasActivities: true,
+      activitiesInProgress: 2,
+      activitiesCompleted: 0,
     },
     {
       id: "2",
       firstName: "John",
       lastName: "Dela Cruz",
       timeIn: "08:30 AM",
-      timeOut: "05:45 PM",
+      timeOut: "",
       date: "2025-05-04",
       sanitize: "No",
       status: "Pending",
+      hasActivities: false,
+      activitiesInProgress: 0,
+      activitiesCompleted: 0,
     },
     {
       id: "3",
       firstName: "Anna",
       lastName: "Lim",
       timeIn: "07:55 AM",
-      timeOut: "04:30 PM",
+      timeOut: "",
       date: "2025-05-04",
       sanitize: "Yes",
       status: "Present",
+      hasActivities: true,
+      activitiesInProgress: 0,
+      activitiesCompleted: 3,
     },
     {
       id: "4",
       firstName: "Mark",
       lastName: "Aquino",
       timeIn: "09:10 AM",
-      timeOut: "06:00 PM",
+      timeOut: "",
       date: "2025-05-04",
       sanitize: "Yes",
       status: "Pending",
+      hasActivities: true,
+      activitiesInProgress: 1,
+      activitiesCompleted: 1,
     },
     {
       id: "5",
       firstName: "Sarah",
       lastName: "Garcia",
       timeIn: "08:00 AM",
-      timeOut: "05:00 PM",
+      timeOut: "",
       date: "2025-05-04",
       sanitize: "No",
       status: "Pending",
+      hasActivities: false,
+      activitiesInProgress: 0,
+      activitiesCompleted: 0,
     },
   ])
 
@@ -80,6 +99,10 @@ export default function ClerkAttendance() {
     setAttendanceRecords(
       attendanceRecords.map((record) => (record.id === id ? { ...record, status: "Present" } : record)),
     )
+    toast({
+      title: "Attendance Confirmed",
+      description: "The clinician has been marked as present.",
+    })
   }
 
   // Function to handle delete click
@@ -93,6 +116,41 @@ export default function ClerkAttendance() {
     if (attendanceToDelete) {
       setAttendanceRecords(attendanceRecords.filter((record) => record.id !== attendanceToDelete.id))
       setIsDeleteModalOpen(false)
+      toast({
+        title: "Attendance Deleted",
+        description: "The attendance record has been deleted.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Function to handle timeout click
+  const handleTimeoutClick = (record) => {
+    setClinicianToTimeout(record)
+    setIsTimeoutModalOpen(true)
+  }
+
+  // Function to handle timeout confirmation
+  const handleTimeoutConfirm = () => {
+    if (clinicianToTimeout) {
+      const currentTime = new Date()
+      const hours = currentTime.getHours()
+      const minutes = currentTime.getMinutes()
+      const ampm = hours >= 12 ? "PM" : "AM"
+      const formattedHours = hours % 12 || 12
+      const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes
+      const timeOut = `${formattedHours}:${formattedMinutes} ${ampm}`
+
+      setAttendanceRecords(
+        attendanceRecords.map((record) =>
+          record.id === clinicianToTimeout.id ? { ...record, timeOut: timeOut } : record,
+        ),
+      )
+      setIsTimeoutModalOpen(false)
+      toast({
+        title: "Timeout Recorded",
+        description: `${clinicianToTimeout.firstName} ${clinicianToTimeout.lastName} has been timed out at ${timeOut}.`,
+      })
     }
   }
 
@@ -177,7 +235,7 @@ export default function ClerkAttendance() {
                     <TableCell className="text-[#333]">{record.firstName}</TableCell>
                     <TableCell className="text-[#333]">{record.lastName}</TableCell>
                     <TableCell className="text-[#333]">{record.timeIn}</TableCell>
-                    <TableCell className="text-[#333]">{record.timeOut}</TableCell>
+                    <TableCell className="text-[#333]">{record.timeOut || "-"}</TableCell>
                     <TableCell className="text-[#333]">{record.date}</TableCell>
                     <TableCell className="text-[#333]">
                       <Select
@@ -248,14 +306,51 @@ export default function ClerkAttendance() {
                             </Button>
                           </>
                         ) : (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-red-600 hover:bg-red-50"
-                            onClick={() => handleDeleteClick(record)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
+                          <>
+                            {!record.timeOut && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className={`h-8 w-8 ${
+                                          record.activitiesInProgress === 0
+                                            ? "text-blue-600 hover:bg-blue-50"
+                                            : "text-gray-400 cursor-not-allowed"
+                                        }`}
+                                        onClick={() => {
+                                          if (record.activitiesInProgress === 0) {
+                                            handleTimeoutClick(record)
+                                          }
+                                        }}
+                                        disabled={record.activitiesInProgress > 0}
+                                      >
+                                        <Clock className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  {record.activitiesInProgress > 0 && (
+                                    <TooltipContent>
+                                      <p>
+                                        Cannot time out: Clinician has {record.activitiesInProgress} activities in
+                                        progress
+                                      </p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-red-600 hover:bg-red-50"
+                              onClick={() => handleDeleteClick(record)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </TableCell>
@@ -287,7 +382,8 @@ export default function ClerkAttendance() {
                   {attendanceToDelete.firstName} {attendanceToDelete.lastName}
                 </p>
                 <p className="text-sm text-gray-500">
-                  {attendanceToDelete.date} • {attendanceToDelete.timeIn} to {attendanceToDelete.timeOut}
+                  {attendanceToDelete.date} • {attendanceToDelete.timeIn} to{" "}
+                  {attendanceToDelete.timeOut || "Not timed out"}
                 </p>
               </div>
             )}
@@ -302,6 +398,43 @@ export default function ClerkAttendance() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Timeout Confirmation Modal */}
+      <Dialog open={isTimeoutModalOpen} onOpenChange={setIsTimeoutModalOpen}>
+        <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-lg">
+          <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
+            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Confirm Time Out</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 py-4">
+            <p className="text-[#333]">Are you sure you want to record time out for this clinician?</p>
+            {clinicianToTimeout && (
+              <div className="mt-3 p-3 bg-[#f8f9fa] rounded-md border border-gray-200">
+                <p className="font-medium text-[#333]">
+                  {clinicianToTimeout.firstName} {clinicianToTimeout.lastName}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {clinicianToTimeout.date} • Time in: {clinicianToTimeout.timeIn}
+                </p>
+                {clinicianToTimeout.activitiesCompleted > 0 && (
+                  <p className="text-sm text-[#5C8E77] mt-2">
+                    Completed activities: {clinicianToTimeout.activitiesCompleted}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
+            <Button variant="outline" onClick={() => setIsTimeoutModalOpen(false)} className="border-gray-300">
+              Cancel
+            </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleTimeoutConfirm}>
+              Confirm Time Out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Toaster />
     </div>
   )
 }

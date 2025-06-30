@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Check, X } from "lucide-react"
+import { Plus, Check, X, Clock } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -13,15 +13,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Badge } from "@/components/ui/badge"
 import { DashboardLayout } from "@/components/dashboard-layout"
 
-// Font configuration
-const poppinsFont = {
-  fontFamily: "'Poppins', sans-serif",
-}
-
 export default function AttendancePage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false)
   const [attendanceToDelete, setAttendanceToDelete] = useState(null)
+  const [attendanceToTimeout, setAttendanceToTimeout] = useState(null)
   const [activeFilter, setActiveFilter] = useState("all")
 
   // Sample data for attendance records
@@ -31,20 +28,25 @@ export default function AttendancePage() {
       firstName: "Maria",
       lastName: "Santos",
       timeIn: "08:15 AM",
-      timeOut: "05:30 PM",
+      timeOut: null,
       date: "2025-05-04",
       sanitize: "Yes",
-      status: "Pending",
+      status: "Present",
+      activities: [
+        { id: "ACT-001", status: "Completed" },
+        { id: "ACT-002", status: "Completed" },
+      ],
     },
     {
       id: "2",
       firstName: "John",
       lastName: "Dela Cruz",
       timeIn: "08:30 AM",
-      timeOut: "05:45 PM",
+      timeOut: null,
       date: "2025-05-04",
       sanitize: "No",
       status: "Pending",
+      activities: [],
     },
     {
       id: "3",
@@ -55,26 +57,29 @@ export default function AttendancePage() {
       date: "2025-05-04",
       sanitize: "Yes",
       status: "Present",
+      activities: [{ id: "ACT-003", status: "Completed" }],
     },
     {
       id: "4",
       firstName: "Mark",
       lastName: "Aquino",
       timeIn: "09:10 AM",
-      timeOut: "06:00 PM",
+      timeOut: null,
       date: "2025-05-04",
       sanitize: "Yes",
-      status: "Pending",
+      status: "Present",
+      activities: [{ id: "ACT-004", status: "In Progress" }],
     },
     {
       id: "5",
       firstName: "Sarah",
       lastName: "Garcia",
       timeIn: "08:00 AM",
-      timeOut: "05:00 PM",
+      timeOut: null,
       date: "2025-05-04",
       sanitize: "No",
       status: "Pending",
+      activities: [],
     },
   ])
 
@@ -91,11 +96,36 @@ export default function AttendancePage() {
     setIsDeleteModalOpen(true)
   }
 
+  // Function to handle timeout click
+  const handleTimeoutClick = (record) => {
+    setAttendanceToTimeout(record)
+    setIsTimeoutModalOpen(true)
+  }
+
   // Function to handle delete confirmation
   const handleDeleteConfirm = () => {
     if (attendanceToDelete) {
       setAttendanceRecords(attendanceRecords.filter((record) => record.id !== attendanceToDelete.id))
       setIsDeleteModalOpen(false)
+    }
+  }
+
+  // Function to handle timeout confirmation
+  const handleTimeoutConfirm = () => {
+    if (attendanceToTimeout) {
+      const now = new Date()
+      const formattedTime = now.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+
+      setAttendanceRecords(
+        attendanceRecords.map((record) =>
+          record.id === attendanceToTimeout.id ? { ...record, timeOut: formattedTime } : record,
+        ),
+      )
+      setIsTimeoutModalOpen(false)
     }
   }
 
@@ -120,6 +150,12 @@ export default function AttendancePage() {
     if (activeFilter === "all") return true
     return record.status.toLowerCase() === activeFilter.toLowerCase()
   })
+
+  // Check if clinician can time out (all activities completed or no activities in progress)
+  const canTimeOut = (record) => {
+    if (!record.activities || record.activities.length === 0) return true
+    return record.activities.every((activity) => activity.status === "Completed" || activity.status === "Cancelled")
+  }
 
   return (
     <DashboardLayout currentRole="admin">
@@ -185,7 +221,13 @@ export default function AttendancePage() {
                     <TableCell className="text-[#333]">{record.firstName}</TableCell>
                     <TableCell className="text-[#333]">{record.lastName}</TableCell>
                     <TableCell className="text-[#333]">{record.timeIn}</TableCell>
-                    <TableCell className="text-[#333]">{record.timeOut}</TableCell>
+                    <TableCell className="text-[#333]">
+                      {record.timeOut || (
+                        <Badge variant="outline" className="text-gray-500 border-gray-300">
+                          Not recorded
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-[#333]">{record.date}</TableCell>
                     <TableCell className="text-[#333]">
                       <Select
@@ -256,14 +298,48 @@ export default function AttendancePage() {
                             </Button>
                           </>
                         ) : (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-red-600 hover:bg-red-50"
-                            onClick={() => handleDeleteClick(record)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
+                          <>
+                            {!record.timeOut && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className={`h-8 w-8 ${
+                                          canTimeOut(record)
+                                            ? "text-blue-600 hover:bg-blue-50"
+                                            : "text-gray-400 cursor-not-allowed"
+                                        }`}
+                                        onClick={() => {
+                                          if (canTimeOut(record)) {
+                                            handleTimeoutClick(record)
+                                          }
+                                        }}
+                                        disabled={!canTimeOut(record)}
+                                      >
+                                        <Clock className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  {!canTimeOut(record) && (
+                                    <TooltipContent>
+                                      <p>Clinician has activities in progress</p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-red-600 hover:bg-red-50"
+                              onClick={() => handleDeleteClick(record)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </TableCell>
@@ -358,6 +434,51 @@ export default function AttendancePage() {
               Cancel
             </Button>
             <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white">Create Attendance</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Confirm Deletion</DialogTitle>
+          </DialogHeader>
+          <p>
+            Are you sure you want to delete the attendance record for{" "}
+            {attendanceToDelete ? `${attendanceToDelete.firstName} ${attendanceToDelete.lastName}` : ""}?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Time Out Confirmation Modal */}
+      <Dialog open={isTimeoutModalOpen} onOpenChange={setIsTimeoutModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Record Time Out</DialogTitle>
+          </DialogHeader>
+          <p>
+            Are you sure you want to record time out for{" "}
+            {attendanceToTimeout ? `${attendanceToTimeout.firstName} ${attendanceToTimeout.lastName}` : ""}?
+          </p>
+          <p className="text-sm text-gray-500">
+            Current time: {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTimeoutModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="bg-[#5C8E77] hover:bg-[#406E58]" onClick={handleTimeoutConfirm}>
+              Confirm Time Out
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -11,10 +11,11 @@ const activities = [
     id: "ACT-001",
     firstName: "Maria",
     lastName: "Santos",
-    patientName: "Maria Santos",
+    patientName: "Joanne Joaquin",
     chair: "Chair 1",
     date: "2025-05-09T09:30:00",
-    procedure: "Tooth Extraction",
+    procedure: "Tooth Extraction", // Keep for backward compatibility
+    procedures: ["Tooth Extraction", "Dental Cleaning"],
     status: "Completed",
   },
   {
@@ -35,6 +36,7 @@ const activities = [
     chair: "Chair 2",
     date: "2025-05-09T14:00:00",
     procedure: "Dental Filling",
+    procedures: ["Dental Filling", "Consultation"],
     status: "Pending",
   },
   {
@@ -55,6 +57,7 @@ const activities = [
     chair: "Chair 2",
     date: "2025-05-07T13:45:00",
     procedure: "Dental Implant",
+    procedures: ["Dental Implant", "X-Ray"],
     status: "Completed",
   },
 ]
@@ -87,7 +90,19 @@ export default function ClinicianActivities() {
                     {activity.firstName} {activity.lastName}
                   </TableCell>
                   <TableCell className="py-3">{activity.patientName}</TableCell>
-                  <TableCell className="py-3">{activity.procedure}</TableCell>
+                  <TableCell className="py-3">
+                    {activity.procedures ? (
+                      <div className="space-y-1">
+                        {activity.procedures.map((proc, index) => (
+                          <div key={index} className="text-sm">
+                            {proc}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      activity.procedure
+                    )}
+                  </TableCell>
                   <TableCell className="py-3">{activity.chair}</TableCell>
                   <TableCell className="py-3">{format(new Date(activity.date), "MMM d, yyyy h:mm a")}</TableCell>
                   <TableCell className="py-3">

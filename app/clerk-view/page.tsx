@@ -8,6 +8,10 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function ClerkDashboard() {
+  // Centralized data - pulling from admin perspective
+  const cliniciansLoggedIn = 24
+  const availableInstructors = 3
+  const availableChairs = 15 // Added declaration for availableChairs
   const [attendanceData, setAttendanceData] = useState([
     {
       id: 1,
@@ -99,7 +103,7 @@ export default function ClerkDashboard() {
           <CardContent className="p-4 flex justify-between items-center">
             <div>
               <p className="text-sm font-medium uppercase text-gray-500">AVAILABLE CHAIRS</p>
-              <p className="text-3xl font-semibold mt-1">15</p>
+              <p className="text-3xl font-semibold mt-1">{availableChairs}</p>
               <p className="text-sm text-gray-500">Ready for use</p>
             </div>
             <div className="h-12 w-12 bg-[#e6f7eb] rounded-full flex items-center justify-center">
@@ -127,7 +131,7 @@ export default function ClerkDashboard() {
           <CardContent className="p-4 flex justify-between items-center">
             <div>
               <p className="text-sm font-medium uppercase text-gray-500">CLINICIANS OCCUPYING</p>
-              <p className="text-3xl font-semibold mt-1">9</p>
+              <p className="text-3xl font-semibold mt-1">{cliniciansLoggedIn}</p>
               <p className="text-sm text-gray-500">Chairs in use</p>
             </div>
             <div className="h-12 w-12 bg-[#e6f7eb] rounded-full flex items-center justify-center">

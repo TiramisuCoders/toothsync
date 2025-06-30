@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function InstructorCliniciansPage() {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
@@ -30,7 +31,7 @@ export default function InstructorCliniciansPage() {
       email: "maria.santos@example.com",
       contactNumber: "+63 912 345 6789",
       address: "123 Rizal Avenue, Manila",
-      yearLevel: "3rd Year",
+      yearLevel: "5th Year",
       section: "A",
     },
     {
@@ -43,7 +44,7 @@ export default function InstructorCliniciansPage() {
       email: "john.delacruz@example.com",
       contactNumber: "+63 917 123 4567",
       address: "456 Mabini Street, Quezon City",
-      yearLevel: "4th Year",
+      yearLevel: "6th Year",
       section: "B",
     },
     {
@@ -56,7 +57,7 @@ export default function InstructorCliniciansPage() {
       email: "mark.aquino@example.com",
       contactNumber: "+63 919 876 5432",
       address: "321 Aguinaldo Street, Pasig",
-      yearLevel: "4th Year",
+      yearLevel: "5th Year",
       section: "C",
     },
   ])
@@ -279,6 +280,19 @@ export default function InstructorCliniciansPage() {
           <CardTitle className="text-xl font-semibold text-[#333]">Assigned Clinicians</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          <div className="flex items-center justify-between px-4 py-2">
+            <div></div>
+            <Select defaultValue="all">
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Year Level" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Years</SelectItem>
+                <SelectItem value="5">5th Year</SelectItem>
+                <SelectItem value="6">6th Year</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Table>
             <TableHeader className="bg-white border-b border-gray-200">
               <TableRow className="hover:bg-white border-b-0">
