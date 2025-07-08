@@ -1,15 +1,22 @@
 import '../styles/globals.css';
-import { ReactNode } from 'react';
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import Navbar from '../components/Navbar';
 
-export const metadata = {
+const inter = Inter({ subsets: ['latin'] });
+
+export const metadata: Metadata = {
   title: 'ToothSync',
-  description: 'Digital clinical system for dentistry laboratories',
+  description: 'Dental clinic management system',
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className={inter.className}>
+        <Navbar />
+        <main className="p-4">{children}</main>
+      </body>
     </html>
   );
 }
