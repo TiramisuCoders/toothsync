@@ -80,14 +80,15 @@ Open `app/page.tsx` and paste this:
 
 ```
 toothsync/
-├── app/              → Main routing pages
-├── public/           → Assets like favicon.ico
-├── styles/
-│   └── globals.css   → Tailwind base file
-├── tailwind.config.js
-├── postcss.config.js
-├── package.json
-```
+├── src/
+│   ├── app/              # Contains pages and layout (App Router)
+│   └── styles/           # Contains Tailwind and global CSS
+│       └── globals.css
+├── public/
+│   └── favicon.ico       # Website icon
+├── tailwind.config.js    # Tailwind CSS config
+├── postcss.config.js     # PostCSS config for Tailwind
+├── package.json          # Project dependencies and scripts
 
 ✅ Ensure `globals.css` contains:
 
