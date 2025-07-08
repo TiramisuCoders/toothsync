@@ -1,14 +1,6 @@
 export default function Home() {
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800">
-      {/* Navbar */}
-      <nav className="bg-white shadow p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-blue-600">ToothSync</h1>
-        <ul className="flex gap-4 text-sm">
-          <li><a href="#home" className="hover:text-blue-600">Home</a></li>
-          <li><a href="#about" className="hover:text-blue-600">About</a></li>
-        </ul>
-      </nav>
 
       {/* Hero Section */}
       <section id="home" className="flex flex-col items-center justify-center text-center py-20 px-4 bg-blue-50">
