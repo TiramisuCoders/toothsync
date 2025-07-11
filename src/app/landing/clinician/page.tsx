@@ -1,20 +1,24 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
 
 export default function ClinicianLoginPage() {
+  const router = useRouter()
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
+  const [isShaking, setIsShaking] = useState(false)
+  const [hasError, setHasError] = useState(false)
 
-  const backgroundImages = [
-    "/images/landing-page/school-1.png",
-    "/images/landing-page/school-2.png",
-  ]
+  const backgroundImages = ["/images/landing-page/school-1.png", "/images/landing-page/school-2.png"]
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -23,13 +27,37 @@ export default function ClinicianLoginPage() {
     return () => clearInterval(interval)
   }, [])
 
+
+
+  const triggerShakeAnimation = () => {
+    setIsShaking(true)
+    setTimeout(() => setIsShaking(false), 600)
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    console.log("Login attempt:", { email, password, rememberMe })
+
+    const validEmail = "clinician@clinic.com"
+    const validPassword = "secure123"
+
+    if (email === validEmail && password === validPassword) {
+      setErrorMessage("")
+      setHasError(false)
+      router.push("/dashboard/clinician")
+    } else {
+      setErrorMessage("Invalid email or password. Please check your credentials and try again.")
+      setHasError(true)
+      triggerShakeAnimation()
+    }
   }
 
   const handleBackToRoleSelection = () => {
-    window.location.href = "/landing"
+    router.push("/landing")
+  }
+
+  const clearError = () => {
+    setErrorMessage("")
+    setHasError(false)
   }
 
   return (
@@ -44,7 +72,7 @@ export default function ClinicianLoginPage() {
             }`}
           >
             <Image
-              src={image}
+              src={image || "/placeholder.svg"}
               alt={`Background ${index + 1}`}
               fill
               className="object-cover"
@@ -57,7 +85,11 @@ export default function ClinicianLoginPage() {
 
       {/* Login Form Box */}
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white shadow-2xl rounded-2xl p-8">
+        <div
+          className={`w-full max-w-md bg-white shadow-2xl rounded-2xl p-8 transition-transform duration-300 ${
+            isShaking ? "animate-shake" : ""
+          }`}
+        >
           {/* Logo */}
           <div className="flex justify-center mb-6">
             <Image
@@ -78,6 +110,21 @@ export default function ClinicianLoginPage() {
             </p>
           </div>
 
+          {/* Enhanced Error Message */}
+          {errorMessage && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg animate-slideDown">
+              <div className="flex items-start">
+                <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm text-red-700 font-medium">{errorMessage}</p>
+                </div>
+                <button onClick={clearError} className="ml-2 text-red-400 hover:text-red-600 transition-colors">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
@@ -89,7 +136,9 @@ export default function ClinicianLoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+                className={`w-full px-3 py-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 ${
+                  hasError ? "border-red-300 bg-red-50 focus:ring-red-500" : "border-gray-300"
+                }`}
                 required
               />
             </div>
@@ -104,7 +153,9 @@ export default function ClinicianLoginPage() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-3 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+                  className={`w-full px-3 py-3 pr-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 ${
+                    hasError ? "border-red-300 bg-red-50 focus:ring-red-500" : "border-gray-300"
+                  }`}
                   required
                 />
                 <button
@@ -147,6 +198,33 @@ export default function ClinicianLoginPage() {
           </form>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+          20%, 40%, 60%, 80% { transform: translateX(4px); }
+        }
+        
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        .animate-shake {
+          animation: shake 0.6s ease-in-out;
+        }
+        
+        .animate-slideDown {
+          animation: slideDown 0.3s ease-out;
+        }
+      `}</style>
     </div>
   )
 }
