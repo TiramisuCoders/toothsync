@@ -1,22 +1,34 @@
-import '../styles/globals.css';
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import Navbar from '../components/Navbar';
+import type React from "react"
+import type { Metadata } from "next"
+import { Poppins } from "next/font/google"
+import "./globals.css"
+import { ThemeProvider } from "@/components/theme-provider"
 
-const inter = Inter({ subsets: ['latin'] });
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-poppins",
+})
 
 export const metadata: Metadata = {
-  title: 'ToothSync',
-  description: 'Dental clinic management system',
-};
+  title: "ToothSync Admin Dashboard",
+  description: "Admin dashboard for ToothSync dental clinic management system",
+  generator: "v0.dev",
+}
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <Navbar />
-        <main className="p-4">{children}</main>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${poppins.variable} font-sans`}>
+        {/* ✅ ThemeProvider must wrap the full body content */}
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
-  );
+  )
 }
