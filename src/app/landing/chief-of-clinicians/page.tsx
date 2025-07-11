@@ -195,6 +195,11 @@ export default function ChiefOfClinicianLoginPage() {
               Back to role selection
             </button>
           </form>
+
+          {/* Footer */}
+          <div className="mt-8 text-center">
+            <p className="text-xs text-gray-500">Academic Year 2024–2025</p>
+          </div>
         </div>
       </div>
 
@@ -204,7 +209,7 @@ export default function ChiefOfClinicianLoginPage() {
           10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
           20%, 40%, 60%, 80% { transform: translateX(4px); }
         }
-        
+
         @keyframes slideDown {
           from {
             opacity: 0;
@@ -215,11 +220,11 @@ export default function ChiefOfClinicianLoginPage() {
             transform: translateY(0);
           }
         }
-        
+
         .animate-shake {
           animation: shake 0.6s ease-in-out;
         }
-        
+
         .animate-slideDown {
           animation: slideDown 0.3s ease-out;
         }
