@@ -28,27 +28,27 @@ export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
   const clinicianMenu = [
     {
       title: "Dashboard",
-      url: "/dashboard",
+      url: "/dashboard/clinician",
       icon: LayoutGrid,
     },
     {
       title: "Activities",
-      url: "/activities",
+      url: "/activities/clinician",
       icon: FileText,
     },
     {
       title: "Dental Chairs",
-      url: "/dental-chairs",
+      url: "/dental-chairs/clinician",
       icon: FileText,
     },
     {
       title: "Records",
-      url: "/records",
+      url: "/records/clinician",
       icon: FileText,
     },
     {
       title: "Form",
-      url: "/form",
+      url: "/form/clinician",
       icon: FileText,
     },
   ]
@@ -56,22 +56,22 @@ export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
   const instructorMenu = [
     {
       title: "Dashboard",
-      url: "/dashboard",
+      url: "/dashboard/clinical-instructor",
       icon: LayoutGrid,
     },
     {
       title: "Attendance",
-      url: "/attendance",
+      url: "/attendance/clinical-instructor",
       icon: Calendar,
     },
     {
       title: "Clinicians",
-      url: "/clinicians",
+      url: "/clinicians/clinical-instructor",
       icon: Users,
     },
     {
       title: "Activities",
-      url: "/activities",
+      url: "/activities/clinical-instructor",
       icon: FileText,
     },
   ]

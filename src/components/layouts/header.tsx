@@ -23,10 +23,9 @@ export function Header() {
   }
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-background px-4 text-foreground">
+    <header className="fixed top-0 left-0 right-0 z-40 flex h-16 items-center justify-between border-b bg-background px-4 text-foreground shadow-sm">
       {/* Page Title */}
       <div className="hidden sm:block">
-        <h1 className="text-xl font-semibold">Dashboard</h1>
       </div>
 
       {/* Search Input */}
@@ -56,8 +55,8 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">
               <div className="text-right">
-                <p className="text-sm font-medium leading-none">Admin User</p>
-                <p className="text-xs text-muted-foreground">Admin</p>
+                <p className="text-sm font-medium leading-none">Profile</p>
+                <p className="text-xs text-muted-foreground">Role</p>
               </div>
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </Button>

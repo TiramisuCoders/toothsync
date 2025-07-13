@@ -59,7 +59,7 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden font-poppins">
+    <div className="min-h-screen !pt-0 relative overflow-hidden font-poppins">
       {/* Background Carousel */}
       <div className="absolute inset-0">
         {backgroundImages.map((image, index) => (
