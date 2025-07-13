@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { Bell, ChevronDown, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +12,16 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 export function Header() {
+  const router = useRouter()
+
+  const handleSignOut = () => {
+    // Clear any session or localStorage if needed
+    // Example: localStorage.removeItem("token")
+
+    // Redirect to the landing page
+    router.push("/")
+  }
+
   return (
     <header className="flex h-16 items-center justify-between border-b bg-background px-4 text-foreground">
       {/* Page Title */}
@@ -54,7 +65,9 @@ export function Header() {
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem>Profile</DropdownMenuItem>
             <DropdownMenuItem>Settings</DropdownMenuItem>
-            <DropdownMenuItem>Sign out</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleSignOut}>
+              Sign out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

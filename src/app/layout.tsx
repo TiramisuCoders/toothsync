@@ -7,7 +7,7 @@ const poppins = Poppins({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700"],
   variable: "--font-poppins",
-  display: "swap", // ✅ Better for performance
+  display: "swap",
 })
 
 export const metadata: Metadata = {
@@ -22,8 +22,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={poppins.variable} suppressHydrationWarning>
-      <body className="font-sans">
+    <html lang="en" suppressHydrationWarning>
+      <body className={`font-sans ${poppins.variable}`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="light"
