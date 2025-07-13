@@ -1,7 +1,6 @@
-// src/app/dashboard/clinician/layout.tsx
-import { SidebarProvider, SidebarInset } from "@/components/sidebar/Sidebar"
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { RoleBasedSidebar } from "@/components/sidebar/RoleBasedSidebar"
-import { Header } from "@/components/layouts/header" // or wherever your header is
+import { Header } from "@/components/layouts/header"
 import React from "react"
 
 export default function ClinicianLayout({ children }: { children: React.ReactNode }) {
