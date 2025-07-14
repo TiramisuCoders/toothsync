@@ -8,6 +8,13 @@ import {
   Calendar,
   Users,
   FileText,
+  ClipboardList,
+  FormInput,
+  AlertTriangle,
+  ActivityIcon,
+  RockingChairIcon as Chair,
+  BarChartIcon as ChartBar,
+  type LucideIcon,
 } from "lucide-react"
 
 import { Sidebar } from "@/components/ui/sidebar"
@@ -19,71 +26,87 @@ import {
 } from "@/components/sidebar/SideBarMenu"
 
 interface RoleBasedSidebarProps {
-  role: "clinician" | "instructor"
+  role: "clinician" | "instructor" | "clerk" | "chief"
+}
+
+const getIconForTitle = (title: string): LucideIcon => {
+  switch (title) {
+    case "Dashboard":
+      return LayoutGrid
+    case "Attendance":
+      return Calendar
+    case "Clinicians":
+      return Users
+    case "Activities":
+      return FileText
+    case "Dental Chairs":
+      return Chair
+    case "Instructor":
+      return Users
+    case "Reports":
+      return ChartBar
+    case "Incident Logs":
+      return AlertTriangle
+    case "Activity Logs":
+      return ActivityIcon
+    case "Records":
+      return ClipboardList
+    case "Form":
+      return FormInput
+    default:
+      return FileText
+  }
 }
 
 export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
   const pathname = usePathname()
 
-  const clinicianMenu = [
-    {
-      title: "Dashboard",
-      url: "/dashboard/clinician",
-      icon: LayoutGrid,
-    },
-    {
-      title: "Activities",
-      url: "/activities/clinician",
-      icon: FileText,
-    },
-    {
-      title: "Dental Chairs",
-      url: "/dental-chairs/clinician",
-      icon: FileText,
-    },
-    {
-      title: "Records",
-      url: "/records/clinician",
-      icon: FileText,
-    },
-    {
-      title: "Form",
-      url: "/form/clinician",
-      icon: FileText,
-    },
+  const chiefMenu = [
+    { title: "Dashboard", url: "/dashboard/chief-of-clinicians" },
+    { title: "Attendance", url: "/attendance/chief-of-clinicians" },
+    { title: "Clinicians", url: "/clinicians/chief-of-clinicians" },
+    { title: "Activities", url: "/activities/chief-of-clinicians" },
+    { title: "Dental Chairs", url: "/dental-chairs/chief-of-clinicians" },
+    { title: "Instructor", url: "/instructor/chief-of-clinicians" },
+    { title: "Reports", url: "/reports/chief-of-clinicians" },
+    { title: "Incident Logs", url: "/incident-logs/chief-of-clinicians" },
+    { title: "Activity Logs", url: "/activity-logs/chief-of-clinicians" },
   ]
 
   const instructorMenu = [
-    {
-      title: "Dashboard",
-      url: "/dashboard/clinical-instructor",
-      icon: LayoutGrid,
-    },
-    {
-      title: "Attendance",
-      url: "/attendance/clinical-instructor",
-      icon: Calendar,
-    },
-    {
-      title: "Clinicians",
-      url: "/clinicians/clinical-instructor",
-      icon: Users,
-    },
-    {
-      title: "Activities",
-      url: "/activities/clinical-instructor",
-      icon: FileText,
-    },
+    { title: "Dashboard", url: "/dashboard/clinical-instructor" },
+    { title: "Attendance", url: "/attendance/clinical-instructor" },
+    { title: "Clinicians", url: "/clinicians/clinical-instructor" },
+    { title: "Activities", url: "/activities/clinical-instructor" },
   ]
 
-  const menu = role === "instructor" ? instructorMenu : clinicianMenu
+  const clerkMenu = [
+    { title: "Dashboard", url: "/dashboard/clerk" },
+    { title: "Attendance", url: "/attendance/clerk" },
+    { title: "Dental Chairs", url: "/dental-chairs/clerk" },
+  ]
+
+  const clinicianMenu = [
+    { title: "Dashboard", url: "/dashboard/clinician" },
+    { title: "Activities", url: "/activities/clinician" },
+    { title: "Dental Chairs", url: "/dental-chairs/clinician" },
+    { title: "Records", url: "/records/clinician" },
+    { title: "Form", url: "/form/clinician" },
+  ]
+
+  const menu =
+    role === "chief"
+      ? chiefMenu
+      : role === "instructor"
+      ? instructorMenu
+      : role === "clerk"
+      ? clerkMenu
+      : clinicianMenu
 
   return (
     <Sidebar className="bg-white border-r border-gray-200 w-64">
-      {/* Header Section */}
       <div>
         <div className="p-6 pb-4">
-          {/* Logo */}
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-[#5C8E77] rounded-lg flex items-center justify-center">
               <svg
@@ -104,12 +127,9 @@ export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
             </div>
             <span className="text-xl font-semibold text-gray-900">ToothSync</span>
           </div>
-
-          {/* Divider */}
           <div className="border-b border-gray-100" />
         </div>
 
-        {/* College Info */}
         <div className="px-6 pb-6 border-b border-gray-200">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -122,18 +142,23 @@ export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
               />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900 text-sm leading-tight">De Ocampo Memorial College</h3>
-              <p className="text-xs text-gray-500 mt-1">845 Euclid Avenue, Manila</p>
+              <h3 className="font-semibold text-gray-900 text-sm leading-tight">
+                De Ocampo Memorial College
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                845 Euclid Avenue, Manila
+              </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Navigation Items */}
       <SidebarContent>
         <SidebarMenu>
           {menu.map((item) => {
             const isActive = pathname === item.url || pathname.includes(item.url)
+            const Icon = getIconForTitle(item.title)
+
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton asChild>
@@ -145,7 +170,11 @@ export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
                         : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
                     }`}
                   >
-                    <item.icon className={`w-5 h-5 ${isActive ? "text-[#5C8E77]" : "text-gray-500"}`} />
+                    <Icon
+                      className={`w-5 h-5 ${
+                        isActive ? "text-[#5C8E77]" : "text-gray-500"
+                      }`}
+                    />
                     {item.title}
                   </Link>
                 </SidebarMenuButton>
