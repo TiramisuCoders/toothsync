@@ -51,7 +51,7 @@ export default function ClerkLoginPage() {
         console.log("Login success!", data)
         setErrorMessage("")
         setHasError(false)
-        router.push("/dashboard/clinician")
+        router.push("/dashboard/clerk")
       }
         
     } 

@@ -51,7 +51,7 @@ export default function ChiefOfClinicianLoginPage() {
         console.log("Login success!", data)
         setErrorMessage("")
         setHasError(false)
-        router.push("/dashboard/clinician")
+        router.push("/dashboard/chief-of-clinicians")
       }
         
     }
