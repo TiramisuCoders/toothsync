@@ -22,7 +22,7 @@ export default async function AdminActivitiesPage() {
   // const { data: profile, error: roleError } = await supabase
   //   .from("users")
   //   .select("role")
-  //   .eq("id", user.id)
+  //   .eq("id", user.id)s
   //   .single()
 
   // if (roleError || profile?.role !== "admin") {
