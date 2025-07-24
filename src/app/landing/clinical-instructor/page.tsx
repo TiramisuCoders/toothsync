@@ -37,6 +37,22 @@ export default function InstructorLoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault()
   
+       const { data: userRecord, error: roleError, status} = await supabase
+            .from("users")
+            .select("role")
+            .eq("email", email)
+            .single();
+            
+          if (roleError || !userRecord) {
+            setErrorMessage("Email not registered as an instructor.")            
+            return
+          }
+      
+          if (userRecord.role !== "R03") {
+            setErrorMessage("Only clinical instructors are allowed to log in.")
+            return
+          }
+
       const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,

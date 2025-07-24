@@ -60,8 +60,8 @@ console.log(test);
 
     if (roleError || !userRecord) {
       setErrorMessage("Email not registered as a clinician.")
-      console.log(userRecord)
-      console.log(roleError)
+      // console.log(userRecord)
+      // console.log(roleError)
       
       return
     }
@@ -82,7 +82,7 @@ console.log(test);
       triggerShakeAnimation()
       console.error("Supabase login error:", error)
     } else {
-      console.log("Login success!", data)
+      // console.log("Login success!", data)
       setErrorMessage("")
       setHasError(false)
       router.push("/dashboard/clinician")
