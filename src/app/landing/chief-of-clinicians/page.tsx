@@ -36,6 +36,23 @@ export default function ChiefOfClinicianLoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault()
+
+    const { data: userRecord, error: roleError, status} = await supabase
+          .from("users")
+          .select("role")
+          .eq("email", email)
+          .single();
+
+        
+    if (roleError || !userRecord) {
+      setErrorMessage("Email not registered as a user.")
+      return
+    }
+
+    if (userRecord.role !== "R04") {
+      setErrorMessage("Only the Chief of Clinician is allowed to log in.")
+      return
+    }
   
       const { data, error } = await supabase.auth.signInWithPassword({
       email,

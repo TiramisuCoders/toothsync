@@ -36,6 +36,41 @@ export default function ClinicianLoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+
+    const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+console.log("Session:", session);
+
+
+const test = await supabase.from("users").select("id").limit(1);
+console.log(test);
+
+      const { data: userRecord, error: roleError, status} = await supabase
+      .from("users")
+      .select("role")
+      .eq("email", email)
+      .single();
+
+      // console.log(userRecord)
+      // console.log(roleError)
+      // console.log(status)
+
+
+    if (roleError || !userRecord) {
+      setErrorMessage("Email not registered as a clinician.")
+      // console.log(userRecord)
+      // console.log(roleError)
+      
+      return
+    }
+
+    if (userRecord.role !== "R01") {
+      setErrorMessage("Only clinicians are allowed to log in.")
+      return
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
@@ -47,7 +82,7 @@ export default function ClinicianLoginPage() {
       triggerShakeAnimation()
       console.error("Supabase login error:", error)
     } else {
-      console.log("Login success!", data)
+      // console.log("Login success!", data)
       setErrorMessage("")
       setHasError(false)
       router.push("/dashboard/clinician")

@@ -1,10 +1,10 @@
-// joanne's file pls ignore muna
+// joanne's file pls ignore muna 
 
 import { supabase } from "@/lib/supabase";
 
 export default async function Home() {
     
-    const { data, error } = await supabase.from("sample").select('*')
+    const { data, error } = await supabase.from("users").select('*')
 
      if (error) {
     console.error("Error fetching data:", error.message)
