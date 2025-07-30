@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 
 export default async function Home() {
     
-    const { data, error } = await supabase.from("users").select('*')
+    const { data, error } = await supabase.from("procedure").select('*')
 
      if (error) {
     console.error("Error fetching data:", error.message)
