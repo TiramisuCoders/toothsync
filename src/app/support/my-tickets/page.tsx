@@ -1,15 +1,34 @@
 "use client"
 
-import Link from "next/link"
 import { useState, useMemo } from "react"
 import Image from "next/image"
-import { Search, Plus, Filter, ArrowUpDown, Clock, CheckCircle, Calendar, History, MoreHorizontal } from "lucide-react"
+import {
+  Search,
+  Plus,
+  Filter,
+  ArrowUpDown,
+  Clock,
+  CheckCircle,
+  Calendar,
+  History,
+  MoreHorizontal,
+  Copy,
+  Check,
+  XCircle,
+} from "lucide-react"
+import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge" 
+import { Badge } from "@/components/ui/badge" // Assuming you have a Badge component from shadcn/ui
 import { useRouter } from "next/navigation"
+import { TicketDetailsModal } from "@/components/modals/ticket-details-modal" // Import the new modal
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { useToast } from "@/hooks/use-toast" // Assuming you have a useToast hook
+import { TicketUpdateSuccessModal } from "@/components/modals/ticket-update-success-modal" // Import update success modal
+import { TicketUpdateFailureModal } from "@/components/modals/ticket-update-failure-modal" // Import update failure modal
+import { FeedbackFormModal } from "@/components/modals/feedback-form-modal" // Import the new feedback form modal
 
-// Define the Ticket interface
+// Define the Ticket interface - UPDATED
 interface Ticket {
   id: string
   title: string
@@ -17,85 +36,151 @@ interface Ticket {
   status: "Pending" | "In Progress" | "Resolved"
   priority: "Low Priority" | "Medium Priority" | "High Priority"
   date: string // e.g., "5/10/2025"
-  time: string // e.g., "09:37 AM"
+  time: string // e.g., "09:35 AM"
+  description: string
+  reportedBy: string // email
+  attachments?: string[] // Array of attachment filenames/URLs
+  adminInCharge?: string
+  adminNotes?: string
+  category: string // Added category for modal
 }
 
 export default function MyTicketsPage() {
   const router = useRouter()
+  const { toast } = useToast() // Initialize toast
   const [activeTab, setActiveTab] = useState<"All Tickets" | "Pending" | "In Progress" | "Resolved">("All Tickets")
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const ticketsPerPage = 5 // Number of tickets to show per page
 
+  // State for the details modal
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
+
+  // States for the dropdown update modals
+  const [showDropdownUpdateSuccessModal, setShowDropdownUpdateSuccessModal] = useState(false)
+  const [showDropdownUpdateFailureModal, setShowDropdownUpdateFailureModal] = useState(false)
+  const [updatedTicketIdForModal, setUpdatedTicketIdForModal] = useState<string | null>(null) // To pass to modal if needed
+
+  // State for the feedback form modal
+  const [showFeedbackFormModal, setShowFeedbackFormModal] = useState(false)
+  const [feedbackTicketId, setFeedbackTicketId] = useState<string | undefined>(undefined)
+
   // 🔴 REMOVE THIS SAMPLE DATA WHEN CONNECTING TO DATABASE
   // 🟢 REPLACE WITH DATA FETCHED FROM YOUR DATABASE
-  const allTickets: Ticket[] = useMemo(
-    () => [
-      {
-        id: "TS-2025-00123",
-        title: "Wala po akong Instructor",
-        module: "Instructor Management",
-        status: "Pending",
-        priority: "Medium Priority",
-        date: "5/10/2025",
-        time: "09:37 AM",
-      },
-      {
-        id: "TS-2025-00124",
-        title: "Mali po 'yung nakadisplay na name ko",
-        module: "Dashboard/UI",
-        status: "In Progress",
-        priority: "Medium Priority",
-        date: "5/06/2025",
-        time: "04:50 PM",
-      },
-      {
-        id: "TS-2025-00125",
-        title: "Wrong Credentials entered",
-        module: "Login & Authentication",
-        status: "In Progress",
-        priority: "High Priority",
-        date: "5/06/2025",
-        time: "08:01 PM",
-      },
-      {
-        id: "TS-2025-00126",
-        title: "Can't submit request form",
-        module: "Service Request Form",
-        status: "Resolved",
-        priority: "Medium Priority",
-        date: "5/01/2025",
-        time: "2:00 PM",
-      },
-      {
-        id: "TS-2025-00127",
-        title: "Database connection issue",
-        module: "Others",
-        status: "Pending",
-        priority: "High Priority",
-        date: "5/12/2025",
-        time: "11:00 AM",
-      },
-      {
-        id: "TS-2025-00128",
-        title: "Missing report data",
-        module: "Dashboard/UI",
-        status: "In Progress",
-        priority: "Medium Priority",
-        date: "5/11/2025",
-        time: "03:15 PM",
-      },
-      {
-        id: "TS-2025-00129",
-        title: "User profile not updating",
-        module: "Login & Authentication",
-        status: "Resolved",
-        priority: "Low Priority",
-        date: "5/09/2025",
-        time: "10:00 AM",
-      },
-    ],
-    [],
+  const [allTickets, setAllTickets] = useState<Ticket[]>(
+    useMemo(
+      () => [
+        {
+          id: "#TS-2025-00123",
+          title: "Wala po akong Instructor",
+          module: "Instructor Management",
+          category: "Instructor Not Assigned",
+          description:
+            "Wala pong instructor na na-assign kahit na nakapagsubmit po ako ng form. I have to perform an operation today. Need instructor ASAP.",
+          status: "Pending",
+          priority: "Medium Priority",
+          date: "2025-05-10",
+          time: "09:35 AM",
+          reportedBy: "johndoe@sample.com",
+          attachments: ["/placeholder.svg?height=24&width=24"], // Placeholder for attachment
+          adminInCharge: "Mona Lisa",
+          adminNotes: "Please refresh the website and log-in again.",
+        },
+        {
+          id: "#TS-2025-00124",
+          title: "Mali po 'yung nakadisplay na name ko",
+          module: "Dashboard/UI",
+          category: "Data Not Loading",
+          description: "My name is displayed incorrectly on the dashboard. It shows 'John Doe' instead of 'Jane Doe'.",
+          status: "In Progress",
+          priority: "Medium Priority",
+          date: "2025-05-06",
+          time: "04:50 PM",
+          reportedBy: "janedoe@sample.com",
+          attachments: [],
+          adminInCharge: "Leonardo Da Vinci",
+          adminNotes: "Checked database, name is correct. Investigating UI rendering issue.",
+        },
+        {
+          id: "#TS-2025-00125",
+          title: "Wrong Credentials entered",
+          module: "Login & Authentication",
+          category: "Unable to Log In",
+          description:
+            "I am unable to log in using my correct credentials. It keeps saying 'invalid username or password'.",
+          status: "In Progress",
+          priority: "High Priority",
+          date: "2025-05-06",
+          time: "08:01 PM",
+          reportedBy: "user123@sample.com",
+          attachments: [],
+          adminInCharge: "Raphael Sanzio",
+          adminNotes: "Account locked due to multiple failed attempts. Unlocked account and sent password reset link.",
+        },
+        {
+          id: "#TS-2025-00126",
+          title: "Can't submit request form",
+          module: "Service Request Form",
+          category: "Form Submission Error",
+          description: "The service request form is not submitting. I click the button, but nothing happens.",
+          status: "Resolved",
+          priority: "Medium Priority",
+          date: "2025-05-01",
+          time: "02:00 PM",
+          reportedBy: "testuser@sample.com",
+          attachments: [],
+          adminInCharge: "Donatello",
+          adminNotes: "Issue resolved. There was a temporary server-side error. Form submissions are now working.",
+        },
+        {
+          id: "#TS-2025-00127",
+          title: "Database connection issue",
+          module: "Others",
+          category: "Unexpected Error Message",
+          description: "Getting 'Database connection failed' error when trying to access reports.",
+          status: "Pending",
+          priority: "High Priority",
+          date: "2025-05-12",
+          time: "11:00 AM",
+          reportedBy: "admin@sample.com",
+          attachments: [],
+          adminInCharge: "Mona Lisa",
+          adminNotes: "Escalated to engineering team. Investigating server logs.",
+        },
+        {
+          id: "#TS-2025-00128",
+          title: "Missing report data",
+          module: "Dashboard/UI",
+          category: "Missing Logs or Data",
+          description: "Some entries are missing from the daily activity report for May 10th.",
+          status: "In Progress",
+          priority: "Medium Priority",
+          date: "2025-05-11",
+          time: "03:15 PM",
+          reportedBy: "manager@sample.com",
+          attachments: [],
+          adminInCharge: "Leonardo Da Vinci",
+          adminNotes: "Running data integrity check. Will update once complete.",
+        },
+        {
+          id: "#TS-2025-00129",
+          title: "User profile not updating",
+          module: "Login & Authentication",
+          category: "Account Locked",
+          description: "My profile information (phone number) is not saving after I update it.",
+          status: "Resolved",
+          priority: "Low Priority",
+          date: "2025-05-09",
+          time: "10:00 AM",
+          reportedBy: "userprofile@sample.com",
+          attachments: [],
+          adminInCharge: "Raphael Sanzio",
+          adminNotes: "Fixed a bug in the profile update API. Changes should now save correctly.",
+        },
+      ],
+      [],
+    ),
   )
 
   // Filter tickets based on active tab and search term
@@ -127,6 +212,141 @@ export default function MyTicketsPage() {
 
   const handleNewTicket = () => {
     router.push("/support/new-ticket")
+  }
+
+  const handleViewDetails = (ticket: Ticket) => {
+    setSelectedTicket(ticket)
+    setShowDetailsModal(true)
+  }
+
+  const handleCloseDetailsModal = () => {
+    setShowDetailsModal(false)
+    setSelectedTicket(null)
+    // 🟢 OPTIONAL: Re-fetch tickets here if you want the list to update after modal closes
+    // e.g., fetchTickets();
+  }
+
+  const handleCopyTicketId = (ticketId: string) => {
+    navigator.clipboard.writeText(ticketId)
+    toast({
+      title: "Copied!",
+      description: `Ticket ID ${ticketId} copied to clipboard.`,
+    })
+  }
+
+  const handleTicketUpdated = () => {
+    // This function is called from TicketDetailsModal when an update is successful
+    // It allows the parent component (MyTicketsPage) to re-fetch or update its state
+    // 🟢 REPLACE WITH ACTUAL DATA RE-FETCHING FROM DATABASE
+    // For now, we'll simulate a re-fetch by updating the local state
+    setAllTickets((prevTickets) =>
+      prevTickets.map((ticket) =>
+        ticket.id === selectedTicket?.id ? { ...ticket, status: selectedTicket.status } : ticket,
+      ),
+    )
+    // You might want to fetch the updated ticket from the backend here
+    // e.g., fetchUpdatedTicket(selectedTicket.id).then(updatedTicket => {
+    //   setAllTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
+    // });
+  }
+
+  const handleUpdateTicketStatus = async (ticketId: string, newStatus: Ticket["status"]) => {
+    // 🟢 REPLACE WITH YOUR DATABASE UPDATE LOGIC
+    console.log(`Updating ticket ${ticketId} to status: ${newStatus}`)
+    setUpdatedTicketIdForModal(ticketId) // Set the ID for the modal
+
+    try {
+      // Simulate API call
+      await new Promise((resolve, reject) => {
+        setTimeout(() => {
+          const isSuccess = Math.random() > 0.5 // 50% success rate for dropdown updates
+          if (isSuccess) {
+            resolve(true)
+          } else {
+            reject(new Error("Failed to update ticket status from dropdown"))
+          }
+        }, 500)
+      })
+
+      // Example API call (uncomment and modify when ready)
+      /*
+      const response = await fetch(`/api/tickets/${ticketId}`, {
+        method: 'PUT', // Or PATCH
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update ticket status');
+      }
+      */
+
+      // Update local state
+      setAllTickets((prevTickets) =>
+        prevTickets.map((ticket) => (ticket.id === ticketId ? { ...ticket, status: newStatus } : ticket)),
+      )
+
+      // Only show success modal (which leads to feedback) if status is Resolved
+      if (newStatus === "Resolved") {
+        setShowDropdownUpdateSuccessModal(true)
+      } else {
+        // For Pending or In Progress updates, just show a toast and close any modals
+        toast({
+          title: "Ticket Updated!",
+          description: `Ticket ${ticketId} status changed to ${newStatus}.`,
+        })
+        handleDropdownUpdateModalClose() // Ensure no modals are left open
+      }
+    } catch (error) {
+      console.error("Error updating ticket status:", error)
+      setShowDropdownUpdateFailureModal(true) // Show failure modal
+    }
+  }
+
+  // Handlers for the dropdown update modals
+  const handleDropdownUpdateModalClose = () => {
+    setShowDropdownUpdateSuccessModal(false)
+    setShowDropdownUpdateFailureModal(false)
+    setUpdatedTicketIdForModal(null)
+  }
+
+  const handleDropdownUpdateModalBackToTickets = () => {
+    handleDropdownUpdateModalClose()
+    // If already on my-tickets page, no navigation needed, just close modal
+    // router.push("/support/my-tickets");
+  }
+
+  const handleDropdownUpdateModalSubmitFeedback = () => {
+    // Close the dropdown update success modal
+    setShowDropdownUpdateSuccessModal(false)
+    // Open the feedback form modal
+    if (updatedTicketIdForModal) {
+      setFeedbackTicketId(updatedTicketIdForModal)
+      setShowFeedbackFormModal(true)
+    }
+  }
+
+  const handleDropdownUpdateModalRetry = () => {
+    setShowDropdownUpdateFailureModal(false)
+    // User can retry from the dropdown menu directly
+  }
+
+  // Handler for opening feedback form from TicketDetailsModal
+  const handleOpenFeedbackFormFromDetails = (ticketId: string) => {
+    // Close TicketDetailsModal first
+    setShowDetailsModal(false)
+    setSelectedTicket(null)
+    // Then open FeedbackFormModal
+    setFeedbackTicketId(ticketId)
+    setShowFeedbackFormModal(true)
+  }
+
+  const handleCloseFeedbackFormModal = () => {
+    setShowFeedbackFormModal(false)
+    setFeedbackTicketId(undefined)
+    // No navigation needed, user stays on my-tickets page
   }
 
   const getStatusIcon = (status: Ticket["status"]) => {
@@ -171,17 +391,17 @@ export default function MyTicketsPage() {
   return (
     <div className="min-h-screen bg-gray-100 font-poppins flex flex-col">
       {/* Header */}
-        <header className="fixed top-0 left-0 right-0 z-50 bg-emerald-700 text-white p-4 flex items-center justify-between shadow-md">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-emerald-700 text-white p-4 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-3">
-        <Link href="/landing" passHref>
-          <Image
-            src="/images/DOMC-logo.png" 
-            alt="App Logo"
-            width={75}
-            height={7}
-            className="object-contain"
-          />
-        </Link>
+            <Link href="/landing" passHref>
+              <Image
+                src="/images/DOMC-logo.png"
+                alt="App Logo"
+                width={75}
+                height={75}
+                className="object-contain cursor-pointer"
+              />
+            </Link>
           <div>
             <h1 className="text-xl font-bold">Ticket Tracker</h1>
             <p className="text-sm text-emerald-100">Dental Clinic Laboratory Support System</p>
@@ -212,7 +432,7 @@ export default function MyTicketsPage() {
       </header>
 
       {/* Main Content Area */}
-        <main className="flex-1 p-6 pt-20">
+      <main className="flex-1 p-6">
         <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-6">
           {/* Tabs */}
           <div className="flex border-b border-gray-200 mb-6">
@@ -274,12 +494,36 @@ export default function MyTicketsPage() {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" className="text-emerald-600 hover:bg-emerald-50">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-emerald-600 hover:bg-emerald-50"
+                        onClick={() => handleViewDetails(ticket)} // Open modal on click
+                      >
                         View Details
                       </Button>
-                      <Button variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-50">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="text-gray-500 hover:bg-gray-50">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleCopyTicketId(ticket.id)}>
+                            <span>Copy Ticket ID</span>
+                          </DropdownMenuItem>
+                          {ticket.status !== "Resolved" && ( // Only show if not already resolved
+                            <DropdownMenuItem onClick={() => handleUpdateTicketStatus(ticket.id, "Resolved")}>
+                              <span>Mark as Resolved</span>
+                            </DropdownMenuItem>
+                          )}
+                          {ticket.status !== "Resolved" && ( // Only show if not already resolved
+                            <DropdownMenuItem onClick={() => handleUpdateTicketStatus(ticket.id, "Pending")}>
+                              <span>Cancel Ticket</span>
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </div>
@@ -315,6 +559,38 @@ export default function MyTicketsPage() {
           </div>
         </div>
       </main>
+
+      {/* Ticket Details Modal */}
+      <TicketDetailsModal
+        isOpen={showDetailsModal}
+        onClose={handleCloseDetailsModal}
+        ticket={selectedTicket}
+        onTicketUpdated={handleTicketUpdated} // Pass the callback
+        onOpenFeedbackForm={handleOpenFeedbackFormFromDetails} // Pass new callback
+      />
+
+      {/* Dropdown Update Success Modal */}
+      <TicketUpdateSuccessModal
+        isOpen={showDropdownUpdateSuccessModal}
+        onClose={handleDropdownUpdateModalClose}
+        onSubmitFeedback={handleDropdownUpdateModalSubmitFeedback}
+        isResolvedUpdate={true} // This modal is only shown for resolved updates from dropdown
+      />
+
+      {/* Dropdown Update Failure Modal */}
+      <TicketUpdateFailureModal
+        isOpen={showDropdownUpdateFailureModal}
+        onClose={handleDropdownUpdateModalClose}
+        onRetry={handleDropdownUpdateModalRetry}
+        onBackToTickets={handleDropdownUpdateModalBackToTickets}
+      />
+
+      {/* Feedback Form Modal (now manages its own success/failure modals) */}
+      <FeedbackFormModal
+        isOpen={showFeedbackFormModal}
+        onClose={handleCloseFeedbackFormModal} // This will now close the form, and the form itself will open the success modal
+        ticketId={feedbackTicketId}
+      />
     </div>
   )
 }
