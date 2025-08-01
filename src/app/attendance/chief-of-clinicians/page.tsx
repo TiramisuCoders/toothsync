@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Calendar, ChevronDown, Plus, Edit, Check, X, ChevronUp, User, Users, ArrowUpDown } from "lucide-react"
+import { Plus, Check, X, Clock } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -9,907 +9,751 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Badge } from "@/components/ui/badge"
 
-// Font configuration
-const poppinsFont = {
-  fontFamily: "'Poppins', sans-serif",
-}
-
-interface Activity {
+interface AttendanceRecord {
   id: string
   firstName: string
   lastName: string
-  chair: string
-  patient: string
-  instructor: string
-  procedure: string
-  procedures?: string[]
+  timeIn: string
+  timeOut: string | null
+  date: string
+  sanitize: string
+  status: string
+  activities: Array<{ id: string; status: string }>
+  archived?: boolean // Add archived field
+}
+
+interface NewAttendanceForm {
+  firstName: string
+  lastName: string
+  timeIn: string
+  timeOut: string
+  date: string
+  sanitize: string
   status: string
 }
 
-export default function ChiefOfCliniciansPage() {
+export default function AttendancePage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [currentActivity, setCurrentActivity] = useState<Activity | null>(null)
-  const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false)
-  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false)
-  const [activityToAction, setActivityToAction] = useState<Activity | null>(null)
-  const [sortField, setSortField] = useState("id")
-  const [sortDirection, setSortDirection] = useState("asc")
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false) // Changed from delete to archive
+  const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false)
+  const [attendanceToArchive, setAttendanceToArchive] = useState<AttendanceRecord | null>(null) // Changed from delete to archive
+  const [attendanceToTimeout, setAttendanceToTimeout] = useState<AttendanceRecord | null>(null)
+  const [activeFilter, setActiveFilter] = useState("all")
 
-  // Form state for new activity
-  const [newActivity, setNewActivity] = useState({
-    firstName: "",
-    lastName: "",
-    chair: "",
-    patient: "",
-    instructor: "",
-    procedures: [] as string[],
-    status: "Not started",
-  })
-
-  // Centralized data - Admin perspective as baseline
-  const [cliniciansLoggedIn, setCliniciansLoggedIn] = useState(24)
-  const [availableInstructors, setAvailableInstructors] = useState(3)
-  const [availableChairs, setAvailableChairs] = useState(15)
-
-  // Initial activities data
-  const [activities, setActivities] = useState<Activity[]>([
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([
     {
       id: "1",
       firstName: "Maria",
       lastName: "Santos",
-      chair: "Chair 05",
-      patient: "Juan Dela Cruz",
-      instructor: "Dr. Reyes",
-      procedure: "Root Canal Treatment",
-      procedures: ["Root Canal Treatment", "Dental Filling"],
-      status: "Started",
+      timeIn: "08:15 AM",
+      timeOut: null,
+      date: "2025-05-04",
+      sanitize: "Yes",
+      status: "Present",
+      activities: [
+        { id: "ACT-001", status: "Completed" },
+        { id: "ACT-002", status: "Completed" },
+      ],
+      archived: false,
     },
     {
       id: "2",
       firstName: "John",
       lastName: "Dela Cruz",
-      chair: "Chair 12",
-      patient: "Ana Reyes",
-      instructor: "Dr. Mendoza",
-      procedure: "Dental Filling",
-      status: "Not started",
+      timeIn: "08:30 AM",
+      timeOut: null,
+      date: "2025-05-04",
+      sanitize: "No",
+      status: "Pending",
+      activities: [],
+      archived: false,
     },
     {
       id: "3",
       firstName: "Anna",
       lastName: "Lim",
-      chair: "Chair 03",
-      patient: "Miguel Santos",
-      instructor: "Dr. Santos",
-      procedure: "Dental Crown",
-      procedures: ["Dental Crown", "Teeth Cleaning"],
-      status: "Started",
+      timeIn: "07:55 AM",
+      timeOut: "04:30 PM",
+      date: "2025-05-04",
+      sanitize: "Yes",
+      status: "Present",
+      activities: [{ id: "ACT-003", status: "Completed" }],
+      archived: false,
     },
     {
       id: "4",
       firstName: "Mark",
       lastName: "Aquino",
-      chair: "Chair 08",
-      patient: "Sofia Reyes",
-      instructor: "Dr. Reyes",
-      procedure: "Teeth Cleaning",
-      status: "Completed",
+      timeIn: "09:10 AM",
+      timeOut: null,
+      date: "2025-05-04",
+      sanitize: "Yes",
+      status: "Present",
+      activities: [{ id: "ACT-004", status: "In Progress" }],
+      archived: false,
     },
     {
       id: "5",
       firstName: "Sarah",
       lastName: "Garcia",
-      chair: "Chair 10",
-      patient: "Luis Tan",
-      instructor: "Dr. Tan",
-      procedure: "Dental Extraction",
-      procedures: ["Dental Extraction", "Root Canal Treatment"],
-      status: "Incomplete",
+      timeIn: "08:00 AM",
+      timeOut: null,
+      date: "2025-05-04",
+      sanitize: "No",
+      status: "Pending",
+      activities: [],
+      archived: false,
     },
   ])
 
-  // Calculate distribution
-  const calculateDistribution = (totalClinicians: number, totalInstructors: number) => {
-    if (totalInstructors === 0) return []
-    const baseCount = Math.floor(totalClinicians / totalInstructors)
-    const remainder = totalClinicians % totalInstructors
-    const instructors = ["Dr. Reyes", "Dr. Mendoza", "Dr. Santos"]
+  // Success banner state
+  const [showSuccessBanner, setShowSuccessBanner] = useState(false)
+  const [successMessage, setSuccessMessage] = useState("")
 
-    return instructors.slice(0, totalInstructors).map((instructor, index) => ({
-      instructor,
-      clinicians: baseCount + (index < remainder ? 1 : 0),
+  // Form state for new attendance
+  const [newAttendanceForm, setNewAttendanceForm] = useState<NewAttendanceForm>({
+    firstName: "",
+    lastName: "",
+    timeIn: "",
+    timeOut: "",
+    date: new Date().toISOString().split("T")[0], // Default to today
+    sanitize: "",
+    status: "pending",
+  })
+
+  // Validation state for form fields
+  const [fieldErrors, setFieldErrors] = useState({
+    firstName: false,
+    lastName: false,
+    timeIn: false,
+    date: false,
+    sanitize: false,
+  })
+
+  // Function to generate new attendance ID
+  const generateAttendanceId = (): string => {
+    const maxId = attendanceRecords.reduce((max, record) => {
+      const num = Number.parseInt(record.id)
+      return num > max ? num : max
+    }, 0)
+    return String(maxId + 1)
+  }
+
+  // Function to format time from 24h to 12h format
+  const formatTime = (time24: string): string => {
+    if (!time24) return ""
+    const [hours, minutes] = time24.split(":")
+    const hour = Number.parseInt(hours)
+    const ampm = hour >= 12 ? "PM" : "AM"
+    const hour12 = hour % 12 || 12
+    return `${hour12}:${minutes} ${ampm}`
+  }
+
+  // Function to handle form input changes
+  const handleFormChange = (field: keyof NewAttendanceForm, value: string): void => {
+    setNewAttendanceForm((prev) => ({
+      ...prev,
+      [field]: value,
     }))
-  }
-
-  const instructorDistribution = calculateDistribution(cliniciansLoggedIn, availableInstructors)
-
-  // Get current date
-  const today = new Date()
-  const options: Intl.DateTimeFormatOptions = { weekday: "long", year: "numeric", month: "long", day: "numeric" }
-  const formattedDate = today.toLocaleDateString("en-US", options)
-
-  // Function to get status color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Started":
-        return "bg-[#5C8E77]/10 text-[#5C8E77]"
-      case "Completed":
-        return "bg-blue-50 text-blue-700"
-      case "Not started":
-        return "bg-yellow-50 text-yellow-700"
-      case "Incomplete":
-        return "bg-red-50 text-red-700"
-      default:
-        return "bg-gray-50 text-gray-700"
+    // Clear error for this field when user starts typing
+    if (fieldErrors[field as keyof typeof fieldErrors]) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        [field]: false,
+      }))
     }
   }
 
-  // Handle procedure checkbox changes
-  const handleProcedureChange = (procedure: string, checked: boolean, isEdit = false) => {
-    if (isEdit && currentActivity) {
-      const currentProcedures = currentActivity.procedures || [currentActivity.procedure]
-      let updatedProcedures: string[]
-
-      if (checked) {
-        if (currentProcedures.length < 2) {
-          updatedProcedures = [...currentProcedures, procedure]
-        } else {
-          return // Don't add if already 2 procedures
-        }
-      } else {
-        updatedProcedures = currentProcedures.filter((p) => p !== procedure)
-      }
-
-      setCurrentActivity({
-        ...currentActivity,
-        procedures: updatedProcedures,
-        procedure: updatedProcedures[0] || "",
-      })
-    } else {
-      let updatedProcedures: string[]
-
-      if (checked) {
-        if (newActivity.procedures.length < 2) {
-          updatedProcedures = [...newActivity.procedures, procedure]
-        } else {
-          return // Don't add if already 2 procedures
-        }
-      } else {
-        updatedProcedures = newActivity.procedures.filter((p) => p !== procedure)
-      }
-
-      setNewActivity({
-        ...newActivity,
-        procedures: updatedProcedures,
-      })
+  // Function to handle form submission
+  const handleCreateAttendance = (): void => {
+    // Check for validation errors and set field error states
+    const errors = {
+      firstName: !newAttendanceForm.firstName,
+      lastName: !newAttendanceForm.lastName,
+      timeIn: !newAttendanceForm.timeIn,
+      date: !newAttendanceForm.date,
+      sanitize: !newAttendanceForm.sanitize,
     }
-  }
 
-  // Handle creating new activity
-  const handleCreateActivity = () => {
-    if (
-      !newActivity.firstName ||
-      !newActivity.lastName ||
-      !newActivity.chair ||
-      !newActivity.patient ||
-      !newActivity.instructor ||
-      newActivity.procedures.length === 0
-    ) {
-      alert("Please fill in all required fields and select at least one procedure.")
+    setFieldErrors(errors)
+    const hasErrors = Object.values(errors).some((error) => error)
+
+    if (hasErrors) {
       return
     }
 
-    const newId = (Math.max(...activities.map((a) => Number.parseInt(a.id))) + 1).toString()
-    const activity: Activity = {
-      id: newId,
-      firstName: newActivity.firstName,
-      lastName: newActivity.lastName,
-      chair: newActivity.chair,
-      patient: newActivity.patient,
-      instructor: newActivity.instructor,
-      procedure: newActivity.procedures[0],
-      procedures: newActivity.procedures,
-      status: newActivity.status,
+    const newRecord: AttendanceRecord = {
+      id: generateAttendanceId(),
+      firstName: newAttendanceForm.firstName,
+      lastName: newAttendanceForm.lastName,
+      timeIn: formatTime(newAttendanceForm.timeIn),
+      timeOut: newAttendanceForm.timeOut ? formatTime(newAttendanceForm.timeOut) : null,
+      date: newAttendanceForm.date,
+      sanitize: newAttendanceForm.sanitize.charAt(0).toUpperCase() + newAttendanceForm.sanitize.slice(1),
+      status: newAttendanceForm.status.charAt(0).toUpperCase() + newAttendanceForm.status.slice(1),
+      activities: [],
+      archived: false,
     }
 
-    setActivities([...activities, activity])
-    setNewActivity({
+    setAttendanceRecords((prev) => [...prev, newRecord])
+
+    // Add a temporary success highlight to the newly created record
+    setTimeout(() => {
+      const newRowElement = document.querySelector(`[data-attendance-id="${newRecord.id}"]`)
+      if (newRowElement) {
+        newRowElement.classList.add("bg-green-50", "border-green-200")
+        setTimeout(() => {
+          newRowElement.classList.remove("bg-green-50", "border-green-200")
+        }, 3000)
+      }
+    }, 100)
+
+    // Reset form
+    setNewAttendanceForm({
       firstName: "",
       lastName: "",
-      chair: "",
-      patient: "",
-      instructor: "",
-      procedures: [],
-      status: "Not started",
+      timeIn: "",
+      timeOut: "",
+      date: new Date().toISOString().split("T")[0],
+      sanitize: "",
+      status: "pending",
     })
     setIsModalOpen(false)
+
+    // Show success banner
+    setSuccessMessage(`✅ Success! Attendance record created for ${newRecord.firstName} ${newRecord.lastName}`)
+    setShowSuccessBanner(true)
+
+    // Hide banner after 5 seconds
+    setTimeout(() => {
+      setShowSuccessBanner(false)
+    }, 5000)
+
+    console.log("New attendance record created:", newRecord)
   }
 
-  // Function to handle edit button click
-  const handleEdit = (activity: Activity) => {
-    setCurrentActivity(activity)
-    setIsEditModalOpen(true)
+  const handleConfirmAttendance = (id: string): void => {
+    setAttendanceRecords(
+      attendanceRecords.map((record) => (record.id === id ? { ...record, status: "Present" } : record)),
+    )
   }
 
-  const handleCompleteClick = (activity: Activity) => {
-    setActivityToAction(activity)
-    setIsCompleteModalOpen(true)
-  }
-
-  const handleComplete = () => {
-    if (activityToAction) {
-      setActivities(
-        activities.map((activity) =>
-          activity.id === activityToAction.id ? { ...activity, status: "Completed" } : activity,
-        ),
-      )
-      setIsCompleteModalOpen(false)
-    }
-  }
-
-  const handleArchiveClick = (activity: Activity) => {
-    setActivityToAction(activity)
+  // Changed from handleDeleteClick to handleArchiveClick
+  const handleArchiveClick = (record: AttendanceRecord): void => {
+    setAttendanceToArchive(record)
     setIsArchiveModalOpen(true)
   }
 
-  const handleArchive = () => {
-    if (activityToAction) {
-      setActivities(
-        activities.map((activity) =>
-          activity.id === activityToAction.id ? { ...activity, status: "Incomplete" } : activity,
+  const handleTimeoutClick = (record: AttendanceRecord): void => {
+    setAttendanceToTimeout(record)
+    setIsTimeoutModalOpen(true)
+  }
+
+  // Changed from handleDeleteConfirm to handleArchiveConfirm
+  const handleArchiveConfirm = (): void => {
+    if (attendanceToArchive) {
+      setAttendanceRecords(
+        attendanceRecords.map((record) =>
+          record.id === attendanceToArchive.id ? { ...record, archived: true } : record,
         ),
       )
       setIsArchiveModalOpen(false)
+      setAttendanceToArchive(null)
     }
   }
 
-  // Function to update activity
-  const handleUpdateActivity = (updatedActivity: Activity) => {
-    setActivities(activities.map((activity) => (activity.id === updatedActivity.id ? updatedActivity : activity)))
-    setIsEditModalOpen(false)
-  }
-
-  // Function to handle sorting
-  const handleSort = (field: string) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-    } else {
-      setSortField(field)
-      setSortDirection("asc")
+  const handleTimeoutConfirm = (): void => {
+    if (attendanceToTimeout) {
+      const now = new Date()
+      const formattedTime = now.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+      setAttendanceRecords(
+        attendanceRecords.map((record) =>
+          record.id === attendanceToTimeout.id ? { ...record, timeOut: formattedTime } : record,
+        ),
+      )
+      setIsTimeoutModalOpen(false)
+      setAttendanceToTimeout(null)
     }
   }
 
-  // Sort activities
-  const sortedActivities = [...activities].sort((a, b) => {
-    if (sortField === "id") {
-      return sortDirection === "asc"
-        ? Number.parseInt(a.id) - Number.parseInt(b.id)
-        : Number.parseInt(b.id) - Number.parseInt(a.id)
-    } else if (sortField === "lastName") {
-      return sortDirection === "asc" ? a.lastName.localeCompare(b.lastName) : b.lastName.localeCompare(a.lastName)
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "Present":
+        return <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{status}</Badge>
+      case "Pending":
+        return (
+          <Badge variant="outline" className="text-amber-600 border-amber-600">
+            {status}
+          </Badge>
+        )
+      default:
+        return <Badge variant="outline">{status}</Badge>
     }
-    return 0
+  }
+
+  // Filter out archived records
+  const filteredRecords = attendanceRecords.filter((record) => {
+    if (record.archived) return false // Hide archived records
+    if (activeFilter === "all") return true
+    return record.status.toLowerCase() === activeFilter.toLowerCase()
   })
 
+  const canTimeOut = (record: AttendanceRecord): boolean => {
+    if (!record.activities || record.activities.length === 0) return true
+    return record.activities.every((activity) => activity.status === "Completed" || activity.status === "Cancelled")
+  }
+
+  // Update counts to exclude archived records
+  const activeRecords = attendanceRecords.filter((record) => !record.archived)
+
   return (
-    <div className="flex h-full bg-[#f8f9fa]" style={poppinsFont}>
-      <div className="w-full">
-        {/* Greeting */}
-        <div className="mb-6">
-          <h2 className="text-2xl font-semibold text-[#333]">Good morning, Admin!</h2>
-          <p className="text-gray-500">{formattedDate}</p>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-4 gap-6 mb-6">
-          <Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">TOTAL CLINICIANS</CardTitle>
-            </CardHeader>
-            <CardContent className="flex justify-between items-center pt-0">
-              <div className="text-4xl font-semibold text-[#333]">{cliniciansLoggedIn}</div>
-              <div className="h-12 w-12 rounded-full bg-[#e6f7eb] flex items-center justify-center">
-                <Users className="h-6 w-6 text-[#5C8E77]" />
+    <div className="p-6">
+      {/* Success Banner */}
+      {showSuccessBanner && (
+        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg shadow-sm animate-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                <Check className="h-5 w-5 text-green-600" />
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">AVAILABLE INSTRUCTORS</CardTitle>
-            </CardHeader>
-            <CardContent className="flex justify-between items-center pt-0">
-              <div className="text-4xl font-semibold text-[#333]">{availableInstructors}</div>
-              <div className="h-12 w-12 rounded-full bg-[#e6f7eb] flex items-center justify-center">
-                <User className="h-6 w-6 text-[#5C8E77]" />
+              <div>
+                <p className="text-green-800 font-medium">{successMessage}</p>
+                <p className="text-green-600 text-sm">The new attendance record has been added to the table below.</p>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">AVAILABLE CHAIRS</CardTitle>
-            </CardHeader>
-            <CardContent className="flex justify-between items-center pt-0">
-              <div className="text-4xl font-semibold text-[#333]">{availableChairs}</div>
-              <div className="h-12 w-12 rounded-full bg-[#e6f7eb] flex items-center justify-center">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="text-[#5C8E77]"
-                >
-                  <path d="M20 10c0-4.4-3.6-8-8-8s-8 3.6-8 8 3.6 8 8 8h8" />
-                  <path d="M18 15l-2-2" />
-                  <path d="M18 15l-2 2" />
-                  <path d="M5 18h3" />
-                  <path d="M2 18h1" />
-                </svg>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">TODAY'S ACTIVITIES</CardTitle>
-            </CardHeader>
-            <CardContent className="flex justify-between items-center pt-0">
-              <div className="text-4xl font-semibold text-[#333]">{activities.length}</div>
-              <div className="h-12 w-12 rounded-full bg-[#e6f7eb] flex items-center justify-center">
-                <Calendar className="h-6 w-6 text-[#5C8E77]" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Instructor-Clinician Distribution */}
-        <Card className="bg-white border border-gray-200 shadow-sm mb-6">
-          <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
-            <div>
-              <CardTitle className="text-xl font-semibold text-[#333]">Clinician Distribution</CardTitle>
-              <p className="text-sm text-gray-500 mt-1">
-                Equal distribution of {cliniciansLoggedIn} clinicians among {availableInstructors} available instructors
-              </p>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader className="bg-white border-b border-gray-200">
-                <TableRow className="hover:bg-white border-b-0">
-                  <TableHead className="font-medium text-[#333]">Instructor</TableHead>
-                  <TableHead className="font-medium text-[#333] text-right">Assigned Clinicians</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {instructorDistribution.length > 0 ? (
-                  instructorDistribution.map((item, index) => (
-                    <TableRow key={index} className="hover:bg-gray-50 border-b border-gray-200">
-                      <TableCell className="font-medium text-[#333]">{item.instructor}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="font-semibold text-[#333]">{item.clinicians}</span>
-                          <div className="w-24 bg-gray-200 rounded-full h-2.5">
-                            <div
-                              className="bg-[#5C8E77] h-2.5 rounded-full"
-                              style={{
-                                width: `${(item.clinicians / Math.max(...instructorDistribution.map((i) => i.clinicians))) * 100}%`,
-                              }}
-                            ></div>
-                          </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={2} className="text-center py-6 text-gray-500">
-                      No instructors available today.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-            <div className="p-4 text-sm text-gray-500 border-t border-gray-200">
-              <p>
-                <span className="font-medium">Note:</span> Clinician distribution is automatically balanced based on the
-                number of available instructors each day. The system ensures an equal distribution with minimal
-                variance.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Activities Table */}
-        <Card className="bg-white border border-gray-200 shadow-sm mb-6">
-          <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
-            <div>
-              <CardTitle className="text-xl font-semibold text-[#333]">Today's Activities</CardTitle>
             </div>
             <Button
-              className="bg-[#5C8E77] hover:bg-[#406E58] text-white border-none flex items-center gap-2"
-              onClick={() => setIsModalOpen(true)}
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSuccessBanner(false)}
+              className="text-green-600 hover:bg-green-100"
             >
-              <Plus className="h-4 w-4" /> New Activity
+              <X className="h-4 w-4" />
             </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader className="bg-white border-b border-gray-200">
-                <TableRow className="hover:bg-white border-b-0">
-                  <TableHead className="font-medium text-[#333] cursor-pointer" onClick={() => handleSort("id")}>
-                    <div className="flex items-center">
-                      Act ID
-                      <ArrowUpDown className="ml-1 h-4 w-4" />
-                      {sortField === "id" &&
-                        (sortDirection === "asc" ? (
-                          <ChevronUp className="ml-1 h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="ml-1 h-4 w-4" />
-                        ))}
-                    </div>
-                  </TableHead>
-                  <TableHead className="font-medium text-[#333]">First Name</TableHead>
-                  <TableHead className="font-medium text-[#333] cursor-pointer" onClick={() => handleSort("lastName")}>
-                    <div className="flex items-center">
-                      Last Name
-                      <ArrowUpDown className="ml-1 h-4 w-4" />
-                      {sortField === "lastName" &&
-                        (sortDirection === "asc" ? (
-                          <ChevronUp className="ml-1 h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="ml-1 h-4 w-4" />
-                        ))}
-                    </div>
-                  </TableHead>
-                  <TableHead className="font-medium text-[#333]">Chair</TableHead>
-                  <TableHead className="font-medium text-[#333]">Instructor</TableHead>
-                  <TableHead className="font-medium text-[#333]">Procedure</TableHead>
-                  <TableHead className="font-medium text-[#333]">Status</TableHead>
-                  <TableHead className="font-medium text-[#333]">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedActivities.length > 0 ? (
-                  sortedActivities.map((activity) => (
-                    <TableRow key={activity.id} className="hover:bg-gray-50 border-b border-gray-200">
-                      <TableCell className="font-medium text-[#333]">{activity.id}</TableCell>
-                      <TableCell className="text-[#333]">{activity.firstName}</TableCell>
-                      <TableCell className="text-[#333]">{activity.lastName}</TableCell>
-                      <TableCell className="text-[#333]">{activity.chair}</TableCell>
-                      <TableCell className="text-[#333]">{activity.instructor}</TableCell>
-                      <TableCell className="text-[#333]">
-                        {activity.procedures ? (
-                          <div className="space-y-1">
-                            {activity.procedures.map((proc, index) => (
-                              <div key={index} className="text-sm">
-                                {proc}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          activity.procedure
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div
-                          className={`px-3 py-1 rounded-full text-sm inline-flex items-center justify-center font-medium ${getStatusColor(
-                            activity.status,
-                          )}`}
-                        >
-                          {activity.status}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-[#5C8E77] hover:bg-[#e6f7eb]"
-                            onClick={() => handleEdit(activity)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-blue-600 hover:bg-blue-50"
-                            onClick={() => handleCompleteClick(activity)}
-                          >
-                            <Check className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-red-600 hover:bg-red-50"
-                            onClick={() => handleArchiveClick(activity)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12 text-gray-500">
-                      No activities scheduled for today.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      )}
 
-        {/* New Activity Modal */}
-        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
-            <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-              <DialogTitle className="text-xl font-semibold text-[#5C8E77]">New Activity</DialogTitle>
-            </DialogHeader>
-            <div className="px-6 py-4">
-              <div className="grid gap-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName" className="text-[#333]">
-                      First Name
-                    </Label>
-                    <Input
-                      id="firstName"
-                      placeholder="Enter first name"
-                      className="border-gray-300"
-                      value={newActivity.firstName}
-                      onChange={(e) => setNewActivity({ ...newActivity, firstName: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName" className="text-[#333]">
-                      Last Name
-                    </Label>
-                    <Input
-                      id="lastName"
-                      placeholder="Enter last name"
-                      className="border-gray-300"
-                      value={newActivity.lastName}
-                      onChange={(e) => setNewActivity({ ...newActivity, lastName: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="chair" className="text-[#333]">
-                      Chair
-                    </Label>
-                    <Select
-                      value={newActivity.chair}
-                      onValueChange={(value) => setNewActivity({ ...newActivity, chair: value })}
-                    >
-                      <SelectTrigger id="chair" className="border-gray-300">
-                        <SelectValue placeholder="Select chair" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Chair 03">Chair 03</SelectItem>
-                        <SelectItem value="Chair 05">Chair 05</SelectItem>
-                        <SelectItem value="Chair 08">Chair 08</SelectItem>
-                        <SelectItem value="Chair 10">Chair 10</SelectItem>
-                        <SelectItem value="Chair 12">Chair 12</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="instructor" className="text-[#333]">
-                      Instructor
-                    </Label>
-                    <Select
-                      value={newActivity.instructor}
-                      onValueChange={(value) => setNewActivity({ ...newActivity, instructor: value })}
-                    >
-                      <SelectTrigger id="instructor" className="border-gray-300">
-                        <SelectValue placeholder="Select instructor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Dr. Reyes">Dr. Reyes</SelectItem>
-                        <SelectItem value="Dr. Mendoza">Dr. Mendoza</SelectItem>
-                        <SelectItem value="Dr. Santos">Dr. Santos</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="patient" className="text-[#333]">
-                    Patient
-                  </Label>
-                  <Input
-                    id="patient"
-                    placeholder="Enter patient name"
-                    className="border-gray-300"
-                    value={newActivity.patient}
-                    onChange={(e) => setNewActivity({ ...newActivity, patient: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="procedure" className="text-[#333]">
-                    Procedures (Select up to 2)
-                  </Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      "Root Canal Treatment",
-                      "Dental Filling",
-                      "Dental Crown",
-                      "Teeth Cleaning",
-                      "Dental Extraction",
-                    ].map((procedure) => (
-                      <div key={procedure} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id={procedure.toLowerCase().replace(/\s+/g, "-")}
-                          className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                          checked={newActivity.procedures.includes(procedure)}
-                          onChange={(e) => handleProcedureChange(procedure, e.target.checked)}
-                          disabled={!newActivity.procedures.includes(procedure) && newActivity.procedures.length >= 2}
-                        />
-                        <label htmlFor={procedure.toLowerCase().replace(/\s+/g, "-")} className="text-sm text-gray-700">
-                          {procedure}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-500">You can select up to 2 procedures per activity.</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="status" className="text-[#333]">
-                    Status
-                  </Label>
-                  <Select
-                    value={newActivity.status}
-                    onValueChange={(value) => setNewActivity({ ...newActivity, status: value })}
-                  >
-                    <SelectTrigger id="status" className="border-gray-300">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Not started">Not started</SelectItem>
-                      <SelectItem value="Started">Started</SelectItem>
-                      <SelectItem value="Completed">Completed</SelectItem>
-                      <SelectItem value="Incomplete">Incomplete</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+      <Card className="bg-white border border-gray-200 shadow-sm mb-6">
+        <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
+          <div className="flex items-center gap-4">
+            <CardTitle className="text-xl font-semibold text-[#333]">Attendance</CardTitle>
+            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+              <Button
+                variant={activeFilter === "all" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "all" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("all")}
+              >
+                All ({activeRecords.length})
+              </Button>
+              <Button
+                variant={activeFilter === "pending" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "pending" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("pending")}
+              >
+                Pending ({activeRecords.filter((r) => r.status.toLowerCase() === "pending").length})
+              </Button>
+              <Button
+                variant={activeFilter === "present" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "present" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("present")}
+              >
+                Present ({activeRecords.filter((r) => r.status.toLowerCase() === "present").length})
+              </Button>
             </div>
-            <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-              <Button variant="outline" onClick={() => setIsModalOpen(false)} className="border-gray-300">
-                Cancel
-              </Button>
-              <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={handleCreateActivity}>
-                Create Activity
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Activity Modal */}
-        <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-          <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
-            {currentActivity && (
-              <>
-                <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-                  <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Edit Activity</DialogTitle>
-                </DialogHeader>
-                <div className="px-6 py-4">
-                  <div className="grid gap-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-firstName" className="text-[#333]">
-                          First Name
-                        </Label>
-                        <Input
-                          id="edit-firstName"
-                          value={currentActivity.firstName}
-                          onChange={(e) => setCurrentActivity({ ...currentActivity, firstName: e.target.value })}
-                          className="border-gray-300"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-lastName" className="text-[#333]">
-                          Last Name
-                        </Label>
-                        <Input
-                          id="edit-lastName"
-                          value={currentActivity.lastName}
-                          onChange={(e) => setCurrentActivity({ ...currentActivity, lastName: e.target.value })}
-                          className="border-gray-300"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-chair" className="text-[#333]">
-                          Chair
-                        </Label>
-                        <Select
-                          value={currentActivity.chair}
-                          onValueChange={(value) => setCurrentActivity({ ...currentActivity, chair: value })}
-                        >
-                          <SelectTrigger id="edit-chair" className="border-gray-300">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Chair 03">Chair 03</SelectItem>
-                            <SelectItem value="Chair 05">Chair 05</SelectItem>
-                            <SelectItem value="Chair 08">Chair 08</SelectItem>
-                            <SelectItem value="Chair 10">Chair 10</SelectItem>
-                            <SelectItem value="Chair 12">Chair 12</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-instructor" className="text-[#333]">
-                          Instructor
-                        </Label>
-                        <Select
-                          value={currentActivity.instructor}
-                          onValueChange={(value) => setCurrentActivity({ ...currentActivity, instructor: value })}
-                        >
-                          <SelectTrigger id="edit-instructor" className="border-gray-300">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Dr. Reyes">Dr. Reyes</SelectItem>
-                            <SelectItem value="Dr. Mendoza">Dr. Mendoza</SelectItem>
-                            <SelectItem value="Dr. Santos">Dr. Santos</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-patient" className="text-[#333]">
-                        Patient
-                      </Label>
-                      <Input
-                        id="edit-patient"
-                        value={currentActivity.patient}
-                        onChange={(e) => setCurrentActivity({ ...currentActivity, patient: e.target.value })}
-                        className="border-gray-300"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-procedure" className="text-[#333]">
-                        Procedures (Select up to 2)
-                      </Label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          "Root Canal Treatment",
-                          "Dental Filling",
-                          "Dental Crown",
-                          "Teeth Cleaning",
-                          "Dental Extraction",
-                        ].map((procedure) => {
-                          const currentProcedures = currentActivity.procedures || [currentActivity.procedure]
-                          const isChecked = currentProcedures.includes(procedure)
-                          return (
-                            <div key={procedure} className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                id={`edit-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
-                                className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                                checked={isChecked}
-                                onChange={(e) => handleProcedureChange(procedure, e.target.checked, true)}
-                                disabled={!isChecked && currentProcedures.length >= 2}
-                              />
-                              <label
-                                htmlFor={`edit-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
-                                className="text-sm text-gray-700"
-                              >
-                                {procedure}
-                              </label>
-                            </div>
-                          )
-                        })}
-                      </div>
-                      <p className="text-xs text-gray-500">You can select up to 2 procedures per activity.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-status" className="text-[#333]">
-                        Status
-                      </Label>
+          </div>
+          <Button
+            className="bg-[#5C8E77] hover:bg-[#406E58] text-white border-none flex items-center gap-2"
+            onClick={() => setIsModalOpen(true)}
+          >
+            <Plus className="h-4 w-4" /> New Attendance
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-white border-b border-gray-200">
+              <TableRow className="hover:bg-white border-b-0">
+                <TableHead className="font-medium text-[#333]">ID</TableHead>
+                <TableHead className="font-medium text-[#333]">First Name</TableHead>
+                <TableHead className="font-medium text-[#333]">Last Name</TableHead>
+                <TableHead className="font-medium text-[#333]">Time In</TableHead>
+                <TableHead className="font-medium text-[#333]">Time Out</TableHead>
+                <TableHead className="font-medium text-[#333]">Date</TableHead>
+                <TableHead className="font-medium text-[#333]">Sanitize</TableHead>
+                <TableHead className="font-medium text-[#333]">Status</TableHead>
+                <TableHead className="font-medium text-[#333]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredRecords.length > 0 ? (
+                filteredRecords.map((record) => (
+                  <TableRow
+                    key={record.id}
+                    className="hover:bg-gray-50 border-b border-gray-200"
+                    data-attendance-id={record.id}
+                  >
+                    <TableCell className="font-medium text-[#333]">{record.id}</TableCell>
+                    <TableCell className="text-[#333]">{record.firstName}</TableCell>
+                    <TableCell className="text-[#333]">{record.lastName}</TableCell>
+                    <TableCell className="text-[#333]">{record.timeIn}</TableCell>
+                    <TableCell className="text-[#333]">
+                      {record.timeOut || (
+                        <Badge variant="outline" className="text-gray-500 border-gray-300">
+                          Not recorded
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-[#333]">{record.date}</TableCell>
+                    <TableCell className="text-[#333]">
                       <Select
-                        value={currentActivity.status}
-                        onValueChange={(value) => setCurrentActivity({ ...currentActivity, status: value })}
+                        value={record.sanitize.toLowerCase()}
+                        onValueChange={(value) => {
+                          setAttendanceRecords(
+                            attendanceRecords.map((r) =>
+                              r.id === record.id
+                                ? { ...r, sanitize: value.charAt(0).toUpperCase() + value.slice(1) }
+                                : r,
+                            ),
+                          )
+                        }}
                       >
-                        <SelectTrigger id="edit-status" className="border-gray-300">
+                        <SelectTrigger
+                          className={`w-20 h-7 ${record.sanitize === "Yes" ? "text-[#5C8E77]" : "text-red-500"}`}
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Not started">Not started</SelectItem>
-                          <SelectItem value="Started">Started</SelectItem>
-                          <SelectItem value="Completed">Completed</SelectItem>
-                          <SelectItem value="Incomplete">Incomplete</SelectItem>
+                          <SelectItem value="yes">Yes</SelectItem>
+                          <SelectItem value="no">No</SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
-                  </div>
+                    </TableCell>
+                    <TableCell>{getStatusBadge(record.status)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {record.status === "Pending" ? (
+                          <>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className={`h-8 w-8 ${
+                                        record.sanitize === "Yes"
+                                          ? "text-[#5C8E77] hover:bg-[#e6f7eb]"
+                                          : "text-gray-400 cursor-not-allowed"
+                                      }`}
+                                      onClick={() => {
+                                        if (record.sanitize === "Yes") {
+                                          handleConfirmAttendance(record.id)
+                                        }
+                                      }}
+                                      disabled={record.sanitize === "No"}
+                                    >
+                                      <Check className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TooltipTrigger>
+                                {record.sanitize === "No" && (
+                                  <TooltipContent>
+                                    <p>Sanitization required before marking as present</p>
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-orange-600 hover:bg-orange-50"
+                              onClick={() => handleArchiveClick(record)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            {!record.timeOut && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className={`h-8 w-8 ${
+                                          canTimeOut(record)
+                                            ? "text-blue-600 hover:bg-blue-50"
+                                            : "text-gray-400 cursor-not-allowed"
+                                        }`}
+                                        onClick={() => {
+                                          if (canTimeOut(record)) {
+                                            handleTimeoutClick(record)
+                                          }
+                                        }}
+                                        disabled={!canTimeOut(record)}
+                                      >
+                                        <Clock className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  {!canTimeOut(record) && (
+                                    <TooltipContent>
+                                      <p>Clinician has activities in progress</p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-orange-600 hover:bg-orange-50"
+                              onClick={() => handleArchiveClick(record)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center py-12 text-gray-500">
+                    No attendance records found for the selected filter.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* New Attendance Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
+          <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
+            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">New Attendance Record</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 py-4">
+            <div className="grid gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName" className="text-[#333]">
+                    First Name *
+                  </Label>
+                  <Input
+                    id="firstName"
+                    placeholder="Enter first name"
+                    className={`border-gray-300 ${
+                      fieldErrors.firstName ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""
+                    }`}
+                    value={newAttendanceForm.firstName}
+                    onChange={(e) => handleFormChange("firstName", e.target.value)}
+                  />
+                  {fieldErrors.firstName && <p className="text-sm text-red-500">First name is required</p>}
                 </div>
-                <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-                  <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="border-gray-300">
-                    Cancel
-                  </Button>
-                  <Button
-                    className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-                    onClick={() => handleUpdateActivity(currentActivity)}
+                <div className="space-y-2">
+                  <Label htmlFor="lastName" className="text-[#333]">
+                    Last Name *
+                  </Label>
+                  <Input
+                    id="lastName"
+                    placeholder="Enter last name"
+                    className={`border-gray-300 ${
+                      fieldErrors.lastName ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""
+                    }`}
+                    value={newAttendanceForm.lastName}
+                    onChange={(e) => handleFormChange("lastName", e.target.value)}
+                  />
+                  {fieldErrors.lastName && <p className="text-sm text-red-500">Last name is required</p>}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="timeIn" className="text-[#333]">
+                    Time In *
+                  </Label>
+                  <Input
+                    id="timeIn"
+                    type="time"
+                    className={`border-gray-300 ${
+                      fieldErrors.timeIn ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""
+                    }`}
+                    value={newAttendanceForm.timeIn}
+                    onChange={(e) => handleFormChange("timeIn", e.target.value)}
+                  />
+                  {fieldErrors.timeIn && <p className="text-sm text-red-500">Time in is required</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="timeOut" className="text-[#333]">
+                    Time Out <span className="text-gray-500 text-sm">(Optional)</span>
+                  </Label>
+                  <Input
+                    id="timeOut"
+                    type="time"
+                    className="border-gray-300"
+                    value={newAttendanceForm.timeOut}
+                    onChange={(e) => handleFormChange("timeOut", e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="date" className="text-[#333]">
+                  Date *
+                </Label>
+                <Input
+                  id="date"
+                  type="date"
+                  className={`border-gray-300 ${
+                    fieldErrors.date ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""
+                  }`}
+                  value={newAttendanceForm.date}
+                  onChange={(e) => handleFormChange("date", e.target.value)}
+                />
+                {fieldErrors.date && <p className="text-sm text-red-500">Date is required</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sanitize" className="text-[#333]">
+                  Sanitize *
+                </Label>
+                <Select
+                  value={newAttendanceForm.sanitize}
+                  onValueChange={(value) => handleFormChange("sanitize", value)}
+                >
+                  <SelectTrigger
+                    id="sanitize"
+                    className={`border-gray-300 ${
+                      fieldErrors.sanitize ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""
+                    }`}
                   >
-                    Update Activity
-                  </Button>
-                </DialogFooter>
-              </>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Complete Confirmation Modal */}
-        <Dialog open={isCompleteModalOpen} onOpenChange={setIsCompleteModalOpen}>
-          <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-lg">
-            <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-              <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Confirm Action</DialogTitle>
-            </DialogHeader>
-            <div className="px-6 py-4">
-              <p className="text-[#333]">Are you sure you want to mark this activity as completed?</p>
-              {activityToAction && (
-                <div className="mt-3 p-3 bg-[#f8f9fa] rounded-md border border-gray-200">
-                  <p className="font-medium text-[#333]">{activityToAction.procedure}</p>
-                  <p className="text-sm text-[#5C8E77]">
-                    {activityToAction.firstName} {activityToAction.lastName} • {activityToAction.chair}
-                  </p>
-                </div>
-              )}
+                    <SelectValue placeholder="Select option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yes">Yes</SelectItem>
+                    <SelectItem value="no">No</SelectItem>
+                  </SelectContent>
+                </Select>
+                {fieldErrors.sanitize && <p className="text-sm text-red-500">Sanitize option is required</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="status" className="text-[#333]">
+                  Status
+                </Label>
+                <Select value={newAttendanceForm.status} onValueChange={(value) => handleFormChange("status", value)}>
+                  <SelectTrigger id="status" className="border-gray-300">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="present">Present</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-              <Button variant="outline" onClick={() => setIsCompleteModalOpen(false)} className="border-gray-300">
-                Cancel
-              </Button>
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleComplete}>
-                Confirm
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          </div>
+          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsModalOpen(false)
+                // Reset form when closing
+                setNewAttendanceForm({
+                  firstName: "",
+                  lastName: "",
+                  timeIn: "",
+                  timeOut: "",
+                  date: new Date().toISOString().split("T")[0],
+                  sanitize: "",
+                  status: "pending",
+                })
+                // Reset field errors
+                setFieldErrors({
+                  firstName: false,
+                  lastName: false,
+                  timeIn: false,
+                  date: false,
+                  sanitize: false,
+                })
+              }}
+              className="border-gray-300"
+            >
+              Cancel
+            </Button>
+            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={handleCreateAttendance}>
+              Create Attendance
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        {/* Archive Confirmation Modal */}
-        <Dialog open={isArchiveModalOpen} onOpenChange={setIsArchiveModalOpen}>
-          <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-lg">
-            <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-              <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Confirm Action</DialogTitle>
-            </DialogHeader>
-            <div className="px-6 py-4">
-              <p className="text-[#333]">Are you sure you want to mark this activity as incomplete?</p>
-              {activityToAction && (
-                <div className="mt-3 p-3 bg-[#f8f9fa] rounded-md border border-gray-200">
-                  <p className="font-medium text-[#333]">{activityToAction.procedure}</p>
-                  <p className="text-sm text-[#5C8E77]">
-                    {activityToAction.firstName} {activityToAction.lastName} • {activityToAction.chair}
-                  </p>
-                </div>
-              )}
-            </div>
-            <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-              <Button variant="outline" onClick={() => setIsArchiveModalOpen(false)} className="border-gray-300">
-                Cancel
-              </Button>
-              <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleArchive}>
-                Confirm
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+      {/* Archive Confirmation Modal */}
+      <Dialog open={isArchiveModalOpen} onOpenChange={setIsArchiveModalOpen}>
+        <DialogContent className="sm:max-w-[425px] p-0 overflow-hidden rounded-lg">
+          <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
+            <DialogTitle className="text-xl font-semibold text-orange-600">Archive Attendance Record</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 py-4">
+            <p className="text-[#333] mb-2">
+              Are you sure you want to archive the attendance record for{" "}
+              <strong>
+                {attendanceToArchive ? `${attendanceToArchive.firstName} ${attendanceToArchive.lastName}` : ""}
+              </strong>
+              ?
+            </p>
+            <p className="text-sm text-gray-500">
+              Archived records will be hidden from the main view but can be restored later if needed.
+            </p>
+          </div>
+          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
+            <Button variant="outline" onClick={() => setIsArchiveModalOpen(false)} className="border-gray-300">
+              Cancel
+            </Button>
+            <Button className="bg-orange-600 hover:bg-orange-700 text-white" onClick={handleArchiveConfirm}>
+              Archive Record
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Time Out Confirmation Modal */}
+      <Dialog open={isTimeoutModalOpen} onOpenChange={setIsTimeoutModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Record Time Out</DialogTitle>
+          </DialogHeader>
+          <p>
+            Are you sure you want to record time out for{" "}
+            <strong>
+              {attendanceToTimeout ? `${attendanceToTimeout.firstName} ${attendanceToTimeout.lastName}` : ""}
+            </strong>
+            ?
+          </p>
+          <p className="text-sm text-gray-500">
+            Current time: {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTimeoutModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="bg-[#5C8E77] hover:bg-[#406E58]" onClick={handleTimeoutConfirm}>
+              Confirm Time Out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

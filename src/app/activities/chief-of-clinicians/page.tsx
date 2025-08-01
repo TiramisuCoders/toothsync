@@ -1,7 +1,18 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowUpDown, Check, ChevronDown, ChevronUp, Download, Edit, Plus, X } from "lucide-react"
+import {
+  ArrowUpDown,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Edit,
+  Plus,
+  X,
+  AlertCircle,
+  CheckCircle,
+} from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -10,21 +21,83 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+
+// Define types directly in the component file
+interface HistoryEntry {
+  timestamp: string
+  user: string
+  action: "Created" | "Updated" | "Archived"
+  description: string
+  details: {
+    date: string
+    procedure: string
+    patient: string
+    grade: string
+    remarks: string
+  }
+}
+
+interface Activity {
+  id: string
+  firstName: string
+  lastName: string
+  chair: string
+  patient: string
+  instructor: string
+  procedure: string
+  procedures?: string[]
+  status: "Not started" | "Started" | "Completed" | "Incomplete"
+  date: string
+  grade?: string
+  remarks?: string
+  assessmentStatus?: "in-progress" | "graded"
+  archived?: boolean // Add archived field
+  history: HistoryEntry[]
+}
+
+interface NewActivityForm {
+  firstName: string
+  lastName: string
+  chair: string
+  patient: string
+  instructor: string
+  procedures: string[]
+  status: Activity["status"]
+}
 
 export default function ActivitiesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [currentActivity, setCurrentActivity] = useState(null)
+  const [currentActivity, setCurrentActivity] = useState<Activity | null>(null)
   const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false)
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false)
-  const [activityToAction, setActivityToAction] = useState(null)
-  const [sortField, setSortField] = useState("id")
-  const [sortDirection, setSortDirection] = useState("asc")
+  const [activityToAction, setActivityToAction] = useState<Activity | null>(null)
+  const [sortField, setSortField] = useState<"id" | "lastName">("id")
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
-  const [selectedActivity, setSelectedActivity] = useState(null)
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null)
+  const [editFormData, setEditFormData] = useState<Partial<Activity>>({})
+
+  // Form state for new activity
+  const [newActivityForm, setNewActivityForm] = useState<NewActivityForm>({
+    firstName: "",
+    lastName: "",
+    chair: "",
+    patient: "",
+    instructor: "",
+    procedures: [],
+    status: "Not started",
+  })
+
+  // Error and success states
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false)
+  const [showErrorAlert, setShowErrorAlert] = useState(false)
+  const [alertMessage, setAlertMessage] = useState("")
 
   // Sample data for all activities (including past ones)
-  const [activities, setActivities] = useState([
+  const [activities, setActivities] = useState<Activity[]>([
     {
       id: "1",
       firstName: "Maria",
@@ -32,10 +105,11 @@ export default function ActivitiesPage() {
       chair: "Chair 05",
       patient: "Juan Dela Cruz",
       instructor: "Dr. Reyes",
-      procedure: "Root Canal Treatment", // Keep for backward compatibility
+      procedure: "Root Canal Treatment",
       procedures: ["Root Canal Treatment", "Dental Filling"],
       status: "Started",
       date: "2025-05-08",
+      archived: false,
       history: [
         {
           timestamp: "2025-05-08T14:20:00",
@@ -62,6 +136,7 @@ export default function ActivitiesPage() {
       procedure: "Dental Filling",
       status: "Not started",
       date: "2025-05-08",
+      archived: false,
       history: [
         {
           timestamp: "2025-05-08T10:15:00",
@@ -89,6 +164,7 @@ export default function ActivitiesPage() {
       procedures: ["Dental Crown", "Teeth Cleaning"],
       status: "Started",
       date: "2025-05-08",
+      archived: false,
       history: [
         {
           timestamp: "2025-05-08T09:30:00",
@@ -117,6 +193,7 @@ export default function ActivitiesPage() {
       date: "2025-05-08",
       grade: "88",
       remarks: "Thorough cleaning, good patient management",
+      archived: false,
       history: [
         {
           timestamp: "2025-05-08T16:45:00",
@@ -156,6 +233,7 @@ export default function ActivitiesPage() {
       procedure: "Dental Extraction",
       status: "Incomplete",
       date: "2025-05-08",
+      archived: false,
       history: [
         {
           timestamp: "2025-05-08T17:30:00",
@@ -185,216 +263,10 @@ export default function ActivitiesPage() {
         },
       ],
     },
-    // Past activities
-    {
-      id: "6",
-      firstName: "Carlos",
-      lastName: "Mendoza",
-      chair: "Chair 07",
-      patient: "Elena Cruz",
-      instructor: "Dr. Santos",
-      procedure: "Dental Filling",
-      status: "Completed",
-      date: "2025-05-07",
-      grade: "92",
-      remarks: "Excellent work on composite layering",
-      history: [
-        {
-          timestamp: "2025-05-07T16:20:00",
-          user: "dr.santos@example.com",
-          action: "Updated",
-          description: "Status changed to Completed and grade added",
-          details: {
-            date: "2025-05-07",
-            procedure: "Dental Filling",
-            patient: "Elena Cruz",
-            grade: "92",
-            remarks: "Excellent work on composite layering",
-          },
-        },
-        {
-          timestamp: "2025-05-07T10:30:00",
-          user: "admin@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-07",
-            procedure: "Dental Filling",
-            patient: "Elena Cruz",
-            grade: "",
-            remarks: "",
-          },
-        },
-      ],
-    },
-    {
-      id: "7",
-      firstName: "Sophia",
-      lastName: "Reyes",
-      chair: "Chair 15",
-      patient: "Marco Tan",
-      instructor: "Dr. Mendoza",
-      procedure: "Teeth Cleaning",
-      status: "Completed",
-      date: "2025-05-07",
-      grade: "85",
-      remarks: "Good technique, needs to improve on posterior areas",
-      history: [
-        {
-          timestamp: "2025-05-07T15:45:00",
-          user: "dr.mendoza@example.com",
-          action: "Updated",
-          description: "Status changed to Completed and grade added",
-          details: {
-            date: "2025-05-07",
-            procedure: "Teeth Cleaning",
-            patient: "Marco Tan",
-            grade: "85",
-            remarks: "Good technique, needs to improve on posterior areas",
-          },
-        },
-        {
-          timestamp: "2025-05-07T09:15:00",
-          user: "admin@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-07",
-            procedure: "Teeth Cleaning",
-            patient: "Marco Tan",
-            grade: "",
-            remarks: "",
-          },
-        },
-      ],
-    },
-    {
-      id: "8",
-      firstName: "Miguel",
-      lastName: "Santos",
-      chair: "Chair 09",
-      patient: "Lucia Garcia",
-      instructor: "Dr. Reyes",
-      procedure: "Root Canal Treatment",
-      procedures: ["Root Canal Treatment", "Dental Extraction"],
-      status: "Incomplete",
-      date: "2025-05-06",
-      remarks: "Patient needed to reschedule due to time constraints",
-      history: [
-        {
-          timestamp: "2025-05-06T16:30:00",
-          user: "dr.reyes@example.com",
-          action: "Updated",
-          description: "Status changed to Incomplete",
-          details: {
-            date: "2025-05-06",
-            procedure: "Root Canal Treatment",
-            patient: "Lucia Garcia",
-            grade: "",
-            remarks: "Patient needed to reschedule due to time constraints",
-          },
-        },
-        {
-          timestamp: "2025-05-06T10:45:00",
-          user: "admin@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-06",
-            procedure: "Root Canal Treatment",
-            patient: "Lucia Garcia",
-            grade: "",
-            remarks: "",
-          },
-        },
-      ],
-    },
-    {
-      id: "9",
-      firstName: "Isabella",
-      lastName: "Cruz",
-      chair: "Chair 11",
-      patient: "Gabriel Lim",
-      instructor: "Dr. Tan",
-      procedure: "Dental Crown",
-      status: "Completed",
-      date: "2025-05-06",
-      grade: "90",
-      remarks: "Excellent margin preparation and temporization",
-      history: [
-        {
-          timestamp: "2025-05-06T17:15:00",
-          user: "dr.tan@example.com",
-          action: "Updated",
-          description: "Status changed to Completed and grade added",
-          details: {
-            date: "2025-05-06",
-            procedure: "Dental Crown",
-            patient: "Gabriel Lim",
-            grade: "90",
-            remarks: "Excellent margin preparation and temporization",
-          },
-        },
-        {
-          timestamp: "2025-05-06T11:30:00",
-          user: "admin@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-06",
-            procedure: "Dental Crown",
-            patient: "Gabriel Lim",
-            grade: "",
-            remarks: "",
-          },
-        },
-      ],
-    },
-    {
-      id: "10",
-      firstName: "Gabriel",
-      lastName: "Tan",
-      chair: "Chair 04",
-      patient: "Sofia Mendoza",
-      instructor: "Dr. Santos",
-      procedure: "Dental Extraction",
-      status: "Completed",
-      date: "2025-05-05",
-      grade: "88",
-      remarks: "Good technique and patient management",
-      history: [
-        {
-          timestamp: "2025-05-05T16:00:00",
-          user: "dr.santos@example.com",
-          action: "Updated",
-          description: "Status changed to Completed and grade added",
-          details: {
-            date: "2025-05-05",
-            procedure: "Dental Extraction",
-            patient: "Sofia Mendoza",
-            grade: "88",
-            remarks: "Good technique and patient management",
-          },
-        },
-        {
-          timestamp: "2025-05-05T10:15:00",
-          user: "admin@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-05",
-            procedure: "Dental Extraction",
-            patient: "Sofia Mendoza",
-            grade: "",
-            remarks: "",
-          },
-        },
-      ],
-    },
   ])
 
   // Function to get status color
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: Activity["status"]): string => {
     switch (status) {
       case "Started":
         return "bg-[#5C8E77]/10 text-[#5C8E77]"
@@ -409,24 +281,110 @@ export default function ActivitiesPage() {
     }
   }
 
+  // Validation function
+  const validateForm = (form: NewActivityForm): Record<string, string> => {
+    const errors: Record<string, string> = {}
+    if (!form.firstName.trim()) errors.firstName = "First name is required"
+    if (!form.lastName.trim()) errors.lastName = "Last name is required"
+    if (!form.chair) errors.chair = "Chair selection is required"
+    if (!form.patient.trim()) errors.patient = "Patient name is required"
+    if (!form.instructor) errors.instructor = "Instructor selection is required"
+    if (form.procedures.length === 0) errors.procedures = "At least one procedure must be selected"
+    if (form.procedures.length > 2) errors.procedures = "Maximum 2 procedures allowed"
+    return errors
+  }
+
+  // Handle procedure checkbox change
+  const handleProcedureChange = (procedure: string, checked: boolean) => {
+    setNewActivityForm((prev: NewActivityForm) => {
+      const newProcedures = checked
+        ? [...prev.procedures, procedure]
+        : prev.procedures.filter((p: string) => p !== procedure)
+      return { ...prev, procedures: newProcedures }
+    })
+  }
+
+  // Handle form submission
+  const handleCreateActivity = () => {
+    const errors = validateForm(newActivityForm)
+    setFormErrors(errors)
+
+    if (Object.keys(errors).length > 0) {
+      setShowErrorAlert(true)
+      setAlertMessage("Please fix the errors below before submitting.")
+      setTimeout(() => setShowErrorAlert(false), 5000)
+      return
+    }
+
+    // Generate new activity
+    const newActivity: Activity = {
+      id: (activities.length + 1).toString(),
+      firstName: newActivityForm.firstName,
+      lastName: newActivityForm.lastName,
+      chair: newActivityForm.chair,
+      patient: newActivityForm.patient,
+      instructor: newActivityForm.instructor,
+      procedure: newActivityForm.procedures[0], // Primary procedure
+      procedures: newActivityForm.procedures,
+      status: newActivityForm.status,
+      date: new Date().toISOString().slice(0, 10),
+      archived: false,
+      history: [
+        {
+          timestamp: new Date().toISOString(),
+          user: "admin@example.com",
+          action: "Created",
+          description: "Initial activity record created",
+          details: {
+            date: new Date().toISOString().slice(0, 10),
+            procedure: newActivityForm.procedures[0],
+            patient: newActivityForm.patient,
+            grade: "",
+            remarks: "",
+          },
+        },
+      ],
+    }
+
+    setActivities((prev: Activity[]) => [...prev, newActivity])
+
+    // Reset form
+    setNewActivityForm({
+      firstName: "",
+      lastName: "",
+      chair: "",
+      patient: "",
+      instructor: "",
+      procedures: [],
+      status: "Not started",
+    })
+    setFormErrors({})
+    setIsModalOpen(false)
+
+    setShowSuccessAlert(true)
+    setAlertMessage(`Activity created successfully for ${newActivity.firstName} ${newActivity.lastName}`)
+    // Hide success alert after 5 seconds
+    setTimeout(() => setShowSuccessAlert(false), 5000)
+  }
+
   // Function to handle edit button click
-  const handleEdit = (activity) => {
+  const handleEdit = (activity: Activity) => {
     setCurrentActivity(activity)
+    setEditFormData(activity)
     setIsEditModalOpen(true)
   }
 
-  const handleCompleteClick = (activity) => {
+  const handleCompleteClick = (activity: Activity) => {
     setActivityToAction(activity)
     setIsCompleteModalOpen(true)
   }
 
   const handleComplete = () => {
     if (activityToAction) {
-      // Create a new history entry
       const newHistory = {
         timestamp: new Date().toISOString(),
         user: "admin@example.com",
-        action: "Updated",
+        action: "Updated" as const,
         description: "Status changed to Completed",
         details: {
           date: activityToAction.date,
@@ -437,12 +395,12 @@ export default function ActivitiesPage() {
         },
       }
 
-      setActivities(
+      setActivities((activities: Activity[]) =>
         activities.map((activity) =>
           activity.id === activityToAction.id
             ? {
                 ...activity,
-                status: "Completed",
+                status: "Completed" as const,
                 history: [newHistory, ...activity.history],
               }
             : activity,
@@ -452,19 +410,19 @@ export default function ActivitiesPage() {
     }
   }
 
-  const handleArchiveClick = (activity) => {
+  // Updated archive functionality
+  const handleArchiveClick = (activity: Activity) => {
     setActivityToAction(activity)
     setIsArchiveModalOpen(true)
   }
 
   const handleArchive = () => {
     if (activityToAction) {
-      // Create a new history entry
       const newHistory = {
         timestamp: new Date().toISOString(),
         user: "admin@example.com",
-        action: "Updated",
-        description: "Status changed to Incomplete",
+        action: "Archived" as const,
+        description: "Activity archived",
         details: {
           date: activityToAction.date,
           procedure: activityToAction.procedure,
@@ -474,28 +432,33 @@ export default function ActivitiesPage() {
         },
       }
 
-      setActivities(
+      setActivities((activities: Activity[]) =>
         activities.map((activity) =>
           activity.id === activityToAction.id
             ? {
                 ...activity,
-                status: "Incomplete",
+                archived: true,
                 history: [newHistory, ...activity.history],
               }
             : activity,
         ),
       )
       setIsArchiveModalOpen(false)
+      setShowSuccessAlert(true)
+      setAlertMessage(`Activity archived successfully for ${activityToAction.firstName} ${activityToAction.lastName}`)
+      setTimeout(() => setShowSuccessAlert(false), 5000)
     }
   }
 
   // Function to update activity
-  const handleUpdateActivity = (updatedActivity) => {
-    // Create a new history entry
+  const handleUpdateActivity = () => {
+    if (!currentActivity || !editFormData) return
+
+    const updatedActivity = { ...currentActivity, ...editFormData }
     const newHistory = {
       timestamp: new Date().toISOString(),
       user: "admin@example.com",
-      action: "Updated",
+      action: "Updated" as const,
       description: "Activity details updated",
       details: {
         date: updatedActivity.date,
@@ -506,7 +469,7 @@ export default function ActivitiesPage() {
       },
     }
 
-    setActivities(
+    setActivities((activities: Activity[]) =>
       activities.map((activity) =>
         activity.id === updatedActivity.id
           ? {
@@ -516,11 +479,15 @@ export default function ActivitiesPage() {
           : activity,
       ),
     )
+
     setIsEditModalOpen(false)
+    setShowSuccessAlert(true)
+    setAlertMessage(`Activity updated successfully for ${updatedActivity.firstName} ${updatedActivity.lastName}`)
+    setTimeout(() => setShowSuccessAlert(false), 5000)
   }
 
   // Function to handle sorting
-  const handleSort = (field) => {
+  const handleSort = (field: "id" | "lastName") => {
     if (sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc")
     } else {
@@ -531,7 +498,9 @@ export default function ActivitiesPage() {
 
   // Function to export activities to CSV
   const exportActivitiesToCSV = () => {
-    // Create CSV header
+    // Only export non-archived activities
+    const activeActivities = activities.filter((activity) => !activity.archived)
+
     const headers = [
       "ID",
       "Date",
@@ -546,8 +515,7 @@ export default function ActivitiesPage() {
       "Remarks",
     ].join(",")
 
-    // Create CSV rows
-    const rows = activities.map(
+    const rows = activeActivities.map(
       (activity) =>
         `"${activity.id}","${activity.date}","${activity.firstName}","${activity.lastName}","${activity.patient}","${
           activity.chair
@@ -556,10 +524,7 @@ export default function ActivitiesPage() {
         }"`,
     )
 
-    // Combine header and rows
     const csv = [headers, ...rows].join("\n")
-
-    // Create a blob and download
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
@@ -571,20 +536,54 @@ export default function ActivitiesPage() {
     document.body.removeChild(link)
   }
 
-  // Sort activities
-  const sortedActivities = [...activities].sort((a, b) => {
-    if (sortField === "id") {
-      return sortDirection === "asc"
-        ? Number.parseInt(a.id) - Number.parseInt(b.id)
-        : Number.parseInt(b.id) - Number.parseInt(a.id)
-    } else if (sortField === "lastName") {
-      return sortDirection === "asc" ? a.lastName.localeCompare(b.lastName) : b.lastName.localeCompare(a.lastName)
-    }
-    return 0
-  })
+  // Filter out archived activities and sort
+  const sortedActivities = activities
+    .filter((activity) => !activity.archived)
+    .sort((a, b) => {
+      if (sortField === "id") {
+        return sortDirection === "asc"
+          ? Number.parseInt(a.id) - Number.parseInt(b.id)
+          : Number.parseInt(b.id) - Number.parseInt(a.id)
+      } else if (sortField === "lastName") {
+        return sortDirection === "asc" ? a.lastName.localeCompare(b.lastName) : b.lastName.localeCompare(a.lastName)
+      }
+      return 0
+    })
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-6">
+      {/* Success Alert */}
+      {showSuccessAlert && (
+        <Alert className="mb-4 border-green-200 bg-green-50 relative">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">{alertMessage}</AlertDescription>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute right-2 top-2 h-6 w-6 p-0"
+            onClick={() => setShowSuccessAlert(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </Alert>
+      )}
+
+      {/* Error Alert */}
+      {showErrorAlert && (
+        <Alert className="mb-4 border-red-200 bg-red-50 relative">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-800">{alertMessage}</AlertDescription>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute right-2 top-2 h-6 w-6 p-0"
+            onClick={() => setShowErrorAlert(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </Alert>
+      )}
+
       {/* Activities Table */}
       <Card className="bg-white border border-gray-200 shadow-sm mb-6">
         <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
@@ -659,7 +658,7 @@ export default function ActivitiesPage() {
                     <TableCell className="text-[#333]">
                       {activity.procedures ? (
                         <div className="space-y-1">
-                          {activity.procedures.map((proc, index) => (
+                          {activity.procedures.map((proc: string, index: number) => (
                             <div key={index} className="text-sm">
                               {proc}
                             </div>
@@ -699,7 +698,7 @@ export default function ActivitiesPage() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-8 w-8 text-red-600 hover:bg-red-50"
+                          className="h-8 w-8 text-orange-600 hover:bg-orange-50"
                           onClick={() => handleArchiveClick(activity)}
                         >
                           <X className="h-4 w-4" />
@@ -733,13 +732,31 @@ export default function ActivitiesPage() {
                   <Label htmlFor="firstName" className="text-[#333]">
                     First Name
                   </Label>
-                  <Input id="firstName" placeholder="Enter first name" className="border-gray-300" />
+                  <Input
+                    id="firstName"
+                    placeholder="Enter first name"
+                    className={`border-gray-300 ${formErrors.firstName ? "border-red-500" : ""}`}
+                    value={newActivityForm.firstName}
+                    onChange={(e) =>
+                      setNewActivityForm((prev: NewActivityForm) => ({ ...prev, firstName: e.target.value }))
+                    }
+                  />
+                  {formErrors.firstName && <p className="text-sm text-red-600">{formErrors.firstName}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="lastName" className="text-[#333]">
                     Last Name
                   </Label>
-                  <Input id="lastName" placeholder="Enter last name" className="border-gray-300" />
+                  <Input
+                    id="lastName"
+                    placeholder="Enter last name"
+                    className={`border-gray-300 ${formErrors.lastName ? "border-red-500" : ""}`}
+                    value={newActivityForm.lastName}
+                    onChange={(e) =>
+                      setNewActivityForm((prev: NewActivityForm) => ({ ...prev, lastName: e.target.value }))
+                    }
+                  />
+                  {formErrors.lastName && <p className="text-sm text-red-600">{formErrors.lastName}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -747,113 +764,116 @@ export default function ActivitiesPage() {
                   <Label htmlFor="chair" className="text-[#333]">
                     Chair
                   </Label>
-                  <Select>
-                    <SelectTrigger id="chair" className="border-gray-300">
+                  <Select
+                    value={newActivityForm.chair}
+                    onValueChange={(value) =>
+                      setNewActivityForm((prev: NewActivityForm) => ({ ...prev, chair: value }))
+                    }
+                  >
+                    <SelectTrigger id="chair" className={`border-gray-300 ${formErrors.chair ? "border-red-500" : ""}`}>
                       <SelectValue placeholder="Select chair" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="chair03">Chair 03</SelectItem>
-                      <SelectItem value="chair05">Chair 05</SelectItem>
-                      <SelectItem value="chair08">Chair 08</SelectItem>
-                      <SelectItem value="chair10">Chair 10</SelectItem>
-                      <SelectItem value="chair12">Chair 12</SelectItem>
+                      <SelectItem value="Chair 03">Chair 03</SelectItem>
+                      <SelectItem value="Chair 05">Chair 05</SelectItem>
+                      <SelectItem value="Chair 08">Chair 08</SelectItem>
+                      <SelectItem value="Chair 10">Chair 10</SelectItem>
+                      <SelectItem value="Chair 12">Chair 12</SelectItem>
                     </SelectContent>
                   </Select>
+                  {formErrors.chair && <p className="text-sm text-red-600">{formErrors.chair}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="instructor" className="text-[#333]">
                     Instructor
                   </Label>
-                  <Select>
-                    <SelectTrigger id="instructor" className="border-gray-300">
+                  <Select
+                    value={newActivityForm.instructor}
+                    onValueChange={(value) =>
+                      setNewActivityForm((prev: NewActivityForm) => ({ ...prev, instructor: value }))
+                    }
+                  >
+                    <SelectTrigger
+                      id="instructor"
+                      className={`border-gray-300 ${formErrors.instructor ? "border-red-500" : ""}`}
+                    >
                       <SelectValue placeholder="Select instructor" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="reyes">Dr. Reyes</SelectItem>
-                      <SelectItem value="mendoza">Dr. Mendoza</SelectItem>
-                      <SelectItem value="santos">Dr. Santos</SelectItem>
-                      <SelectItem value="tan">Dr. Tan</SelectItem>
+                      <SelectItem value="Dr. Reyes">Dr. Reyes</SelectItem>
+                      <SelectItem value="Dr. Mendoza">Dr. Mendoza</SelectItem>
+                      <SelectItem value="Dr. Santos">Dr. Santos</SelectItem>
+                      <SelectItem value="Dr. Tan">Dr. Tan</SelectItem>
                     </SelectContent>
                   </Select>
+                  {formErrors.instructor && <p className="text-sm text-red-600">{formErrors.instructor}</p>}
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="patient" className="text-[#333]">
                   Patient
                 </Label>
-                <Input id="patient" placeholder="Enter patient name" className="border-gray-300" />
+                <Input
+                  id="patient"
+                  placeholder="Enter patient name"
+                  className={`border-gray-300 ${formErrors.patient ? "border-red-500" : ""}`}
+                  value={newActivityForm.patient}
+                  onChange={(e) =>
+                    setNewActivityForm((prev: NewActivityForm) => ({ ...prev, patient: e.target.value }))
+                  }
+                />
+                {formErrors.patient && <p className="text-sm text-red-600">{formErrors.patient}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="procedure" className="text-[#333]">
                   Procedures (Select up to 2)
                 </Label>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="root-canal"
-                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                    />
-                    <label htmlFor="root-canal" className="text-sm text-gray-700">
-                      Root Canal Treatment
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="filling"
-                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                    />
-                    <label htmlFor="filling" className="text-sm text-gray-700">
-                      Dental Filling
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="crown"
-                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                    />
-                    <label htmlFor="crown" className="text-sm text-gray-700">
-                      Dental Crown
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="cleaning"
-                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                    />
-                    <label htmlFor="cleaning" className="text-sm text-gray-700">
-                      Teeth Cleaning
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="extraction"
-                      className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                    />
-                    <label htmlFor="extraction" className="text-sm text-gray-700">
-                      Dental Extraction
-                    </label>
-                  </div>
+                  {[
+                    "Root Canal Treatment",
+                    "Dental Filling",
+                    "Dental Crown",
+                    "Teeth Cleaning",
+                    "Dental Extraction",
+                  ].map((procedure) => (
+                    <div key={procedure} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id={procedure.toLowerCase().replace(/\s+/g, "-")}
+                        className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
+                        checked={newActivityForm.procedures.includes(procedure)}
+                        onChange={(e) => handleProcedureChange(procedure, e.target.checked)}
+                        disabled={
+                          !newActivityForm.procedures.includes(procedure) && newActivityForm.procedures.length >= 2
+                        }
+                      />
+                      <label htmlFor={procedure.toLowerCase().replace(/\s+/g, "-")} className="text-sm text-gray-700">
+                        {procedure}
+                      </label>
+                    </div>
+                  ))}
                 </div>
+                {formErrors.procedures && <p className="text-sm text-red-600">{formErrors.procedures}</p>}
                 <p className="text-xs text-gray-500">You can select up to 2 procedures per activity.</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="status" className="text-[#333]">
                   Status
                 </Label>
-                <Select defaultValue="not-started">
+                <Select
+                  value={newActivityForm.status}
+                  onValueChange={(value: Activity["status"]) =>
+                    setNewActivityForm((prev: NewActivityForm) => ({ ...prev, status: value }))
+                  }
+                >
                   <SelectTrigger id="status" className="border-gray-300">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="not-started">Not started</SelectItem>
-                    <SelectItem value="started">Started</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="incomplete">Incomplete</SelectItem>
+                    <SelectItem value="Not started">Not started</SelectItem>
+                    <SelectItem value="Started">Started</SelectItem>
+                    <SelectItem value="Completed">Completed</SelectItem>
+                    <SelectItem value="Incomplete">Incomplete</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -863,7 +883,9 @@ export default function ActivitiesPage() {
             <Button variant="outline" onClick={() => setIsModalOpen(false)} className="border-gray-300">
               Cancel
             </Button>
-            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white">Create Activity</Button>
+            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={handleCreateActivity}>
+              Create Activity
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -892,7 +914,7 @@ export default function ActivitiesPage() {
                           <Input
                             id="edit-firstName"
                             defaultValue={currentActivity.firstName}
-                            onChange={(e) => setCurrentActivity({ ...currentActivity, firstName: e.target.value })}
+                            onChange={(e) => setEditFormData({ ...editFormData, firstName: e.target.value })}
                             className="border-gray-300"
                           />
                         </div>
@@ -903,7 +925,7 @@ export default function ActivitiesPage() {
                           <Input
                             id="edit-lastName"
                             defaultValue={currentActivity.lastName}
-                            onChange={(e) => setCurrentActivity({ ...currentActivity, lastName: e.target.value })}
+                            onChange={(e) => setEditFormData({ ...editFormData, lastName: e.target.value })}
                             className="border-gray-300"
                           />
                         </div>
@@ -913,7 +935,10 @@ export default function ActivitiesPage() {
                           <Label htmlFor="edit-chair" className="text-[#333]">
                             Chair
                           </Label>
-                          <Select defaultValue={currentActivity.chair}>
+                          <Select
+                            defaultValue={currentActivity.chair}
+                            onValueChange={(value) => setEditFormData({ ...editFormData, chair: value })}
+                          >
                             <SelectTrigger id="edit-chair" className="border-gray-300">
                               <SelectValue placeholder={currentActivity.chair} />
                             </SelectTrigger>
@@ -930,7 +955,10 @@ export default function ActivitiesPage() {
                           <Label htmlFor="edit-instructor" className="text-[#333]">
                             Instructor
                           </Label>
-                          <Select defaultValue={currentActivity.instructor}>
+                          <Select
+                            defaultValue={currentActivity.instructor}
+                            onValueChange={(value) => setEditFormData({ ...editFormData, instructor: value })}
+                          >
                             <SelectTrigger id="edit-instructor" className="border-gray-300">
                               <SelectValue placeholder={currentActivity.instructor} />
                             </SelectTrigger>
@@ -950,87 +978,9 @@ export default function ActivitiesPage() {
                         <Input
                           id="edit-patient"
                           defaultValue={currentActivity.patient}
-                          onChange={(e) => setCurrentActivity({ ...currentActivity, patient: e.target.value })}
+                          onChange={(e) => setEditFormData({ ...editFormData, patient: e.target.value })}
                           className="border-gray-300"
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-procedure" className="text-[#333]">
-                          Procedures (Select up to 2)
-                        </Label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id="edit-root-canal"
-                              className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                              defaultChecked={
-                                currentActivity.procedures?.includes("Root Canal Treatment") ||
-                                currentActivity.procedure === "Root Canal Treatment"
-                              }
-                            />
-                            <label htmlFor="edit-root-canal" className="text-sm text-gray-700">
-                              Root Canal Treatment
-                            </label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id="edit-filling"
-                              className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                              defaultChecked={
-                                currentActivity.procedures?.includes("Dental Filling") ||
-                                currentActivity.procedure === "Dental Filling"
-                              }
-                            />
-                            <label htmlFor="edit-filling" className="text-sm text-gray-700">
-                              Dental Filling
-                            </label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id="edit-crown"
-                              className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                              defaultChecked={
-                                currentActivity.procedures?.includes("Dental Crown") ||
-                                currentActivity.procedure === "Dental Crown"
-                              }
-                            />
-                            <label htmlFor="edit-crown" className="text-sm text-gray-700">
-                              Dental Crown
-                            </label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id="edit-cleaning"
-                              className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                              defaultChecked={
-                                currentActivity.procedures?.includes("Teeth Cleaning") ||
-                                currentActivity.procedure === "Teeth Cleaning"
-                              }
-                            />
-                            <label htmlFor="edit-cleaning" className="text-sm text-gray-700">
-                              Teeth Cleaning
-                            </label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id="edit-extraction"
-                              className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
-                              defaultChecked={
-                                currentActivity.procedures?.includes("Dental Extraction") ||
-                                currentActivity.procedure === "Dental Extraction"
-                              }
-                            />
-                            <label htmlFor="edit-extraction" className="text-sm text-gray-700">
-                              Dental Extraction
-                            </label>
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-500">You can select up to 2 procedures per activity.</p>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="edit-status" className="text-[#333]">
@@ -1038,7 +988,9 @@ export default function ActivitiesPage() {
                         </Label>
                         <Select
                           defaultValue={currentActivity.status}
-                          onValueChange={(value) => setCurrentActivity({ ...currentActivity, status: value })}
+                          onValueChange={(value: Activity["status"]) =>
+                            setEditFormData({ ...editFormData, status: value })
+                          }
                         >
                           <SelectTrigger id="edit-status" className="border-gray-300">
                             <SelectValue placeholder={currentActivity.status} />
@@ -1102,7 +1054,7 @@ export default function ActivitiesPage() {
                             max="100"
                             placeholder="Enter grade (0-100)"
                             className="border-gray-300"
-                            onChange={(e) => setCurrentActivity({ ...currentActivity, grade: e.target.value })}
+                            onChange={(e) => setEditFormData({ ...editFormData, grade: e.target.value })}
                             defaultValue={currentActivity.grade || ""}
                           />
                         </div>
@@ -1110,7 +1062,12 @@ export default function ActivitiesPage() {
                           <Label htmlFor="assessment-status" className="text-[#333]">
                             Assessment Status
                           </Label>
-                          <Select defaultValue={currentActivity.assessmentStatus || "in-progress"}>
+                          <Select
+                            defaultValue={currentActivity.assessmentStatus || "in-progress"}
+                            onValueChange={(value: "in-progress" | "graded") =>
+                              setEditFormData({ ...editFormData, assessmentStatus: value })
+                            }
+                          >
                             <SelectTrigger id="assessment-status" className="border-gray-300">
                               <SelectValue placeholder="Select status" />
                             </SelectTrigger>
@@ -1131,7 +1088,7 @@ export default function ActivitiesPage() {
                           className="w-full p-2 border border-gray-300 rounded-md"
                           placeholder="Enter instructor feedback or clinical observations"
                           defaultValue={currentActivity.remarks || ""}
-                          onChange={(e) => setCurrentActivity({ ...currentActivity, remarks: e.target.value })}
+                          onChange={(e) => setEditFormData({ ...editFormData, remarks: e.target.value })}
                         ></textarea>
                       </div>
                     </div>
@@ -1142,10 +1099,7 @@ export default function ActivitiesPage() {
                 <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="border-gray-300">
                   Cancel
                 </Button>
-                <Button
-                  className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-                  onClick={() => handleUpdateActivity(currentActivity)}
-                >
+                <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={() => handleUpdateActivity()}>
                   Update Activity
                 </Button>
               </DialogFooter>
@@ -1187,14 +1141,17 @@ export default function ActivitiesPage() {
       <Dialog open={isArchiveModalOpen} onOpenChange={setIsArchiveModalOpen}>
         <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-lg">
           <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Confirm Action</DialogTitle>
+            <DialogTitle className="text-xl font-semibold text-orange-600">Archive Activity</DialogTitle>
           </DialogHeader>
           <div className="px-6 py-4">
-            <p className="text-[#333]">Are you sure you want to mark this activity as incomplete?</p>
+            <p className="text-[#333] mb-2">
+              Are you sure you want to archive this activity? Archived activities will be hidden from the main view but
+              can be restored later if needed.
+            </p>
             {activityToAction && (
-              <div className="mt-3 p-3 bg-[#f8f9fa] rounded-md border border-gray-200">
+              <div className="mt-3 p-3 bg-orange-50 rounded-md border border-orange-200">
                 <p className="font-medium text-[#333]">{activityToAction.procedure}</p>
-                <p className="text-sm text-[#5C8E77]">
+                <p className="text-sm text-orange-700">
                   {activityToAction.firstName} {activityToAction.lastName} • {activityToAction.chair}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">Patient: {activityToAction.patient}</p>
@@ -1205,8 +1162,8 @@ export default function ActivitiesPage() {
             <Button variant="outline" onClick={() => setIsArchiveModalOpen(false)} className="border-gray-300">
               Cancel
             </Button>
-            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleArchive}>
-              Confirm
+            <Button className="bg-orange-600 hover:bg-orange-700 text-white" onClick={handleArchive}>
+              Archive Activity
             </Button>
           </DialogFooter>
         </DialogContent>
