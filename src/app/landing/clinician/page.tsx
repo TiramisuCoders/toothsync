@@ -6,6 +6,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
+import { supabase }from "@/lib/supabase"
 
 export default function ClinicianLoginPage() {
   const router = useRouter()
@@ -27,28 +28,66 @@ export default function ClinicianLoginPage() {
     return () => clearInterval(interval)
   }, [])
 
-
-
   const triggerShakeAnimation = () => {
     setIsShaking(true)
     setTimeout(() => setIsShaking(false), 600)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const validEmail = "clinician@clinic.com"
-    const validPassword = "secure123"
 
-    if (email === validEmail && password === validPassword) {
-      setErrorMessage("")
-      setHasError(false)
-      router.push("/dashboard/clinician")
-    } else {
+    const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+console.log("Session:", session);
+
+
+const test = await supabase.from("users").select("id").limit(1);
+console.log(test);
+
+      const { data: userRecord, error: roleError, status} = await supabase
+      .from("users")
+      .select("role")
+      .eq("email", email)
+      .single();
+
+      // console.log(userRecord)
+      // console.log(roleError)
+      // console.log(status)
+
+
+    if (roleError || !userRecord) {
+      setErrorMessage("Email not registered as a clinician.")
+      // console.log(userRecord)
+      // console.log(roleError)
+      
+      return
+    }
+
+    if (userRecord.role !== "R01") {
+      setErrorMessage("Only clinicians are allowed to log in.")
+      return
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+
+    if (error) {
       setErrorMessage("Invalid email or password. Please check your credentials and try again.")
       setHasError(true)
       triggerShakeAnimation()
+      console.error("Supabase login error:", error)
+    } else {
+      // console.log("Login success!", data)
+      setErrorMessage("")
+      setHasError(false)
+      router.push("/dashboard/clinician")
     }
+      
   }
 
   const handleBackToRoleSelection = () => {

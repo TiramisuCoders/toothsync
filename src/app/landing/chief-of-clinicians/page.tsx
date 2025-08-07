@@ -6,6 +6,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
+import { supabase }from "@/lib/supabase"
 
 export default function ChiefOfClinicianLoginPage() {
   const router = useRouter()
@@ -33,22 +34,44 @@ export default function ChiefOfClinicianLoginPage() {
     setTimeout(() => setIsShaking(false), 600)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault()
 
-    const validEmail = "chief@clinic.com"
-    const validPassword = "secure123"
+    const { data: userRecord, error: roleError, status} = await supabase
+          .from("users")
+          .select("role")
+          .eq("email", email)
+          .single();
 
-    if (email === validEmail && password === validPassword) {
-      setErrorMessage("")
-      setHasError(false)
-      router.push("/dashboard/chief-of-clinicians")
-    } else {
-      setErrorMessage("Invalid email or password. Please check your credentials and try again.")
-      setHasError(true)
-      triggerShakeAnimation()
+        
+    if (roleError || !userRecord) {
+      setErrorMessage("Email not registered as a user.")
+      return
     }
-  }
+
+    if (userRecord.role !== "R04") {
+      setErrorMessage("Only the Chief of Clinician is allowed to log in.")
+      return
+    }
+  
+      const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+  
+      if (error) {
+        setErrorMessage("Invalid email or password. Please check your credentials and try again.")
+        setHasError(true)
+        triggerShakeAnimation()
+        console.error("Supabase login error:", error)
+      } else {
+        console.log("Login success!", data)
+        setErrorMessage("")
+        setHasError(false)
+        router.push("/dashboard/chief-of-clinicians")
+      }
+        
+    }
 
   const handleBackToRoleSelection = () => {
     router.push("/landing")
