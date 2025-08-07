@@ -1,64 +1,113 @@
 "use client"
 
-import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-// If your toast hook is actually named 'useToast' and located at '@/components/ui/useToast', update the import:
 import { toast } from "sonner"
-// If you do not have a toast utility, you need to create one or use a third-party library such as 'react-hot-toast' or 'sonner'.
 import { Toaster } from "@/components/ui/toaster"
-
-// Available dental procedures
-const procedures = [
-  "Tooth Extraction",
-  "Dental Cleaning",
-  "Dental Filling",
-  "Root Canal",
-  "Dental Implant",
-  "Dental Crown",
-  "Dental Bridge",
-  "Dental Veneer",
-  "Teeth Whitening",
-  "Dental X-Ray",
-]
+import { supabase } from "@/lib/supabase"
 
 export default function ClinicianForm() {
   const [formData, setFormData] = useState({
-    firstName: "Maria",
-    lastName: "Santos",
-    yearLevel: "5th Year",
-    section: "A",
+    firstName: "", 
+    lastName: "",
+    yearLevel: "", 
+    section: "",   
     patientName: "",
     selectedProcedures: [] as string[],
     chair: "Auto-assigned",
     instructor: "Auto-assigned",
+    clinicianUserId: "",
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitProgress, setSubmitProgress] = useState(0)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showConfirmation, setShowConfirmation] = useState(false)
+  // const [procedures, setProcedures] = useState<string[]>([])
+  const [procedures, setProcedures] = useState<{ procedure_id: string; name: string }[]>([])
 
-  // Handle patient name input
-  const handlePatientNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({ ...prev, patientName: e.target.value }))
-    if (errors.patientName) {
-      setErrors((prev) => ({ ...prev, patientName: "" }))
+  
+  useEffect(() => {
+    const fetchData = async () => {
+
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+    // console.log(userData); // Must not be null
+    if (userError || !userData.user) {
+      console.error("User not authenticated:", userError)
+      return
+    }
+    if (!userError && userData.user) {
+      setFormData((prev) => ({
+        ...prev,
+        clinicianUserId: userData.user.id,  // store the ID here
+      }))
+    }
+
+    const { data: clinician, error: clinicianError } = await supabase
+      .from("users")
+      .select("first_name, last_name")
+      .eq("auth_user_id", userData.user.id)
+      .single()
+
+    if (clinicianError) {
+      console.error("Failed to fetch clinician data:", clinicianError)
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        firstName: clinician.first_name,
+        lastName: clinician.last_name,
+        // yearLevel: profile.year_level,
+        // section: profile.section,
+      }))
+    }
+
+    const { data: clin, error: clinError } = await supabase
+      .from("clinicians")
+      .select("year_level")
+      .eq("user_id", userData.user.id)
+      .single()
+
+    if (clinError) {
+      console.error("Failed to fetch student profile:", clinError)
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        yearLevel: clin.year_level,
+      }))
+    }
+
+    
+
+    const { data: procedureData, error: procedureError } = await supabase
+      .from("procedure")
+      .select("procedure_id, name")
+
+    if (procedureError) {
+      console.error("Error fetching procedures:", procedureError)
+    } else {
+      const procedureNames = procedureData.map((p) => p.name)
+      setProcedures(procedureData)
     }
   }
 
-  // Handle procedure selection
+  fetchData()
+}, [])
+
+
+  const handlePatientNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, patientName: e.target.value }))
+    if (errors.patientName) setErrors((prev) => ({ ...prev, patientName: "" }))
+  }
+
   const handleProcedureChange = (procedure: string, checked: boolean) => {
     setFormData((prev) => {
       let newProcedures = [...prev.selectedProcedures]
 
       if (checked) {
-        if (newProcedures.length >= 2) {
-          return prev // Don't add if already at max
-        }
+        if (newProcedures.length >= 2) return prev
         newProcedures.push(procedure)
       } else {
         newProcedures = newProcedures.filter((p) => p !== procedure)
@@ -67,12 +116,9 @@ export default function ClinicianForm() {
       return { ...prev, selectedProcedures: newProcedures }
     })
 
-    if (errors.procedures) {
-      setErrors((prev) => ({ ...prev, procedures: "" }))
-    }
+    if (errors.procedures) setErrors((prev) => ({ ...prev, procedures: "" }))
   }
 
-  // Form validation
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
 
@@ -88,7 +134,6 @@ export default function ClinicianForm() {
     return Object.keys(newErrors).length === 0
   }
 
-  // Simulate submission progress
   const simulateSubmission = async () => {
     setSubmitProgress(0)
     const steps = [25, 50, 75, 100]
@@ -99,30 +144,73 @@ export default function ClinicianForm() {
     }
   }
 
-  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validateForm()) {
-      return
-    }
+    if (!validateForm()) return
 
     setIsSubmitting(true)
 
     try {
       await simulateSubmission()
 
-      toast(
+      const { data: latest, error: fetchError } = await supabase
+        .from("request")
+        .select("request_id")
+        .order("createdAt", { ascending: false })
+        .limit(1)
+
+      let newReqId;
+      const year = new Date().getFullYear();
+
+      if (fetchError || !latest || latest.length === 0) {
+        console.error("Error fetching latest request ID:", fetchError);
+        // If no previous request or fetch failed, start with 0001
+        newReqId = `RQST${year}-0001`;
+      } else {
+        const lastId = latest[0].request_id; // e.g., "RQST2025-0007"
+        const lastNumber = parseInt(lastId.split("-")[1], 10); // Extract "0007" and convert to number
+        const nextNumber = lastNumber + 1;
+        newReqId = `RQST${year}-${nextNumber.toString().padStart(4, "0")}`;
+      }
+
+      const { error: insertError } = await supabase.from("request").insert({
+        request_id: newReqId,
+        patient_name: formData.patientName,
+        clinician_id: formData.clinicianUserId,
+      })
+
+      if (insertError) {
+        console.error("Failed to insert request:", insertError)
+        throw new Error("Failed to submit attendance")
+      }
+
+      const procedureRows = formData.selectedProcedures.map((procedureId) => ({
+        rp_id: `${newReqId}-${procedureId}`,
+        request_id: newReqId,
+        procedure_id: procedureId,
+      }))
+
+    console.log(procedureRows)
+
+      const { data: insertData, error: joinError } = await supabase
+        .from("Requested_Procedures")
+        .insert(procedureRows)
+
+      console.log("Insert result:", insertData)
+      console.error("Insert error:", joinError)
+
+
+      // Then show success toast
+      toast(  
         <div>
           <span className="font-semibold">Attendance Submitted</span>
           <div className="text-sm text-gray-700">Your attendance has been submitted and is pending approval.</div>
         </div>
       )
 
-      // Show confirmation message
       setShowConfirmation(true)
 
-      // Reset form
       setFormData((prev) => ({
         ...prev,
         patientName: "",
@@ -130,10 +218,7 @@ export default function ClinicianForm() {
       }))
       setSubmitProgress(0)
 
-      // Hide confirmation after 5 seconds
-      setTimeout(() => {
-        setShowConfirmation(false)
-      }, 5000)
+      setTimeout(() => setShowConfirmation(false), 5000)
     } catch (error) {
       toast(
         <div className="text-red-700">
@@ -156,7 +241,6 @@ export default function ClinicianForm() {
           </CardDescription>
         </CardHeader>
 
-        {/* Confirmation Message */}
         {showConfirmation && (
           <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center space-x-2">
@@ -172,8 +256,7 @@ export default function ClinicianForm() {
               <div>
                 <h3 className="text-sm font-medium text-green-800">Attendance Submitted Successfully!</h3>
                 <p className="text-sm text-green-700 mt-1">
-                  Your attendance has been submitted and is pending approval. Chair and instructor have been
-                  auto-assigned.
+                  Your attendance has been submitted and is pending approval. Chair and instructor have been auto-assigned.
                 </p>
               </div>
             </div>
@@ -182,59 +265,32 @@ export default function ClinicianForm() {
 
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Student Information */}
+            {/* Static Student Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="firstName" className="font-medium text-gray-700">
-                  First Name
-                </Label>
+                <Label htmlFor="firstName">First Name</Label>
                 <Input id="firstName" value={formData.firstName} disabled className="bg-gray-50 text-gray-500" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastName" className="font-medium text-gray-700">
-                  Last Name
-                </Label>
+                <Label htmlFor="lastName">Last Name</Label>
                 <Input id="lastName" value={formData.lastName} disabled className="bg-gray-50 text-gray-500" />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="yearLevel" className="font-medium text-gray-700">
-                  Year Level
-                </Label>
-                <select
-                  id="yearLevel"
-                  value={formData.yearLevel}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
-                >
-                  <option value="5th Year">5th Year</option>
-                  <option value="6th Year">6th Year</option>
-                </select>
+                <Label htmlFor="yearLevel">Year Level</Label>
+                <Input id="yearLevel" value={formData.yearLevel} disabled className="bg-gray-50 text-gray-500" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="section" className="font-medium text-gray-700">
-                  Section
-                </Label>
-                <select
-                  id="section"
-                  value={formData.section}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
-                >
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="C">C</option>
-                </select>
+                <Label htmlFor="section">Section</Label>
+                <Input id="section" value={formData.section} disabled className="bg-gray-50 text-gray-500" />
               </div>
             </div>
 
             {/* Patient Name */}
             <div className="space-y-2">
-              <Label htmlFor="patientName" className="font-medium text-gray-700">
-                Patient Name
-              </Label>
+              <Label htmlFor="patientName">Patient Name</Label>
               <Input
                 id="patientName"
                 value={formData.patientName}
@@ -247,48 +303,42 @@ export default function ClinicianForm() {
 
             {/* Procedures */}
             <div className="space-y-3">
-              <Label className="font-medium text-gray-700">Procedures (Select up to 2)</Label>
+              <Label>Procedures (Select up to 2)</Label>
               <div className="grid grid-cols-2 gap-3 border border-gray-200 rounded-md p-4">
                 {procedures.map((procedure) => (
-                  <div key={procedure} className="flex items-center space-x-2">
+                  <div key={procedure.procedure_id} className="flex items-center space-x-2">
                     <input
                       type="checkbox"
-                      id={`procedure-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
-                      checked={formData.selectedProcedures.includes(procedure)}
-                      onChange={(e) => handleProcedureChange(procedure, e.target.checked)}
+                      id={`procedure-${procedure.procedure_id}`}
+                      checked={formData.selectedProcedures.includes(procedure.procedure_id)}
+                      onChange={(e) => handleProcedureChange(procedure.procedure_id, e.target.checked)}
                       className="h-4 w-4 text-[#5C8E77] border-gray-300 rounded focus:ring-[#5C8E77]"
                     />
                     <label
-                      htmlFor={`procedure-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
+                      htmlFor={`procedure-${procedure.procedure_id}`}
                       className="text-sm text-gray-700 cursor-pointer"
                     >
-                      {procedure}
+                      {procedure.name}
                     </label>
                   </div>
                 ))}
               </div>
-
               {formData.selectedProcedures.length === 0 && (
                 <p className="text-sm text-red-500">Please select at least one procedure.</p>
               )}
               <p className="text-sm text-gray-500">You can select up to 2 procedures per activity.</p>
             </div>
 
-            {/* Chair and Instructor */}
+
+            {/* Chair & Instructor */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="chair" className="font-medium text-gray-700">
-                  Requested Chair
-                </Label>
+                <Label htmlFor="chair">Requested Chair</Label>
                 <Input id="chair" value={formData.chair} disabled className="bg-gray-50 text-gray-500" />
-                <p className="text-sm text-gray-500">Auto-assigned based on procedure</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="instructor" className="font-medium text-gray-700">
-                  Instructor
-                </Label>
+                <Label htmlFor="instructor">Instructor</Label>
                 <Input id="instructor" value={formData.instructor} disabled className="bg-gray-50 text-gray-500" />
-                <p className="text-sm text-gray-500">Auto-assigned based on expertise</p>
               </div>
             </div>
 
