@@ -19,10 +19,20 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
+// Define types to fix TypeScript errors
+interface Chair {
+  id: string
+  procedures: string[]
+  status: "Available" | "Occupied" | "Under Maintenance"
+  student: string | null
+}
+
+type FilterType = "all" | "available" | "occupied" | "maintenance"
+
 export default function ChairPage() {
-  const [activeFilter, setActiveFilter] = useState("all")
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all")
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [currentChair, setCurrentChair] = useState(null)
+  const [currentChair, setCurrentChair] = useState<Chair | null>(null)
 
   // Available dental procedures
   const dentalProcedures = [
@@ -38,53 +48,60 @@ export default function ChairPage() {
   ]
 
   // Sample data for chairs
-  const [chairs, setChairs] = useState(
-    Array.from({ length: 30 }, (_, i) => {
-      const chairNumber = i + 1
-      // Randomly assign status and procedures
-      const statusOptions = ["Available", "Occupied", "Under Maintenance"]
-      const status = statusOptions[Math.floor(Math.random() * (chairNumber % 10 === 0 ? 3 : 2))]
+  const [chairs, setChairs] = useState<Chair[]>(() => {
+    // Use a seed-based approach for consistent data generation
+    const generateChairs = () => {
+      return Array.from({ length: 30 }, (_, i) => {
+        const chairNumber = i + 1
 
-      // Assign procedures based on chair number
-      let procedures = []
-      if (chairNumber <= 10) {
-        procedures = ["General Dentistry", "Teeth Cleaning"]
-      } else if (chairNumber <= 20) {
-        procedures = ["Extraction", "Root Canal", "Dental Filling"]
-      } else {
-        procedures = ["Dental Crown", "Orthodontics", "Periodontics"]
-      }
+        // Use deterministic logic instead of Math.random()
+        const statusIndex = chairNumber % 10 === 0 ? 2 : chairNumber % 3
+        const statusOptions: Chair["status"][] = ["Available", "Occupied", "Under Maintenance"]
+        const status = statusOptions[statusIndex] || "Available"
 
-      // If chair is occupied, assign a student
-      let student = null
-      if (status === "Occupied") {
-        const students = ["Maria Santos", "John Dela Cruz", "Anna Lim", "Mark Aquino", "Sarah Garcia"]
-        student = students[Math.floor(Math.random() * students.length)]
-      }
+        // Assign procedures based on chair number (deterministic)
+        let procedures: string[] = []
+        if (chairNumber <= 10) {
+          procedures = ["General Dentistry", "Teeth Cleaning"]
+        } else if (chairNumber <= 20) {
+          procedures = ["Extraction", "Root Canal", "Dental Filling"]
+        } else {
+          procedures = ["Dental Crown", "Orthodontics", "Periodontics"]
+        }
 
-      return {
-        id: `Chair ${chairNumber}`,
-        procedures,
-        status,
-        student,
-      }
-    }),
-  )
+        // Assign student deterministically if chair is occupied
+        let student: string | null = null
+        if (status === "Occupied") {
+          const students = ["Maria Santos", "John Dela Cruz", "Anna Lim", "Mark Aquino", "Sarah Garcia"]
+          student = students[chairNumber % students.length]
+        }
+
+        return {
+          id: `Chair ${chairNumber}`,
+          procedures,
+          status,
+          student,
+        }
+      })
+    }
+
+    return generateChairs()
+  })
 
   // Function to handle edit button click
-  const handleEditClick = (chair) => {
-    setCurrentChair(chair)
+  const handleEditClick = (chair: Chair) => {
+    setCurrentChair({ ...chair })
     setIsEditModalOpen(true)
   }
 
   // Function to update chair
-  const handleUpdateChair = (updatedChair) => {
+  const handleUpdateChair = (updatedChair: Chair) => {
     setChairs(chairs.map((chair) => (chair.id === updatedChair.id ? updatedChair : chair)))
     setIsEditModalOpen(false)
   }
 
   // Function to get status badge color
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status: Chair["status"]) => {
     switch (status) {
       case "Available":
         return <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{status}</Badge>
@@ -252,7 +269,13 @@ export default function ChairPage() {
                     </Label>
                     <Select
                       defaultValue={currentChair.status}
-                      onValueChange={(value) => setCurrentChair({ ...currentChair, status: value })}
+                      onValueChange={(value: Chair["status"]) =>
+                        setCurrentChair({
+                          ...currentChair,
+                          status: value,
+                          student: value !== "Occupied" ? null : currentChair.student,
+                        })
+                      }
                     >
                       <SelectTrigger id="edit-status" className="border-gray-300">
                         <SelectValue placeholder={currentChair.status} />
@@ -264,7 +287,6 @@ export default function ChairPage() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   {currentChair.status === "Occupied" && (
                     <div className="space-y-2">
                       <Label htmlFor="edit-student" className="text-[#333]">
@@ -272,7 +294,7 @@ export default function ChairPage() {
                       </Label>
                       <Select
                         defaultValue={currentChair.student || ""}
-                        onValueChange={(value) => setCurrentChair({ ...currentChair, student: value })}
+                        onValueChange={(value: string) => setCurrentChair({ ...currentChair, student: value })}
                       >
                         <SelectTrigger id="edit-student" className="border-gray-300">
                           <SelectValue placeholder="Select student" />
@@ -287,7 +309,6 @@ export default function ChairPage() {
                       </Select>
                     </div>
                   )}
-
                   <div className="space-y-3">
                     <Label className="text-[#333]">Allowed Procedures</Label>
                     <p className="text-sm text-gray-500">
@@ -316,17 +337,6 @@ export default function ChairPage() {
                         </div>
                       ))}
                     </div>
-                  </div>
-
-                  <div className="space-y-2 pt-2">
-                    <Label htmlFor="edit-notes" className="text-[#333]">
-                      Notes (Optional)
-                    </Label>
-                    <textarea
-                      id="edit-notes"
-                      className="w-full min-h-[100px] rounded-md border border-gray-300 p-2"
-                      placeholder="Add any special notes about this chair..."
-                    />
                   </div>
                 </div>
               </div>

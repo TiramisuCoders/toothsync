@@ -36,6 +36,22 @@ export default function ClerkLoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault()
+
+       const { data: userRecord, error: roleError, status} = await supabase
+            .from("users")
+            .select("role")
+            .eq("email", email)
+            .single();
+      
+          if (roleError || !userRecord) {
+            setErrorMessage("Email not registered as a clerk.")
+            return
+          }
+      
+          if (userRecord.role !== "R02") {
+            setErrorMessage("Only clerks are allowed to log in.")
+            return
+          }
   
       const { data, error } = await supabase.auth.signInWithPassword({
       email,
