@@ -1,7 +1,20 @@
 "use client"
 
 import { useState } from "react"
-import { Calendar, ChevronDown, Plus, Edit, Check, X, ChevronUp, User, Users, ArrowUpDown } from "lucide-react"
+import {
+  Calendar,
+  ChevronDown,
+  Plus,
+  Edit,
+  Check,
+  X,
+  ChevronUp,
+  User,
+  Users,
+  ArrowUpDown,
+  AlertCircle,
+  CheckCircle,
+} from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -9,6 +22,7 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 // Font configuration
 const poppinsFont = {
@@ -25,6 +39,17 @@ interface Activity {
   procedure: string
   procedures?: string[]
   status: string
+  archived?: boolean // Add this field
+}
+
+interface FormErrors {
+  firstName?: string
+  lastName?: string
+  chair?: string
+  patient?: string
+  instructor?: string
+  procedures?: string
+  general?: string
 }
 
 export default function ChiefOfCliniciansPage() {
@@ -33,9 +58,15 @@ export default function ChiefOfCliniciansPage() {
   const [currentActivity, setCurrentActivity] = useState<Activity | null>(null)
   const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false)
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false)
+  // Add delete modal state
   const [activityToAction, setActivityToAction] = useState<Activity | null>(null)
   const [sortField, setSortField] = useState("id")
   const [sortDirection, setSortDirection] = useState("asc")
+
+  // Form validation states
+  const [formErrors, setFormErrors] = useState<FormErrors>({})
+  const [showSuccess, setShowSuccess] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Form state for new activity
   const [newActivity, setNewActivity] = useState({
@@ -110,13 +141,87 @@ export default function ChiefOfCliniciansPage() {
     },
   ])
 
+  // Validation function
+  const validateForm = (): boolean => {
+    const errors: FormErrors = {}
+
+    // First name validation
+    if (!newActivity.firstName.trim()) {
+      errors.firstName = "First name is required"
+    } else if (newActivity.firstName.trim().length < 2) {
+      errors.firstName = "First name must be at least 2 characters"
+    } else if (!/^[a-zA-Z\s]+$/.test(newActivity.firstName.trim())) {
+      errors.firstName = "First name can only contain letters and spaces"
+    }
+
+    // Last name validation
+    if (!newActivity.lastName.trim()) {
+      errors.lastName = "Last name is required"
+    } else if (newActivity.lastName.trim().length < 2) {
+      errors.lastName = "Last name must be at least 2 characters"
+    } else if (!/^[a-zA-Z\s]+$/.test(newActivity.lastName.trim())) {
+      errors.lastName = "Last name can only contain letters and spaces"
+    }
+
+    // Chair validation
+    if (!newActivity.chair) {
+      errors.chair = "Please select a chair"
+    }
+
+    // Patient validation
+    if (!newActivity.patient.trim()) {
+      errors.patient = "Patient name is required"
+    } else if (newActivity.patient.trim().length < 2) {
+      errors.patient = "Patient name must be at least 2 characters"
+    } else if (!/^[a-zA-Z\s]+$/.test(newActivity.patient.trim())) {
+      errors.patient = "Patient name can only contain letters and spaces"
+    }
+
+    // Instructor validation
+    if (!newActivity.instructor) {
+      errors.instructor = "Please select an instructor"
+    }
+
+    // Procedures validation
+    if (newActivity.procedures.length === 0) {
+      errors.procedures = "Please select at least one procedure"
+    }
+
+    // Check for duplicate chair assignment (only for active activities)
+    const activeStatuses = ["Not started", "Started"]
+    const isChairOccupied = activities.some(
+      (activity) => activity.chair === newActivity.chair && activeStatuses.includes(activity.status),
+    )
+    if (isChairOccupied && newActivity.chair) {
+      errors.chair = "This chair is already occupied by an active activity"
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  // Clear form and reset states
+  const resetForm = () => {
+    setNewActivity({
+      firstName: "",
+      lastName: "",
+      chair: "",
+      patient: "",
+      instructor: "",
+      procedures: [],
+      status: "Not started",
+    })
+    setFormErrors({})
+    setShowSuccess(false)
+    setIsSubmitting(false)
+  }
+
   // Calculate distribution
   const calculateDistribution = (totalClinicians: number, totalInstructors: number) => {
     if (totalInstructors === 0) return []
     const baseCount = Math.floor(totalClinicians / totalInstructors)
     const remainder = totalClinicians % totalInstructors
     const instructors = ["Dr. Reyes", "Dr. Mendoza", "Dr. Santos"]
-
     return instructors.slice(0, totalInstructors).map((instructor, index) => ({
       instructor,
       clinicians: baseCount + (index < remainder ? 1 : 0),
@@ -151,7 +256,6 @@ export default function ChiefOfCliniciansPage() {
     if (isEdit && currentActivity) {
       const currentProcedures = currentActivity.procedures || [currentActivity.procedure]
       let updatedProcedures: string[]
-
       if (checked) {
         if (currentProcedures.length < 2) {
           updatedProcedures = [...currentProcedures, procedure]
@@ -161,7 +265,6 @@ export default function ChiefOfCliniciansPage() {
       } else {
         updatedProcedures = currentProcedures.filter((p) => p !== procedure)
       }
-
       setCurrentActivity({
         ...currentActivity,
         procedures: updatedProcedures,
@@ -169,7 +272,6 @@ export default function ChiefOfCliniciansPage() {
       })
     } else {
       let updatedProcedures: string[]
-
       if (checked) {
         if (newActivity.procedures.length < 2) {
           updatedProcedures = [...newActivity.procedures, procedure]
@@ -179,52 +281,56 @@ export default function ChiefOfCliniciansPage() {
       } else {
         updatedProcedures = newActivity.procedures.filter((p) => p !== procedure)
       }
-
       setNewActivity({
         ...newActivity,
         procedures: updatedProcedures,
       })
+      // Clear procedure error if user selects a procedure
+      if (updatedProcedures.length > 0 && formErrors.procedures) {
+        setFormErrors({ ...formErrors, procedures: undefined })
+      }
     }
   }
 
   // Handle creating new activity
-  const handleCreateActivity = () => {
-    if (
-      !newActivity.firstName ||
-      !newActivity.lastName ||
-      !newActivity.chair ||
-      !newActivity.patient ||
-      !newActivity.instructor ||
-      newActivity.procedures.length === 0
-    ) {
-      alert("Please fill in all required fields and select at least one procedure.")
+  const handleCreateActivity = async () => {
+    setIsSubmitting(true)
+    setFormErrors({})
+
+    // Validate form
+    if (!validateForm()) {
+      setIsSubmitting(false)
       return
     }
 
-    const newId = (Math.max(...activities.map((a) => Number.parseInt(a.id))) + 1).toString()
-    const activity: Activity = {
-      id: newId,
-      firstName: newActivity.firstName,
-      lastName: newActivity.lastName,
-      chair: newActivity.chair,
-      patient: newActivity.patient,
-      instructor: newActivity.instructor,
-      procedure: newActivity.procedures[0],
-      procedures: newActivity.procedures,
-      status: newActivity.status,
+    try {
+      // Simulate API call delay
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const newId = (Math.max(...activities.map((a) => Number.parseInt(a.id))) + 1).toString()
+      const activity: Activity = {
+        id: newId,
+        firstName: newActivity.firstName.trim(),
+        lastName: newActivity.lastName.trim(),
+        chair: newActivity.chair,
+        patient: newActivity.patient.trim(),
+        instructor: newActivity.instructor,
+        procedure: newActivity.procedures[0],
+        procedures: newActivity.procedures,
+        status: newActivity.status,
+        archived: false,
+      }
+      setActivities([...activities, activity])
+      setShowSuccess(true)
+      // Auto-close modal after success message
+      setTimeout(() => {
+        setIsModalOpen(false)
+        resetForm()
+      }, 2000)
+    } catch (error) {
+      setFormErrors({ general: "Failed to create activity. Please try again." })
+    } finally {
+      setIsSubmitting(false)
     }
-
-    setActivities([...activities, activity])
-    setNewActivity({
-      firstName: "",
-      lastName: "",
-      chair: "",
-      patient: "",
-      instructor: "",
-      procedures: [],
-      status: "Not started",
-    })
-    setIsModalOpen(false)
   }
 
   // Function to handle edit button click
@@ -258,7 +364,7 @@ export default function ChiefOfCliniciansPage() {
     if (activityToAction) {
       setActivities(
         activities.map((activity) =>
-          activity.id === activityToAction.id ? { ...activity, status: "Incomplete" } : activity,
+          activity.id === activityToAction.id ? { ...activity, archived: true } : activity,
         ),
       )
       setIsArchiveModalOpen(false)
@@ -281,17 +387,36 @@ export default function ChiefOfCliniciansPage() {
     }
   }
 
-  // Sort activities
-  const sortedActivities = [...activities].sort((a, b) => {
-    if (sortField === "id") {
-      return sortDirection === "asc"
-        ? Number.parseInt(a.id) - Number.parseInt(b.id)
-        : Number.parseInt(b.id) - Number.parseInt(a.id)
-    } else if (sortField === "lastName") {
-      return sortDirection === "asc" ? a.lastName.localeCompare(b.lastName) : b.lastName.localeCompare(a.lastName)
+  // Handle modal close
+  const handleModalClose = (open: boolean) => {
+    if (!open) {
+      resetForm()
     }
-    return 0
-  })
+    setIsModalOpen(open)
+  }
+
+  // Handle input changes with error clearing
+  const handleInputChange = (field: keyof typeof newActivity, value: string) => {
+    setNewActivity({ ...newActivity, [field]: value })
+    // Clear specific field error when user starts typing
+    if (formErrors[field as keyof FormErrors]) {
+      setFormErrors({ ...formErrors, [field]: undefined })
+    }
+  }
+
+  // Sort activities
+  const sortedActivities = [...activities]
+    .filter((activity) => !activity.archived)
+    .sort((a, b) => {
+      if (sortField === "id") {
+        return sortDirection === "asc"
+          ? Number.parseInt(a.id) - Number.parseInt(b.id)
+          : Number.parseInt(b.id) - Number.parseInt(a.id)
+      } else if (sortField === "lastName") {
+        return sortDirection === "asc" ? a.lastName.localeCompare(b.lastName) : b.lastName.localeCompare(a.lastName)
+      }
+      return 0
+    })
 
   return (
     <div className="flex h-full bg-[#f8f9fa]" style={poppinsFont}>
@@ -315,7 +440,6 @@ export default function ChiefOfCliniciansPage() {
               </div>
             </CardContent>
           </Card>
-
           <Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-gray-500">AVAILABLE INSTRUCTORS</CardTitle>
@@ -327,7 +451,6 @@ export default function ChiefOfCliniciansPage() {
               </div>
             </CardContent>
           </Card>
-
           <Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-gray-500">AVAILABLE CHAIRS</CardTitle>
@@ -356,7 +479,6 @@ export default function ChiefOfCliniciansPage() {
               </div>
             </CardContent>
           </Card>
-
           <Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-gray-500">TODAY'S ACTIVITIES</CardTitle>
@@ -528,7 +650,7 @@ export default function ChiefOfCliniciansPage() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="h-8 w-8 text-red-600 hover:bg-red-50"
+                            className="h-8 w-8 text-orange-600 hover:bg-orange-50"
                             onClick={() => handleArchiveClick(activity)}
                           >
                             <X className="h-4 w-4" />
@@ -550,49 +672,88 @@ export default function ChiefOfCliniciansPage() {
         </Card>
 
         {/* New Activity Modal */}
-        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <Dialog open={isModalOpen} onOpenChange={handleModalClose}>
           <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
             <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
               <DialogTitle className="text-xl font-semibold text-[#5C8E77]">New Activity</DialogTitle>
             </DialogHeader>
-            <div className="px-6 py-4">
+            <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
+              {/* Success Message */}
+              {showSuccess && (
+                <Alert className="mb-4 border-green-200 bg-green-50">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800">
+                    Activity created successfully! The modal will close automatically.
+                  </AlertDescription>
+                </Alert>
+              )}
+              {/* General Error Message */}
+              {formErrors.general && (
+                <Alert className="mb-4 border-red-200 bg-red-50">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800">{formErrors.general}</AlertDescription>
+                </Alert>
+              )}
               <div className="grid gap-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName" className="text-[#333]">
-                      First Name
+                      First Name <span className="text-red-500">*</span>
                     </Label>
                     <Input
                       id="firstName"
                       placeholder="Enter first name"
-                      className="border-gray-300"
+                      className={`border-gray-300 ${formErrors.firstName ? "border-red-500 focus:border-red-500" : ""}`}
                       value={newActivity.firstName}
-                      onChange={(e) => setNewActivity({ ...newActivity, firstName: e.target.value })}
+                      onChange={(e) => handleInputChange("firstName", e.target.value)}
+                      disabled={isSubmitting}
                     />
+                    {formErrors.firstName && (
+                      <p className="text-sm text-red-600 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {formErrors.firstName}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="lastName" className="text-[#333]">
-                      Last Name
+                      Last Name <span className="text-red-500">*</span>
                     </Label>
                     <Input
                       id="lastName"
                       placeholder="Enter last name"
-                      className="border-gray-300"
+                      className={`border-gray-300 ${formErrors.lastName ? "border-red-500 focus:border-red-500" : ""}`}
                       value={newActivity.lastName}
-                      onChange={(e) => setNewActivity({ ...newActivity, lastName: e.target.value })}
+                      onChange={(e) => handleInputChange("lastName", e.target.value)}
+                      disabled={isSubmitting}
                     />
+                    {formErrors.lastName && (
+                      <p className="text-sm text-red-600 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {formErrors.lastName}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="chair" className="text-[#333]">
-                      Chair
+                      Chair <span className="text-red-500">*</span>
                     </Label>
                     <Select
                       value={newActivity.chair}
-                      onValueChange={(value) => setNewActivity({ ...newActivity, chair: value })}
+                      onValueChange={(value) => {
+                        setNewActivity({ ...newActivity, chair: value })
+                        if (formErrors.chair) {
+                          setFormErrors({ ...formErrors, chair: undefined })
+                        }
+                      }}
+                      disabled={isSubmitting}
                     >
-                      <SelectTrigger id="chair" className="border-gray-300">
+                      <SelectTrigger
+                        id="chair"
+                        className={`border-gray-300 ${formErrors.chair ? "border-red-500" : ""}`}
+                      >
                         <SelectValue placeholder="Select chair" />
                       </SelectTrigger>
                       <SelectContent>
@@ -603,16 +764,31 @@ export default function ChiefOfCliniciansPage() {
                         <SelectItem value="Chair 12">Chair 12</SelectItem>
                       </SelectContent>
                     </Select>
+                    {formErrors.chair && (
+                      <p className="text-sm text-red-600 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {formErrors.chair}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="instructor" className="text-[#333]">
-                      Instructor
+                      Instructor <span className="text-red-500">*</span>
                     </Label>
                     <Select
                       value={newActivity.instructor}
-                      onValueChange={(value) => setNewActivity({ ...newActivity, instructor: value })}
+                      onValueChange={(value) => {
+                        setNewActivity({ ...newActivity, instructor: value })
+                        if (formErrors.instructor) {
+                          setFormErrors({ ...formErrors, instructor: undefined })
+                        }
+                      }}
+                      disabled={isSubmitting}
                     >
-                      <SelectTrigger id="instructor" className="border-gray-300">
+                      <SelectTrigger
+                        id="instructor"
+                        className={`border-gray-300 ${formErrors.instructor ? "border-red-500" : ""}`}
+                      >
                         <SelectValue placeholder="Select instructor" />
                       </SelectTrigger>
                       <SelectContent>
@@ -621,23 +797,36 @@ export default function ChiefOfCliniciansPage() {
                         <SelectItem value="Dr. Santos">Dr. Santos</SelectItem>
                       </SelectContent>
                     </Select>
+                    {formErrors.instructor && (
+                      <p className="text-sm text-red-600 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {formErrors.instructor}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="patient" className="text-[#333]">
-                    Patient
+                    Patient <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="patient"
                     placeholder="Enter patient name"
-                    className="border-gray-300"
+                    className={`border-gray-300 ${formErrors.patient ? "border-red-500 focus:border-red-500" : ""}`}
                     value={newActivity.patient}
-                    onChange={(e) => setNewActivity({ ...newActivity, patient: e.target.value })}
+                    onChange={(e) => handleInputChange("patient", e.target.value)}
+                    disabled={isSubmitting}
                   />
+                  {formErrors.patient && (
+                    <p className="text-sm text-red-600 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {formErrors.patient}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="procedure" className="text-[#333]">
-                    Procedures (Select up to 2)
+                    Procedures (Select up to 2) <span className="text-red-500">*</span>
                   </Label>
                   <div className="grid grid-cols-2 gap-2">
                     {[
@@ -654,7 +843,10 @@ export default function ChiefOfCliniciansPage() {
                           className="h-4 w-4 rounded border-gray-300 text-[#5C8E77] focus:ring-[#5C8E77]"
                           checked={newActivity.procedures.includes(procedure)}
                           onChange={(e) => handleProcedureChange(procedure, e.target.checked)}
-                          disabled={!newActivity.procedures.includes(procedure) && newActivity.procedures.length >= 2}
+                          disabled={
+                            (!newActivity.procedures.includes(procedure) && newActivity.procedures.length >= 2) ||
+                            isSubmitting
+                          }
                         />
                         <label htmlFor={procedure.toLowerCase().replace(/\s+/g, "-")} className="text-sm text-gray-700">
                           {procedure}
@@ -662,6 +854,12 @@ export default function ChiefOfCliniciansPage() {
                       </div>
                     ))}
                   </div>
+                  {formErrors.procedures && (
+                    <p className="text-sm text-red-600 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {formErrors.procedures}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500">You can select up to 2 procedures per activity.</p>
                 </div>
                 <div className="space-y-2">
@@ -671,6 +869,7 @@ export default function ChiefOfCliniciansPage() {
                   <Select
                     value={newActivity.status}
                     onValueChange={(value) => setNewActivity({ ...newActivity, status: value })}
+                    disabled={isSubmitting}
                   >
                     <SelectTrigger id="status" className="border-gray-300">
                       <SelectValue placeholder="Select status" />
@@ -686,11 +885,27 @@ export default function ChiefOfCliniciansPage() {
               </div>
             </div>
             <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-              <Button variant="outline" onClick={() => setIsModalOpen(false)} className="border-gray-300">
+              <Button
+                variant="outline"
+                onClick={() => handleModalClose(false)}
+                className="border-gray-300"
+                disabled={isSubmitting}
+              >
                 Cancel
               </Button>
-              <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={handleCreateActivity}>
-                Create Activity
+              <Button
+                className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
+                onClick={handleCreateActivity}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Creating...
+                  </>
+                ) : (
+                  "Create Activity"
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -886,10 +1101,13 @@ export default function ChiefOfCliniciansPage() {
         <Dialog open={isArchiveModalOpen} onOpenChange={setIsArchiveModalOpen}>
           <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-lg">
             <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-              <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Confirm Action</DialogTitle>
+              <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Archive Activity</DialogTitle>
             </DialogHeader>
             <div className="px-6 py-4">
-              <p className="text-[#333]">Are you sure you want to mark this activity as incomplete?</p>
+              <p className="text-[#333]">
+                Are you sure you want to archive this activity? Archived activities will be hidden from the main view
+                but can be restored later.
+              </p>
               {activityToAction && (
                 <div className="mt-3 p-3 bg-[#f8f9fa] rounded-md border border-gray-200">
                   <p className="font-medium text-[#333]">{activityToAction.procedure}</p>
@@ -904,7 +1122,7 @@ export default function ChiefOfCliniciansPage() {
                 Cancel
               </Button>
               <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleArchive}>
-                Confirm
+                Archive Activity
               </Button>
             </DialogFooter>
           </DialogContent>
