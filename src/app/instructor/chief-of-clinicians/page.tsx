@@ -20,21 +20,75 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useToast } from "@/hooks/use-toast"
 
-// Font configuration
-const poppinsFont = {
-  fontFamily: "'Poppins', sans-serif",
+// Type definitions moved inline
+interface Instructor {
+  id: string
+  firstName: string
+  lastName: string
+  gender: string
+  status: "Available" | "Not Available"
+  email: string
+  contactNumber: string
+  address: string
+  expertise: string[]
+  archived?: boolean
 }
 
+interface InstructorFormData {
+  firstName: string
+  lastName: string
+  gender: string
+  status: string
+  email: string
+  contactNumber: string
+  address: string
+  expertise: string[]
+}
+
+interface FormErrors {
+  firstName?: string
+  lastName?: string
+  gender?: string
+  status?: string
+  email?: string
+  contactNumber?: string
+  address?: string
+  expertise?: string
+}
+
+interface NotificationState {
+  show: boolean
+  type: "success" | "error"
+  message: string
+}
+
+type FilterType = "all" | "available" | "not-available"
+
 export default function InstructorPage() {
-  const [activeFilter, setActiveFilter] = useState("all")
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all")
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [currentInstructor, setCurrentInstructor] = useState(null)
-  const [isReportsOpen, setIsReportsOpen] = useState(false)
+  const [currentInstructor, setCurrentInstructor] = useState<Instructor | null>(null)
+  const [formData, setFormData] = useState<InstructorFormData>({
+    firstName: "",
+    lastName: "",
+    gender: "",
+    status: "",
+    email: "",
+    contactNumber: "",
+    address: "",
+    expertise: [],
+  })
+
+  const [formErrors, setFormErrors] = useState<FormErrors>({})
+  const [notification, setNotification] = useState<NotificationState>({ show: false, type: "success", message: "" })
+  const [showArchived, setShowArchived] = useState(false)
+  const { toast } = useToast()
 
   // Sample data for instructors
-  const [instructors, setInstructors] = useState([
+  const [instructors, setInstructors] = useState<Instructor[]>([
     {
       id: "I2024-001",
       firstName: "Dr. Maria",
@@ -45,6 +99,7 @@ export default function InstructorPage() {
       contactNumber: "+63 912 345 6789",
       address: "123 Rizal Avenue, Manila",
       expertise: ["Extraction", "Root Canal", "General Dentistry"],
+      archived: false,
     },
     {
       id: "I2024-002",
@@ -56,6 +111,7 @@ export default function InstructorPage() {
       contactNumber: "+63 917 123 4567",
       address: "456 Mabini Street, Quezon City",
       expertise: ["Dental Filling", "Teeth Cleaning", "General Dentistry"],
+      archived: false,
     },
     {
       id: "I2024-003",
@@ -67,6 +123,7 @@ export default function InstructorPage() {
       contactNumber: "+63 918 765 4321",
       address: "789 Bonifacio Avenue, Makati",
       expertise: ["Dental Crown", "Root Canal", "Orthodontics"],
+      archived: false,
     },
     {
       id: "I2024-004",
@@ -78,6 +135,7 @@ export default function InstructorPage() {
       contactNumber: "+63 919 876 5432",
       address: "321 Aguinaldo Street, Pasig",
       expertise: ["Extraction", "Dental Filling", "Teeth Cleaning"],
+      archived: false,
     },
     {
       id: "I2024-005",
@@ -89,6 +147,7 @@ export default function InstructorPage() {
       contactNumber: "+63 915 432 1098",
       address: "654 Luna Road, Mandaluyong",
       expertise: ["Orthodontics", "Dental Crown", "General Dentistry"],
+      archived: false,
     },
   ])
 
@@ -105,33 +164,198 @@ export default function InstructorPage() {
     "Prosthodontics",
   ]
 
+  const validateForm = (): boolean => {
+    const errors: FormErrors = {}
+
+    if (!formData.firstName.trim()) {
+      errors.firstName = "First name is required"
+    }
+
+    if (!formData.lastName.trim()) {
+      errors.lastName = "Last name is required"
+    }
+
+    if (!formData.gender) {
+      errors.gender = "Gender is required"
+    }
+
+    if (!formData.status) {
+      errors.status = "Status is required"
+    }
+
+    if (!formData.email.trim()) {
+      errors.email = "Email is required"
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = "Please enter a valid email address"
+    }
+
+    if (!formData.contactNumber.trim()) {
+      errors.contactNumber = "Contact number is required"
+    }
+
+    if (!formData.address.trim()) {
+      errors.address = "Address is required"
+    }
+
+    if (formData.expertise.length === 0) {
+      errors.expertise = "At least one expertise must be selected"
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  // Reset form data
+  const resetFormData = () => {
+    setFormData({
+      firstName: "",
+      lastName: "",
+      gender: "",
+      status: "",
+      email: "",
+      contactNumber: "",
+      address: "",
+      expertise: [],
+    })
+    setFormErrors({})
+  }
+
   // Function to handle edit button click
-  const handleEditClick = (instructor) => {
+  const handleEditClick = (instructor: Instructor) => {
     setCurrentInstructor(instructor)
+    setFormData({
+      firstName: instructor.firstName,
+      lastName: instructor.lastName,
+      gender: instructor.gender,
+      status: instructor.status,
+      email: instructor.email,
+      contactNumber: instructor.contactNumber,
+      address: instructor.address,
+      expertise: instructor.expertise,
+    })
     setIsEditModalOpen(true)
   }
 
   // Function to update instructor
-  const handleUpdateInstructor = (updatedInstructor) => {
+  const handleUpdateInstructor = () => {
+    if (!currentInstructor) return
+
+    if (!validateForm()) {
+      toast({
+        title: "Error",
+        description: "Please fix the errors in the form before submitting.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const updatedInstructor: Instructor = {
+      ...currentInstructor,
+      ...formData,
+      status: formData.status as "Available" | "Not Available",
+    }
+
     setInstructors(
       instructors.map((instructor) => (instructor.id === updatedInstructor.id ? updatedInstructor : instructor)),
     )
     setIsEditModalOpen(false)
+    setCurrentInstructor(null)
+    resetFormData()
+    setFormErrors({})
+
+    toast({
+      title: "Success",
+      description: `Instructor ${updatedInstructor.firstName} ${updatedInstructor.lastName} has been updated successfully.`,
+    })
   }
 
   // Function to add new instructor
-  const handleAddInstructor = (newInstructor) => {
-    setInstructors([...instructors, { ...newInstructor, id: `I2024-00${instructors.length + 1}` }])
+  const handleAddInstructor = () => {
+    if (!validateForm()) {
+      toast({
+        title: "Error",
+        description: "Please fix the errors in the form before submitting.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const newInstructor: Instructor = {
+      id: `I2024-${String(instructors.length + 1).padStart(3, "0")}`,
+      ...formData,
+      status: formData.status as "Available" | "Not Available",
+      archived: false,
+    }
+
+    setInstructors([...instructors, newInstructor])
     setIsAddModalOpen(false)
+    resetFormData()
+    setFormErrors({})
+
+    toast({
+      title: "Success",
+      description: `Instructor ${newInstructor.firstName} ${newInstructor.lastName} has been added successfully.`,
+    })
+  }
+
+  // Handle form field changes
+  const handleInputChange = (field: keyof InstructorFormData, value: string) => {
+    setFormData((prev: InstructorFormData) => ({ ...prev, [field]: value }))
+  }
+
+  // Handle expertise checkbox changes
+  const handleExpertiseChange = (service: string, checked: boolean) => {
+    setFormData((prev: InstructorFormData) => ({
+      ...prev,
+      expertise: checked ? [...prev.expertise, service] : prev.expertise.filter((s: string) => s !== service),
+    }))
+  }
+
+  // Function to archive/unarchive instructor
+  const handleArchiveInstructor = (instructorId: string) => {
+    setInstructors(
+      instructors.map((instructor: Instructor) =>
+        instructor.id === instructorId ? { ...instructor, archived: !instructor.archived } : instructor,
+      ),
+    )
+
+    const instructor = instructors.find((i) => i.id === instructorId)
+    if (instructor) {
+      toast({
+        title: "Success",
+        description: `Instructor ${instructor.firstName} ${instructor.lastName} has been ${instructor.archived ? "unarchived" : "archived"}.`,
+      })
+    }
   }
 
   // Filter instructors based on active filter
   const filteredInstructors = instructors.filter((instructor) => {
+    // First filter by archived status
+    if (showArchived && !instructor.archived) return false
+    if (!showArchived && instructor.archived) return false
+
+    // Then filter by availability status
     if (activeFilter === "all") return true
     if (activeFilter === "available") return instructor.status === "Available"
     if (activeFilter === "not-available") return instructor.status === "Not Available"
     return true
   })
+
+  // Handle modal close
+  const handleAddModalClose = () => {
+    setIsAddModalOpen(false)
+    resetFormData()
+  }
+
+  const handleEditModalClose = () => {
+    setIsEditModalOpen(false)
+    setCurrentInstructor(null)
+    resetFormData()
+  }
+
+  const getFieldError = (field: keyof FormErrors) => {
+    return formErrors[field] ? <p className="text-sm text-red-600 mt-1">{formErrors[field]}</p> : null
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-6">
@@ -148,7 +372,9 @@ export default function InstructorPage() {
       <Card className="bg-white border border-gray-200 shadow-sm mb-6">
         <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
           <div className="flex items-center gap-4">
-            <CardTitle className="text-xl font-semibold text-[#333]">List of Instructors</CardTitle>
+            <CardTitle className="text-xl font-semibold text-[#333]">
+              {showArchived ? "Archived Instructors" : "Active Instructors"}
+            </CardTitle>
             <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
               <Button
                 variant={activeFilter === "all" ? "default" : "ghost"}
@@ -174,6 +400,14 @@ export default function InstructorPage() {
               >
                 Not Available
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowArchived(!showArchived)}
+                className="text-gray-600"
+              >
+                {showArchived ? "Hide" : "Show"} Archived
+              </Button>
             </div>
           </div>
           <Button
@@ -198,29 +432,68 @@ export default function InstructorPage() {
             <TableBody>
               {filteredInstructors.length > 0 ? (
                 filteredInstructors.map((instructor) => (
-                  <TableRow key={instructor.id} className="hover:bg-gray-50 border-b border-gray-200">
+                  <TableRow
+                    key={instructor.id}
+                    className={`hover:bg-gray-50 border-b border-gray-200 ${instructor.archived ? "bg-gray-50 opacity-75" : ""}`}
+                  >
                     <TableCell className="font-medium text-[#333]">{instructor.id}</TableCell>
                     <TableCell className="text-[#333]">{instructor.firstName}</TableCell>
                     <TableCell className="text-[#333]">{instructor.lastName}</TableCell>
                     <TableCell className="text-[#333]">{instructor.gender}</TableCell>
                     <TableCell>
-                      {instructor.status === "Available" ? (
-                        <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{instructor.status}</Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-red-600 border-red-600">
-                          {instructor.status}
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {instructor.status === "Available" ? (
+                          <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{instructor.status}</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-red-600 border-red-600">
+                            {instructor.status}
+                          </Badge>
+                        )}
+                        {instructor.archived && (
+                          <Badge variant="outline" className="text-orange-600 border-orange-600">
+                            Archived
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-[#5C8E77] hover:bg-[#e6f7eb]"
-                        onClick={() => handleEditClick(instructor)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-[#5C8E77] hover:bg-[#e6f7eb]"
+                          onClick={() => handleEditClick(instructor)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className={`h-8 w-8 ${instructor.archived ? "text-green-600 hover:bg-green-50" : "text-orange-600 hover:bg-orange-50"}`}
+                          onClick={() => handleArchiveInstructor(instructor.id)}
+                          title={instructor.archived ? "Unarchive instructor" : "Archive instructor"}
+                        >
+                          {instructor.archived ? (
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 10l7-7m0 0l7 7m-7-7v18"
+                              />
+                            </svg>
+                          ) : (
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h8a2 2 0 002-2V8m-9 4h4"
+                              />
+                            </svg>
+                          )}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -237,7 +510,7 @@ export default function InstructorPage() {
       </Card>
 
       {/* Add Instructor Modal */}
-      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+      <Dialog open={isAddModalOpen} onOpenChange={handleAddModalClose}>
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
           <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
             <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Add New Instructor</DialogTitle>
@@ -255,70 +528,116 @@ export default function InstructorPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName" className="text-[#333]">
-                      First Name
+                      First Name <span className="text-red-500">*</span>
                     </Label>
-                    <Input id="firstName" placeholder="Enter first name" className="border-gray-300" />
+                    <Input
+                      id="firstName"
+                      placeholder="Enter first name"
+                      className={`border-gray-300 ${formErrors.firstName ? "border-red-500" : ""}`}
+                      value={formData.firstName}
+                      onChange={(e) => handleInputChange("firstName", e.target.value)}
+                    />
+                    {getFieldError("firstName")}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="lastName" className="text-[#333]">
-                      Last Name
+                      Last Name <span className="text-red-500">*</span>
                     </Label>
-                    <Input id="lastName" placeholder="Enter last name" className="border-gray-300" />
+                    <Input
+                      id="lastName"
+                      placeholder="Enter last name"
+                      className={`border-gray-300 ${formErrors.lastName ? "border-red-500" : ""}`}
+                      value={formData.lastName}
+                      onChange={(e) => handleInputChange("lastName", e.target.value)}
+                    />
+                    {getFieldError("lastName")}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="gender" className="text-[#333]">
-                      Gender
+                      Gender <span className="text-red-500">*</span>
                     </Label>
-                    <Select>
-                      <SelectTrigger id="gender" className="border-gray-300">
+                    <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
+                      <SelectTrigger
+                        id="gender"
+                        className={`border-gray-300 ${formErrors.gender ? "border-red-500" : ""}`}
+                      >
                         <SelectValue placeholder="Select gender" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="male">Male</SelectItem>
-                        <SelectItem value="female">Female</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
+                        <SelectItem value="Male">Male</SelectItem>
+                        <SelectItem value="Female">Female</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
                       </SelectContent>
                     </Select>
+                    {getFieldError("gender")}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="status" className="text-[#333]">
-                      Status
+                      Status <span className="text-red-500">*</span>
                     </Label>
-                    <Select>
-                      <SelectTrigger id="status" className="border-gray-300">
+                    <Select value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
+                      <SelectTrigger
+                        id="status"
+                        className={`border-gray-300 ${formErrors.status ? "border-red-500" : ""}`}
+                      >
                         <SelectValue placeholder="Select status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="available">Available</SelectItem>
-                        <SelectItem value="not-available">Not Available</SelectItem>
+                        <SelectItem value="Available">Available</SelectItem>
+                        <SelectItem value="Not Available">Not Available</SelectItem>
                       </SelectContent>
                     </Select>
+                    {getFieldError("status")}
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-[#333]">
-                    Email
+                    Email <span className="text-red-500">*</span>
                   </Label>
-                  <Input id="email" type="email" placeholder="Enter email address" className="border-gray-300" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="Enter email address"
+                    className={`border-gray-300 ${formErrors.email ? "border-red-500" : ""}`}
+                    value={formData.email}
+                    onChange={(e) => handleInputChange("email", e.target.value)}
+                  />
+                  {getFieldError("email")}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="contactNumber" className="text-[#333]">
-                    Contact Number
+                    Contact Number <span className="text-red-500">*</span>
                   </Label>
-                  <Input id="contactNumber" placeholder="Enter contact number" className="border-gray-300" />
+                  <Input
+                    id="contactNumber"
+                    placeholder="Enter contact number"
+                    className={`border-gray-300 ${formErrors.contactNumber ? "border-red-500" : ""}`}
+                    value={formData.contactNumber}
+                    onChange={(e) => handleInputChange("contactNumber", e.target.value)}
+                  />
+                  {getFieldError("contactNumber")}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="address" className="text-[#333]">
-                    Address
+                    Address <span className="text-red-500">*</span>
                   </Label>
-                  <Input id="address" placeholder="Enter address" className="border-gray-300" />
+                  <Input
+                    id="address"
+                    placeholder="Enter address"
+                    className={`border-gray-300 ${formErrors.address ? "border-red-500" : ""}`}
+                    value={formData.address}
+                    onChange={(e) => handleInputChange("address", e.target.value)}
+                  />
+                  {getFieldError("address")}
                 </div>
               </TabsContent>
               <TabsContent value="expertise" className="space-y-4">
                 <div className="space-y-3">
-                  <Label className="text-[#333]">Service Expertise</Label>
+                  <Label className="text-[#333]">
+                    Service Expertise <span className="text-red-500">*</span>
+                  </Label>
                   <p className="text-sm text-gray-500">
                     Select the dental services this instructor is qualified to supervise. The system will only assign
                     instructors to students if both the instructor is available and the case matches their expertise.
@@ -326,28 +645,35 @@ export default function InstructorPage() {
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     {dentalServices.map((service) => (
                       <div key={service} className="flex items-center space-x-2">
-                        <Checkbox id={`service-${service}`} />
+                        <Checkbox
+                          id={`service-${service}`}
+                          checked={formData.expertise.includes(service)}
+                          onCheckedChange={(checked) => handleExpertiseChange(service, checked as boolean)}
+                        />
                         <Label htmlFor={`service-${service}`} className="text-sm font-normal">
                           {service}
                         </Label>
                       </div>
                     ))}
                   </div>
+                  {getFieldError("expertise")}
                 </div>
               </TabsContent>
             </Tabs>
           </div>
           <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-            <Button variant="outline" onClick={() => setIsAddModalOpen(false)} className="border-gray-300">
+            <Button variant="outline" onClick={handleAddModalClose} className="border-gray-300 bg-transparent">
               Cancel
             </Button>
-            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white">Add Instructor</Button>
+            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={handleAddInstructor}>
+              Add Instructor
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Edit Instructor Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+      <Dialog open={isEditModalOpen} onOpenChange={handleEditModalClose}>
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
           {currentInstructor && (
             <>
@@ -367,112 +693,111 @@ export default function InstructorPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="edit-firstName" className="text-[#333]">
-                          First Name
+                          First Name <span className="text-red-500">*</span>
                         </Label>
                         <Input
                           id="edit-firstName"
-                          defaultValue={currentInstructor.firstName}
-                          onChange={(e) => setCurrentInstructor({ ...currentInstructor, firstName: e.target.value })}
-                          className="border-gray-300"
+                          value={formData.firstName}
+                          onChange={(e) => handleInputChange("firstName", e.target.value)}
+                          className={`border-gray-300 ${formErrors.firstName ? "border-red-500" : ""}`}
                         />
+                        {getFieldError("firstName")}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="edit-lastName" className="text-[#333]">
-                          Last Name
+                          Last Name <span className="text-red-500">*</span>
                         </Label>
                         <Input
                           id="edit-lastName"
-                          defaultValue={currentInstructor.lastName}
-                          onChange={(e) => setCurrentInstructor({ ...currentInstructor, lastName: e.target.value })}
-                          className="border-gray-300"
+                          value={formData.lastName}
+                          onChange={(e) => handleInputChange("lastName", e.target.value)}
+                          className={`border-gray-300 ${formErrors.lastName ? "border-red-500" : ""}`}
                         />
+                        {getFieldError("lastName")}
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="edit-gender" className="text-[#333]">
-                          Gender
+                          Gender <span className="text-red-500">*</span>
                         </Label>
-                        <Select
-                          defaultValue={currentInstructor.gender.toLowerCase()}
-                          onValueChange={(value) =>
-                            setCurrentInstructor({
-                              ...currentInstructor,
-                              gender: value.charAt(0).toUpperCase() + value.slice(1),
-                            })
-                          }
-                        >
-                          <SelectTrigger id="edit-gender" className="border-gray-300">
-                            <SelectValue placeholder={currentInstructor.gender} />
+                        <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
+                          <SelectTrigger
+                            id="edit-gender"
+                            className={`border-gray-300 ${formErrors.gender ? "border-red-500" : ""}`}
+                          >
+                            <SelectValue placeholder="Select gender" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="male">Male</SelectItem>
-                            <SelectItem value="female">Female</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="Male">Male</SelectItem>
+                            <SelectItem value="Female">Female</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
                           </SelectContent>
                         </Select>
+                        {getFieldError("gender")}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="edit-status" className="text-[#333]">
-                          Status
+                          Status <span className="text-red-500">*</span>
                         </Label>
-                        <Select
-                          defaultValue={currentInstructor.status.toLowerCase().replace(" ", "-")}
-                          onValueChange={(value) =>
-                            setCurrentInstructor({
-                              ...currentInstructor,
-                              status: value === "available" ? "Available" : "Not Available",
-                            })
-                          }
-                        >
-                          <SelectTrigger id="edit-status" className="border-gray-300">
-                            <SelectValue placeholder={currentInstructor.status} />
+                        <Select value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
+                          <SelectTrigger
+                            id="edit-status"
+                            className={`border-gray-300 ${formErrors.status ? "border-red-500" : ""}`}
+                          >
+                            <SelectValue placeholder="Select status" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="available">Available</SelectItem>
-                            <SelectItem value="not-available">Not Available</SelectItem>
+                            <SelectItem value="Available">Available</SelectItem>
+                            <SelectItem value="Not Available">Not Available</SelectItem>
                           </SelectContent>
                         </Select>
+                        {getFieldError("status")}
                       </div>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="edit-email" className="text-[#333]">
-                        Email
+                        Email <span className="text-red-500">*</span>
                       </Label>
                       <Input
                         id="edit-email"
                         type="email"
-                        defaultValue={currentInstructor.email}
-                        onChange={(e) => setCurrentInstructor({ ...currentInstructor, email: e.target.value })}
-                        className="border-gray-300"
+                        value={formData.email}
+                        onChange={(e) => handleInputChange("email", e.target.value)}
+                        className={`border-gray-300 ${formErrors.email ? "border-red-500" : ""}`}
                       />
+                      {getFieldError("email")}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="edit-contactNumber" className="text-[#333]">
-                        Contact Number
+                        Contact Number <span className="text-red-500">*</span>
                       </Label>
                       <Input
                         id="edit-contactNumber"
-                        defaultValue={currentInstructor.contactNumber}
-                        onChange={(e) => setCurrentInstructor({ ...currentInstructor, contactNumber: e.target.value })}
-                        className="border-gray-300"
+                        value={formData.contactNumber}
+                        onChange={(e) => handleInputChange("contactNumber", e.target.value)}
+                        className={`border-gray-300 ${formErrors.contactNumber ? "border-red-500" : ""}`}
                       />
+                      {getFieldError("contactNumber")}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="edit-address" className="text-[#333]">
-                        Address
+                        Address <span className="text-red-500">*</span>
                       </Label>
                       <Input
                         id="edit-address"
-                        defaultValue={currentInstructor.address}
-                        onChange={(e) => setCurrentInstructor({ ...currentInstructor, address: e.target.value })}
-                        className="border-gray-300"
+                        value={formData.address}
+                        onChange={(e) => handleInputChange("address", e.target.value)}
+                        className={`border-gray-300 ${formErrors.address ? "border-red-500" : ""}`}
                       />
+                      {getFieldError("address")}
                     </div>
                   </TabsContent>
                   <TabsContent value="expertise" className="space-y-4">
                     <div className="space-y-3">
-                      <Label className="text-[#333]">Service Expertise</Label>
+                      <Label className="text-[#333]">
+                        Service Expertise <span className="text-red-500">*</span>
+                      </Label>
                       <p className="text-sm text-gray-500">
                         Select the dental services this instructor is qualified to supervise. The system will only
                         assign instructors to students if both the instructor is available and the case matches their
@@ -483,16 +808,8 @@ export default function InstructorPage() {
                           <div key={service} className="flex items-center space-x-2">
                             <Checkbox
                               id={`edit-service-${service}`}
-                              checked={currentInstructor.expertise.includes(service)}
-                              onCheckedChange={(checked) => {
-                                const updatedExpertise = checked
-                                  ? [...currentInstructor.expertise, service]
-                                  : currentInstructor.expertise.filter((s) => s !== service)
-                                setCurrentInstructor({
-                                  ...currentInstructor,
-                                  expertise: updatedExpertise,
-                                })
-                              }}
+                              checked={formData.expertise.includes(service)}
+                              onCheckedChange={(checked) => handleExpertiseChange(service, checked as boolean)}
                             />
                             <Label htmlFor={`edit-service-${service}`} className="text-sm font-normal">
                               {service}
@@ -500,18 +817,16 @@ export default function InstructorPage() {
                           </div>
                         ))}
                       </div>
+                      {getFieldError("expertise")}
                     </div>
                   </TabsContent>
                 </Tabs>
               </div>
               <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-                <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="border-gray-300">
+                <Button variant="outline" onClick={handleEditModalClose} className="border-gray-300 bg-transparent">
                   Cancel
                 </Button>
-                <Button
-                  className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-                  onClick={() => handleUpdateInstructor(currentInstructor)}
-                >
+                <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={handleUpdateInstructor}>
                   Update Instructor
                 </Button>
               </DialogFooter>

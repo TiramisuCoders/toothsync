@@ -1,7 +1,7 @@
 "use client"
-
-import { useState } from "react"
-import { Calendar, Plus, Edit, Upload, User, Eye, Download, History, X } from "lucide-react"
+import type React from "react"
+import { useState, useRef } from "react"
+import { Calendar, Plus, Edit, Upload, User, Eye, Download, History, X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -19,23 +19,110 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+// import { supabase } from '@/lib/supabase'; // Commented out as it's not used in the provided snippet
+
+// Type definitions
+interface Clinician {
+  id: string
+  firstName: string
+  lastName: string
+  gender: string
+  status: string
+  birthday: string
+  email: string
+  contactNumber: string
+  address: string
+  yearLevel: string
+  section: string
+}
+
+interface AttendanceRecord {
+  id: number
+  date: string
+  timeIn: string
+  timeOut: string
+  sanitized: string
+  status: string
+}
+
+interface HistoryItem {
+  timestamp: string
+  user: string
+  action: string
+  description: string
+  details: {
+    date: string
+    procedure: string
+    patient: string
+    grade: string
+    remarks: string
+  }
+}
+
+interface Activity {
+  id: string
+  date: string
+  procedure: string
+  chair: string
+  instructor: string
+  patient: string
+  grade: string
+  remarks: string
+  status: string
+  firstName: string
+  lastName: string
+  history: HistoryItem[]
+  assessmentStatus?: string
+}
+
+interface NewClinician {
+  firstName: string
+  lastName: string
+  gender: string
+  birthday: string
+  email: string
+  contactNumber: string
+  address: string
+  yearLevel: string
+  section: string
+  status: string
+}
 
 export default function CliniciansPage() {
-  const [activeFilter, setActiveFilter] = useState("all")
+  const [activeFilter, setActiveFilter] = useState<"all" | "enrolled" | "not-enrolled">("all")
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
-  const [currentClinician, setCurrentClinician] = useState(null)
+  const [currentClinician, setCurrentClinician] = useState<Clinician | null>(null)
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
-  const [selectedClinician, setSelectedClinician] = useState(null)
+  const [selectedClinician, setSelectedClinician] = useState<Clinician | null>(null)
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
-  const [selectedActivity, setSelectedActivity] = useState(null)
-  const [activeTab, setActiveTab] = useState("activities")
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null)
+  const [activeTab, setActiveTab] = useState<"activities" | "attendance">("activities")
   const [isActivityEditModalOpen, setIsActivityEditModalOpen] = useState(false)
-  const [currentActivity, setCurrentActivity] = useState(null)
+  const [currentActivity, setCurrentActivity] = useState<Activity | null>(null)
 
-  // Sample data for clinicians
-  const [clinicians, setClinicians] = useState([
+  // Add these new state variables after the existing useState declarations
+  const [addSuccessMessage, setAddSuccessMessage] = useState<string>("")
+  const [uploadSuccessMessage, setUploadSuccessMessage] = useState<string>("")
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("") // New state for upload errors
+
+  const fileInputRef = useRef<HTMLInputElement>(null); // Add this line
+
+  // Form data state that persists across tabs
+  const [formData, setFormData] = useState<Partial<NewClinician>>({
+    yearLevel: "5th Year",
+    section: "A",
+  })
+
+  // Add form validation state after the existing useState declarations:
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Sample data for clinicians (replace with data fetched from Supabase in a real app)
+  const [clinicians, setClinicians] = useState<Clinician[]>([
     {
       id: "C2024-001",
       firstName: "Maria",
@@ -104,7 +191,7 @@ export default function CliniciansPage() {
   ])
 
   // Add sample attendance data
-  const [attendanceData] = useState([
+  const [attendanceData] = useState<AttendanceRecord[]>([
     {
       id: 1,
       date: "2025-05-08",
@@ -148,7 +235,7 @@ export default function CliniciansPage() {
   ])
 
   // Add sample activities data
-  const [activitiesData, setActivitiesData] = useState([
+  const [activitiesData, setActivitiesData] = useState<Activity[]>([
     {
       id: "A001",
       date: "2025-05-08",
@@ -318,39 +405,39 @@ export default function CliniciansPage() {
   ])
 
   // Function to handle edit button click
-  const handleEditClick = (clinician) => {
+  const handleEditClick = (clinician: Clinician) => {
     setCurrentClinician(clinician)
     setIsEditModalOpen(true)
   }
 
   // Function to handle view button click
-  const handleViewClick = (clinician) => {
+  const handleViewClick = (clinician: Clinician) => {
     setSelectedClinician(clinician)
     setIsViewModalOpen(true)
   }
 
   // Function to handle history button click
-  const handleHistoryClick = (activity) => {
+  const handleHistoryClick = (activity: Activity) => {
     setSelectedActivity(activity)
     setIsHistoryModalOpen(true)
   }
 
   // Function to handle activity edit button click
-  const handleActivityEditClick = (activity) => {
+  const handleActivityEditClick = (activity: Activity) => {
     setCurrentActivity(activity)
     setIsActivityEditModalOpen(true)
   }
 
   // Function to update clinician
-  const handleUpdateClinician = (updatedClinician) => {
+  const handleUpdateClinician = (updatedClinician: Clinician) => {
     setClinicians(clinicians.map((clinician) => (clinician.id === updatedClinician.id ? updatedClinician : clinician)))
     setIsEditModalOpen(false)
   }
 
   // Function to update activity
-  const handleUpdateActivity = (updatedActivity) => {
+  const handleUpdateActivity = (updatedActivity: Activity) => {
     // Create a new history entry
-    const newHistory = {
+    const newHistory: HistoryItem = {
       timestamp: new Date().toISOString(),
       user: "admin@example.com",
       action: "Updated",
@@ -363,44 +450,225 @@ export default function CliniciansPage() {
         remarks: updatedActivity.remarks || "",
       },
     }
-
     setActivitiesData(
       activitiesData.map((activity) =>
         activity.id === updatedActivity.id
           ? {
-              ...updatedActivity,
-              history: [newHistory, ...activity.history],
-            }
+            ...updatedActivity,
+            history: [newHistory, ...activity.history],
+          }
           : activity,
       ),
     )
     setIsActivityEditModalOpen(false)
   }
 
-  // Function to add new clinician
-  const handleAddClinician = (newClinician) => {
-    setClinicians([...clinicians, { ...newClinician, id: `C2024-00${clinicians.length + 1}` }])
-    setIsAddModalOpen(false)
+  // Function to update form data
+  const updateFormData = (field: keyof NewClinician, value: string) => {
+    setFormData((prev: Partial<NewClinician>) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
+
+  // Reset form when modal opens/closes
+  const resetForm = () => {
+    setFormData({
+      yearLevel: "5th Year",
+      section: "A",
+    })
+    setFormErrors({})
+  }
+
+  // Validation function with realistic required fields
+  const validateForm = (): Record<string, string> => {
+    const errors: Record<string, string> = {}
+    // Essential fields for a medical/dental student
+    if (!formData.firstName?.trim()) errors.firstName = "First name is required"
+    if (!formData.lastName?.trim()) errors.lastName = "Last name is required"
+    if (!formData.gender) errors.gender = "Gender is required for medical records"
+    if (!formData.birthday) errors.birthday = "Date of birth is required for age verification"
+    if (!formData.contactNumber?.trim()) errors.contactNumber = "Contact number is required for emergencies"
+    if (!formData.email?.trim()) errors.email = "Email is required for communication"
+    if (!formData.status) errors.status = "Enrollment status is required"
+    return errors
+  }
+
+  const handleAddClinicianSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setIsSubmitting(true)
+    setFormErrors({})
+    const errors = validateForm()
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors)
+      setIsSubmitting(false)
+      return
+    }
+    const newClinician: NewClinician = {
+      firstName: formData.firstName?.trim() || "",
+      lastName: formData.lastName?.trim() || "",
+      gender: formData.gender || "",
+      status: formData.status === "enrolled" ? "Enrolled" : "Not Enrolled",
+      birthday: formData.birthday || "",
+      email: formData.email?.trim() || "",
+      contactNumber: formData.contactNumber?.trim() || "",
+      address: formData.address?.trim() || "",
+      yearLevel: formData.yearLevel || "5th Year",
+      section: formData.section || "A",
+    }
+    handleAddClinician(newClinician)
+    setIsSubmitting(false)
+  }
+
+  const handleAddClinician = (newClinician: NewClinician) => {
+    const clinicianWithId: Clinician = {
+      ...newClinician,
+      id: `C2024-00${clinicians.length + 1}`,
+    }
+    setClinicians([...clinicians, clinicianWithId])
+    setAddSuccessMessage(`Successfully added ${newClinician.firstName} ${newClinician.lastName} to the system!`)
+    resetForm()
+    // Auto-close success message after 3 seconds
+    setTimeout(() => {
+      setAddSuccessMessage("")
+      setIsAddModalOpen(false)
+    }, 3000)
+  }
+
+  // Modified function to handle file selection and upload to API
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file && file.type === "text/csv") {
+      setSelectedFile(file)
+      setUploadErrorMessage("") // Clear any previous error
+      setUploadSuccessMessage("") // Clear any previous success
+    } else {
+      setSelectedFile(null)
+      setUploadErrorMessage("Please enter valid .csv file")
+      setUploadSuccessMessage("") // Clear any previous success
+    }
+  }
+
+  const processCSVFile = async () => {
+    if (!selectedFile) {
+      setUploadErrorMessage("Please enter valid .csv file")
+      return
+    }
+    setIsProcessingUpload(true)
+    setUploadSuccessMessage("")
+    setUploadErrorMessage("")
+
+    try {
+      const formData = new FormData()
+      formData.append("file", selectedFile) // Append the selected file to FormData
+
+      const response = await fetch("/api/upload-csv", {
+        method: "POST",
+        body: formData, // Correctly pass formData as the body
+      })
+
+      const responseBodyText = await response.text();
+      console.log("Raw API Response Text (frontend):", responseBodyText);
+
+      let parsedResult: { status?: string; message?: string } | null = null;
+      let finalStatus: string = "error";
+      let finalMessage: string = "An unknown error occurred.";
+
+      // Attempt to clean and parse the response
+      let cleanedText = responseBodyText;
+      if (responseBodyText.startsWith("Success: ")) {
+        cleanedText = responseBodyText.substring("Success: ".length);
+      }
+
+      try {
+        parsedResult = JSON.parse(cleanedText);
+        console.log("Parsed JSON Result (after cleaning):", parsedResult);
+      } catch (jsonError) {
+        console.error("Final JSON parsing failed after cleaning:", jsonError);
+        // If JSON parsing fails even after cleaning, fall back to text analysis
+        if (responseBodyText.includes("Import has been successful")) {
+          finalStatus = "success";
+          finalMessage = "Import has been successful.";
+        } else if (responseBodyText.includes("partial_success")) {
+          finalStatus = "partial_success";
+          finalMessage = "Import completed with some errors.";
+        } else if (responseBodyText.includes("error")) {
+          finalStatus = "error";
+          finalMessage = "There was an error during import.";
+        } else {
+          finalStatus = "unknown";
+          finalMessage = `Upload failed: Could not parse server response. Raw: ${responseBodyText.substring(0, 100)}...`;
+        }
+        setUploadErrorMessage(finalMessage);
+        setIsProcessingUpload(false);
+        return;
+      }
+
+      // Determine final status and message from parsedResult
+      if (parsedResult && typeof parsedResult === 'object' && parsedResult.status) {
+        finalStatus = parsedResult.status;
+        finalMessage = parsedResult.message || "No message provided.";
+      } else {
+        // Fallback if parsed result doesn't conform to expected structure (e.g., missing 'status')
+        console.warn("Parsed result does not conform to expected interface or status is missing:", parsedResult);
+        if (responseBodyText.includes("Import has been successful")) {
+          finalStatus = "success";
+          finalMessage = "Import has been successful.";
+        } else if (responseBodyText.includes("partial_success")) {
+          finalStatus = "partial_success";
+          finalMessage = "Import completed with some errors.";
+        } else if (responseBodyText.includes("error")) {
+          finalStatus = "error";
+          finalMessage = "There was an error during import.";
+        } else {
+          finalStatus = "unknown";
+          finalMessage = `Upload failed: Unrecognized server response structure. Raw: ${responseBodyText.substring(0, 100)}...`;
+        }
+      }
+
+      // Now use finalStatus and finalMessage for display logic
+      if (response.ok) {
+        if (finalStatus === "success") {
+          setUploadSuccessMessage(finalMessage)
+          setSelectedFile(null)
+          setTimeout(() => {
+            setUploadSuccessMessage("")
+            setIsUploadModalOpen(false)
+          }, 3000)
+        } else if (finalStatus === "partial_success") {
+          setUploadErrorMessage(finalMessage)
+        } else if (finalStatus === "error") {
+          setUploadErrorMessage(finalMessage)
+        } else {
+          // This covers 'unknown' status or any other unexpected status from the backend
+          setUploadErrorMessage(finalMessage);
+        }
+      } else {
+        // If response.ok is false, it's an HTTP error (e.g., 500, 400)
+        setUploadErrorMessage(finalMessage);
+      }
+    } catch (error) {
+      console.error("Error during CSV upload or processing (outer catch):", error);
+      setUploadErrorMessage("There's an error while uploading the file due to an unexpected client-side issue.");
+    } finally {
+      setIsProcessingUpload(false);
+    }
   }
 
   // Function to export activities to CSV
   const exportActivitiesToCSV = () => {
     if (!selectedClinician) return
-
     // Create CSV header
     const headers = ["ID", "Date", "Procedure", "Patient", "Chair", "Instructor", "Grade", "Status", "Remarks"].join(
       ",",
     )
-
     // Create CSV rows
     const rows = activitiesData.map(
       (activity) =>
         `"${activity.id}","${activity.date}","${activity.procedure}","${activity.patient}","${activity.chair}","${activity.instructor}","${activity.grade}","${activity.status}","${activity.remarks}"`,
     )
-
     // Combine header and rows
     const csv = [headers, ...rows].join("\n")
-
     // Create a blob and download
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
@@ -421,19 +689,15 @@ export default function CliniciansPage() {
   // Function to export attendance to CSV
   const exportAttendanceToCSV = () => {
     if (!selectedClinician) return
-
     // Create CSV header
     const headers = ["Date", "Time In", "Time Out", "Sanitized", "Status"].join(",")
-
     // Create CSV rows
     const rows = attendanceData.map(
       (attendance) =>
         `"${attendance.date}","${attendance.timeIn}","${attendance.timeOut}","${attendance.sanitized}","${attendance.status}"`,
     )
-
     // Combine header and rows
     const csv = [headers, ...rows].join("\n")
-
     // Create a blob and download
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
@@ -523,7 +787,12 @@ export default function CliniciansPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setIsAddModalOpen(true)}>
+              <DropdownMenuItem
+                onClick={() => {
+                  resetForm()
+                  setIsAddModalOpen(true)
+                }}
+              >
                 <User className="mr-2 h-4 w-4" />
                 <span>Add Manually</span>
               </DropdownMenuItem>
@@ -602,7 +871,13 @@ export default function CliniciansPage() {
       </Card>
 
       {/* Add Clinician Modal */}
-      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+      <Dialog
+        open={isAddModalOpen}
+        onOpenChange={(open) => {
+          setIsAddModalOpen(open)
+          if (!open) resetForm()
+        }}
+      >
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
           <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
             <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Add New Clinician</DialogTitle>
@@ -610,124 +885,197 @@ export default function CliniciansPage() {
               Enter the clinician details to add them to the system.
             </DialogDescription>
           </DialogHeader>
-          <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
-            <Tabs defaultValue="personal" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="personal">Personal Information</TabsTrigger>
-                <TabsTrigger value="academic">Academic Information</TabsTrigger>
-              </TabsList>
-              <TabsContent value="personal" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName" className="text-[#333]">
-                      First Name
-                    </Label>
-                    <Input id="firstName" placeholder="Enter first name" className="border-gray-300" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName" className="text-[#333]">
-                      Last Name
-                    </Label>
-                    <Input id="lastName" placeholder="Enter last name" className="border-gray-300" />
-                  </div>
+          {addSuccessMessage && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-6 mt-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">{addSuccessMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <form onSubmit={handleAddClinicianSubmit}>
+            <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
+              <Tabs defaultValue="personal" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <TabsTrigger value="personal">Personal Information</TabsTrigger>
+                  <TabsTrigger value="academic">Academic Information</TabsTrigger>
+                </TabsList>
+                <TabsContent value="personal" className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName" className="text-[#333]">
+                        First Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="firstName"
+                        value={formData.firstName || ""}
+                        onChange={(e) => updateFormData("firstName", e.target.value)}
+                        placeholder="Enter first name"
+                        className={formErrors.firstName ? "border-red-500" : "border-gray-300"}
+                      />
+                      {formErrors.firstName && <p className="text-sm text-red-500">{formErrors.firstName}</p>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName" className="text-[#333]">
+                        Last Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="lastName"
+                        value={formData.lastName || ""}
+                        onChange={(e) => updateFormData("lastName", e.target.value)}
+                        placeholder="Enter last name"
+                        className={formErrors.lastName ? "border-red-500" : "border-gray-300"}
+                      />
+                      {formErrors.lastName && <p className="text-sm text-red-500">{formErrors.lastName}</p>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="gender" className="text-[#333]">
+                        Gender <span className="text-red-500">*</span>
+                      </Label>
+                      <Select value={formData.gender || ""} onValueChange={(value) => updateFormData("gender", value)}>
+                        <SelectTrigger id="gender" className={formErrors.gender ? "border-red-500" : "border-gray-300"}>
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {formErrors.gender && <p className="text-sm text-red-500">{formErrors.gender}</p>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="birthday" className="text-[#333]">
+                        Date of Birth <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="birthday"
+                        type="date"
+                        value={formData.birthday || ""}
+                        onChange={(e) => updateFormData("birthday", e.target.value)}
+                        className={formErrors.birthday ? "border-red-500" : "border-gray-300"}
+                      />
+                      {formErrors.birthday && <p className="text-sm text-red-500">{formErrors.birthday}</p>}
+                    </div>
+                  </div>
                   <div className="space-y-2">
-                    <Label htmlFor="gender" className="text-[#333]">
-                      Gender
+                    <Label htmlFor="email" className="text-[#333]">
+                      Email <span className="text-red-500">*</span>
                     </Label>
-                    <Select>
-                      <SelectTrigger id="gender" className="border-gray-300">
-                        <SelectValue placeholder="Select gender" />
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email || ""}
+                      onChange={(e) => updateFormData("email", e.target.value)}
+                      placeholder="Enter email address"
+                      className={formErrors.email ? "border-red-500" : "border-gray-300"}
+                    />
+                    {formErrors.email && <p className="text-sm text-red-500">{formErrors.email}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="contactNumber" className="text-[#333]">
+                      Contact Number <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="contactNumber"
+                      value={formData.contactNumber || ""}
+                      onChange={(e) => updateFormData("contactNumber", e.target.value)}
+                      placeholder="Enter contact number"
+                      className={formErrors.contactNumber ? "border-red-500" : "border-gray-300"}
+                    />
+                    {formErrors.contactNumber && <p className="text-sm text-red-500">{formErrors.contactNumber}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="address" className="text-[#333]">
+                      Address
+                    </Label>
+                    <Input
+                      id="address"
+                      value={formData.address || ""}
+                      onChange={(e) => updateFormData("address", e.target.value)}
+                      placeholder="Enter address"
+                      className="border-gray-300"
+                    />
+                  </div>
+                </TabsContent>
+                <TabsContent value="academic" className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="yearLevel" className="text-[#333]">
+                      Year Level
+                    </Label>
+                    <Select
+                      value={formData.yearLevel || "5th Year"}
+                      onValueChange={(value) => updateFormData("yearLevel", value)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select Year Level" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="male">Male</SelectItem>
-                        <SelectItem value="female">Female</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
+                        <SelectItem value="5th Year">5th Year</SelectItem>
+                        <SelectItem value="6th Year">6th Year</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="birthday" className="text-[#333]">
-                      Birthday
+                    <Label htmlFor="section" className="text-[#333]">
+                      Section
                     </Label>
-                    <Input id="birthday" type="date" className="border-gray-300" />
+                    <Select value={formData.section || "A"} onValueChange={(value) => updateFormData("section", value)}>
+                      <SelectTrigger id="section" className="border-gray-300">
+                        <SelectValue placeholder="Select section" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="A">Section A</SelectItem>
+                        <SelectItem value="B">Section B</SelectItem>
+                        <SelectItem value="C">Section C</SelectItem>
+                        <SelectItem value="D">Section D</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-[#333]">
-                    Email
-                  </Label>
-                  <Input id="email" type="email" placeholder="Enter email address" className="border-gray-300" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contactNumber" className="text-[#333]">
-                    Contact Number
-                  </Label>
-                  <Input id="contactNumber" placeholder="Enter contact number" className="border-gray-300" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address" className="text-[#333]">
-                    Address
-                  </Label>
-                  <Input id="address" placeholder="Enter address" className="border-gray-300" />
-                </div>
-              </TabsContent>
-              <TabsContent value="academic" className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="yearLevel" className="text-[#333]">
-                    Year Level
-                  </Label>
-                  <Select defaultValue="all">
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Year Level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Years</SelectItem>
-                      <SelectItem value="5">5th Year</SelectItem>
-                      <SelectItem value="6">6th Year</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="section" className="text-[#333]">
-                    Section
-                  </Label>
-                  <Select>
-                    <SelectTrigger id="section" className="border-gray-300">
-                      <SelectValue placeholder="Select section" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="A">Section A</SelectItem>
-                      <SelectItem value="B">Section B</SelectItem>
-                      <SelectItem value="C">Section C</SelectItem>
-                      <SelectItem value="D">Section D</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="status" className="text-[#333]">
-                    Enrollment Status
-                  </Label>
-                  <Select>
-                    <SelectTrigger id="status" className="border-gray-300">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="enrolled">Enrolled</SelectItem>
-                      <SelectItem value="not-enrolled">Not Enrolled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-            <Button variant="outline" onClick={() => setIsAddModalOpen(false)} className="border-gray-300">
-              Cancel
-            </Button>
-            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white">Add Clinician</Button>
-          </DialogFooter>
+                  <div className="space-y-2">
+                    <Label htmlFor="status" className="text-[#333]">
+                      Enrollment Status <span className="text-red-500">*</span>
+                    </Label>
+                    <Select value={formData.status || ""} onValueChange={(value) => updateFormData("status", value)}>
+                      <SelectTrigger id="status" className={formErrors.status ? "border-red-500" : "border-gray-300"}>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="enrolled">Enrolled</SelectItem>
+                        <SelectItem value="not-enrolled">Not Enrolled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {formErrors.status && <p className="text-sm text-red-500">{formErrors.status}</p>}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+            <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                className="border-gray-300"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-[#5C8E77] hover:bg-[#406E58] text-white" disabled={isSubmitting}>
+                {isSubmitting ? "Adding..." : "Add Clinician"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -942,19 +1290,70 @@ export default function CliniciansPage() {
               Upload a CSV file containing clinician information.
             </DialogDescription>
           </DialogHeader>
+          {uploadSuccessMessage && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-6 mt-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800 break-words">{uploadSuccessMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {uploadErrorMessage && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mx-6 mt-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800 break-words">{uploadErrorMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="px-6 py-8 flex flex-col items-center justify-center">
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 w-full flex flex-col items-center justify-center">
               <Upload className="h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium text-[#333] mb-2">Drag and drop your CSV file</h3>
-              <p className="text-sm text-gray-500 mb-4 text-center">or click to browse files from your computer</p>
-              <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white">Browse Files</Button>
+              <h3 className="text-lg font-medium text-[#333] mb-2">
+                {selectedFile ? selectedFile.name : "Drag and drop your CSV file"}
+              </h3>
+              <p className="text-sm text-gray-500 mb-4 text-center">
+                {selectedFile
+                  ? "File selected. Click upload to process."
+                  : "or click to browse files from your computer"}
+              </p>
+              <input type="file" accept=".csv" onChange={handleFileSelect} className="hidden" id="csv-upload" ref={fileInputRef} />
+              <label htmlFor="csv-upload">
+                <Button
+                  className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()} // Add this onClick handler
+                >
+                  Browse Files
+                </Button>
+              </label>
             </div>
             <div className="mt-6 w-full">
               <h4 className="text-sm font-medium text-[#333] mb-2">CSV Format Requirements:</h4>
               <ul className="text-xs text-gray-500 list-disc pl-5 space-y-1">
                 <li>First row must contain column headers</li>
-                <li>Required columns: First Name, Last Name, Gender, Status</li>
-                <li>Optional columns: Birthday, Email, Contact Number, Address, Year Level, Section</li>
+                <li>Required columns: First Name, Last Name, Gender, Birthday, Email, Contact Number, Status</li>
+                <li>Optional columns: Address, Year Level, Section</li>
                 <li>Status must be either "Enrolled" or "Not Enrolled"</li>
               </ul>
             </div>
@@ -963,13 +1362,19 @@ export default function CliniciansPage() {
             <Button variant="outline" onClick={() => setIsUploadModalOpen(false)} className="border-gray-300">
               Cancel
             </Button>
-            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white">Upload</Button>
+            <Button
+              className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
+              onClick={processCSVFile}
+              disabled={!selectedFile || isProcessingUpload}
+            >
+              {isProcessingUpload ? "Processing..." : "Upload"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Clinician Records View Modal */}
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen} className="max-w-4xl">
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
         <DialogContent className="sm:max-w-[900px] p-0 overflow-hidden rounded-lg">
           {selectedClinician && (
             <>
@@ -1011,7 +1416,11 @@ export default function CliniciansPage() {
                     <p className="text-[#333] font-medium">{selectedClinician.contactNumber}</p>
                   </div>
                 </div>
-                <Tabs defaultValue="activities" className="w-full" onValueChange={(value) => setActiveTab(value)}>
+                <Tabs
+                  defaultValue="activities"
+                  className="w-full"
+                  onValueChange={(value) => setActiveTab(value as "activities" | "attendance")}
+                >
                   <div className="flex items-center justify-between mb-4">
                     <TabsList className="grid w-[300px] grid-cols-2">
                       <TabsTrigger value="activities">Activities</TabsTrigger>
@@ -1057,13 +1466,12 @@ export default function CliniciansPage() {
                               <TableCell className="text-[#333]">{activity.grade}</TableCell>
                               <TableCell>
                                 <div
-                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${
-                                    activity.status === "Completed"
+                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${activity.status === "Completed"
                                       ? "bg-blue-50 text-blue-700"
                                       : activity.status === "In Progress"
                                         ? "bg-yellow-50 text-yellow-700"
                                         : "bg-gray-50 text-gray-700"
-                                  }`}
+                                    }`}
                                 >
                                   {activity.status}
                                 </div>
@@ -1103,7 +1511,7 @@ export default function CliniciansPage() {
                             <TableHead className="font-medium text-[#333]">Time In</TableHead>
                             <TableHead className="font-medium text-[#333]">Time Out</TableHead>
                             <TableHead className="font-medium text-[#333]">Sanitized</TableHead>
-                            <TableHead className="font-medium text-[#333]">Status</TableHead>
+                            <TableHead className className="font-medium text-[#333]">Status</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1115,11 +1523,10 @@ export default function CliniciansPage() {
                               <TableCell className="text-[#333]">{attendance.sanitized}</TableCell>
                               <TableCell>
                                 <div
-                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${
-                                    attendance.status === "Present"
+                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${attendance.status === "Present"
                                       ? "bg-[#5C8E77]/10 text-[#5C8E77]"
                                       : "bg-red-50 text-red-700"
-                                  }`}
+                                    }`}
                                 >
                                   {attendance.status}
                                 </div>
@@ -1173,7 +1580,7 @@ export default function CliniciansPage() {
                   </div>
                 </div>
                 <div className="relative border-l-2 border-gray-200 pl-6 space-y-8 py-2">
-                  {selectedActivity.history.map((historyItem, index) => (
+                  {selectedActivity.history.map((historyItem: HistoryItem, index: number) => (
                     <div key={index} className="relative">
                       {/* Timeline dot */}
                       <div className="absolute -left-[29px] top-0 h-4 w-4 rounded-full bg-[#5C8E77]"></div>
@@ -1198,11 +1605,10 @@ export default function CliniciansPage() {
                           </div>
                         </div>
                         <div
-                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium mb-3 ${
-                            historyItem.action === "Updated"
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium mb-3 ${historyItem.action === "Updated"
                               ? "bg-blue-100 text-blue-700"
                               : "bg-green-100 text-green-700"
-                          }`}
+                            }`}
                         >
                           {historyItem.action === "Updated" ? (
                             <Edit className="h-3 w-3" />
@@ -1289,7 +1695,10 @@ export default function CliniciansPage() {
                           <Label htmlFor="edit-chair" className="text-[#333]">
                             Chair
                           </Label>
-                          <Select defaultValue={currentActivity.chair}>
+                          <Select
+                            defaultValue={currentActivity.chair}
+                            onValueChange={(value) => setCurrentActivity({ ...currentActivity, chair: value })}
+                          >
                             <SelectTrigger id="edit-chair" className="border-gray-300">
                               <SelectValue placeholder={currentActivity.chair} />
                             </SelectTrigger>
@@ -1306,7 +1715,10 @@ export default function CliniciansPage() {
                           <Label htmlFor="edit-instructor" className="text-[#333]">
                             Instructor
                           </Label>
-                          <Select defaultValue={currentActivity.instructor}>
+                          <Select
+                            defaultValue={currentActivity.instructor}
+                            onValueChange={(value) => setCurrentActivity({ ...currentActivity, instructor: value })}
+                          >
                             <SelectTrigger id="edit-instructor" className="border-gray-300">
                               <SelectValue placeholder={currentActivity.instructor} />
                             </SelectTrigger>
@@ -1334,7 +1746,10 @@ export default function CliniciansPage() {
                         <Label htmlFor="edit-procedure" className="text-[#333]">
                           Procedure
                         </Label>
-                        <Select defaultValue={currentActivity.procedure}>
+                        <Select
+                          defaultValue={currentActivity.procedure}
+                          onValueChange={(value) => setCurrentActivity({ ...currentActivity, procedure: value })}
+                        >
                           <SelectTrigger id="edit-procedure" className="border-gray-300">
                             <SelectValue placeholder={currentActivity.procedure} />
                           </SelectTrigger>
@@ -1425,7 +1840,12 @@ export default function CliniciansPage() {
                           <Label htmlFor="assessment-status" className="text-[#333]">
                             Assessment Status
                           </Label>
-                          <Select defaultValue={currentActivity.assessmentStatus || "in-progress"}>
+                          <Select
+                            defaultValue={currentActivity.assessmentStatus || "in-progress"}
+                            onValueChange={(value) =>
+                              setCurrentActivity({ ...currentActivity, assessmentStatus: value })
+                            }
+                          >
                             <SelectTrigger id="assessment-status" className="border-gray-300">
                               <SelectValue placeholder="Select status" />
                             </SelectTrigger>
