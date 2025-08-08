@@ -1,9 +1,7 @@
 "use client"
-
 import type React from "react"
-
-import { useState } from "react"
-import { Calendar, Plus, Edit, Upload, User, Eye, Download, History, X } from "lucide-react"
+import { useState, useRef } from "react"
+import { Calendar, Plus, Edit, Upload, User, Eye, Download, History, X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -21,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+// import { supabase } from '@/lib/supabase'; // Commented out as it's not used in the provided snippet
 
 // Type definitions
 interface Clinician {
@@ -108,6 +107,9 @@ export default function CliniciansPage() {
   const [uploadSuccessMessage, setUploadSuccessMessage] = useState<string>("")
   const [isProcessingUpload, setIsProcessingUpload] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("") // New state for upload errors
+
+  const fileInputRef = useRef<HTMLInputElement>(null); // Add this line
 
   // Form data state that persists across tabs
   const [formData, setFormData] = useState<Partial<NewClinician>>({
@@ -119,7 +121,7 @@ export default function CliniciansPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Sample data for clinicians
+  // Sample data for clinicians (replace with data fetched from Supabase in a real app)
   const [clinicians, setClinicians] = useState<Clinician[]>([
     {
       id: "C2024-001",
@@ -448,14 +450,13 @@ export default function CliniciansPage() {
         remarks: updatedActivity.remarks || "",
       },
     }
-
     setActivitiesData(
       activitiesData.map((activity) =>
         activity.id === updatedActivity.id
           ? {
-              ...updatedActivity,
-              history: [newHistory, ...activity.history],
-            }
+            ...updatedActivity,
+            history: [newHistory, ...activity.history],
+          }
           : activity,
       ),
     )
@@ -482,7 +483,6 @@ export default function CliniciansPage() {
   // Validation function with realistic required fields
   const validateForm = (): Record<string, string> => {
     const errors: Record<string, string> = {}
-
     // Essential fields for a medical/dental student
     if (!formData.firstName?.trim()) errors.firstName = "First name is required"
     if (!formData.lastName?.trim()) errors.lastName = "Last name is required"
@@ -491,7 +491,6 @@ export default function CliniciansPage() {
     if (!formData.contactNumber?.trim()) errors.contactNumber = "Contact number is required for emergencies"
     if (!formData.email?.trim()) errors.email = "Email is required for communication"
     if (!formData.status) errors.status = "Enrollment status is required"
-
     return errors
   }
 
@@ -499,15 +498,12 @@ export default function CliniciansPage() {
     event.preventDefault()
     setIsSubmitting(true)
     setFormErrors({})
-
     const errors = validateForm()
-
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors)
       setIsSubmitting(false)
       return
     }
-
     const newClinician: NewClinician = {
       firstName: formData.firstName?.trim() || "",
       lastName: formData.lastName?.trim() || "",
@@ -520,7 +516,6 @@ export default function CliniciansPage() {
       yearLevel: formData.yearLevel || "5th Year",
       section: formData.section || "A",
     }
-
     handleAddClinician(newClinician)
     setIsSubmitting(false)
   }
@@ -533,7 +528,6 @@ export default function CliniciansPage() {
     setClinicians([...clinicians, clinicianWithId])
     setAddSuccessMessage(`Successfully added ${newClinician.firstName} ${newClinician.lastName} to the system!`)
     resetForm()
-
     // Auto-close success message after 3 seconds
     setTimeout(() => {
       setAddSuccessMessage("")
@@ -541,76 +535,123 @@ export default function CliniciansPage() {
     }, 3000)
   }
 
-  // Add this new function after handleAddClinician
+  // Modified function to handle file selection and upload to API
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file && file.type === "text/csv") {
       setSelectedFile(file)
+      setUploadErrorMessage("") // Clear any previous error
+      setUploadSuccessMessage("") // Clear any previous success
     } else {
-      alert("Please select a valid CSV file.")
+      setSelectedFile(null)
+      setUploadErrorMessage("Please enter valid .csv file")
+      setUploadSuccessMessage("") // Clear any previous success
     }
   }
 
   const processCSVFile = async () => {
-    if (!selectedFile) return
-
+    if (!selectedFile) {
+      setUploadErrorMessage("Please enter valid .csv file")
+      return
+    }
     setIsProcessingUpload(true)
+    setUploadSuccessMessage("")
+    setUploadErrorMessage("")
 
     try {
-      const text = await selectedFile.text()
-      const lines = text.split("\n")
-      const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""))
+      const formData = new FormData()
+      formData.append("file", selectedFile) // Append the selected file to FormData
 
-      const newClinicians: Clinician[] = []
-      let successCount = 0
-      let errorCount = 0
+      const response = await fetch("/api/upload-csv", {
+        method: "POST",
+        body: formData, // Correctly pass formData as the body
+      })
 
-      for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim()) {
-          const values = lines[i].split(",").map((v) => v.trim().replace(/"/g, ""))
+      const responseBodyText = await response.text();
+      console.log("Raw API Response Text (frontend):", responseBodyText);
 
-          try {
-            const clinician: Clinician = {
-              id: `C2024-${String(clinicians.length + newClinicians.length + 1).padStart(3, "0")}`,
-              firstName: values[headers.indexOf("First Name")] || "",
-              lastName: values[headers.indexOf("Last Name")] || "",
-              gender: values[headers.indexOf("Gender")] || "",
-              status: values[headers.indexOf("Status")] || "Not Enrolled",
-              birthday: values[headers.indexOf("Birthday")] || "",
-              email: values[headers.indexOf("Email")] || "",
-              contactNumber: values[headers.indexOf("Contact Number")] || "",
-              address: values[headers.indexOf("Address")] || "",
-              yearLevel: values[headers.indexOf("Year Level")] || "5th Year",
-              section: values[headers.indexOf("Section")] || "A",
-            }
+      let parsedResult: { status?: string; message?: string } | null = null;
+      let finalStatus: string = "error";
+      let finalMessage: string = "An unknown error occurred.";
 
-            if (clinician.firstName && clinician.lastName) {
-              newClinicians.push(clinician)
-              successCount++
-            } else {
-              errorCount++
-            }
-          } catch (error) {
-            errorCount++
-          }
+      // Attempt to clean and parse the response
+      let cleanedText = responseBodyText;
+      if (responseBodyText.startsWith("Success: ")) {
+        cleanedText = responseBodyText.substring("Success: ".length);
+      }
+
+      try {
+        parsedResult = JSON.parse(cleanedText);
+        console.log("Parsed JSON Result (after cleaning):", parsedResult);
+      } catch (jsonError) {
+        console.error("Final JSON parsing failed after cleaning:", jsonError);
+        // If JSON parsing fails even after cleaning, fall back to text analysis
+        if (responseBodyText.includes("Import has been successful")) {
+          finalStatus = "success";
+          finalMessage = "Import has been successful.";
+        } else if (responseBodyText.includes("partial_success")) {
+          finalStatus = "partial_success";
+          finalMessage = "Import completed with some errors.";
+        } else if (responseBodyText.includes("error")) {
+          finalStatus = "error";
+          finalMessage = "There was an error during import.";
+        } else {
+          finalStatus = "unknown";
+          finalMessage = `Upload failed: Could not parse server response. Raw: ${responseBodyText.substring(0, 100)}...`;
+        }
+        setUploadErrorMessage(finalMessage);
+        setIsProcessingUpload(false);
+        return;
+      }
+
+      // Determine final status and message from parsedResult
+      if (parsedResult && typeof parsedResult === 'object' && parsedResult.status) {
+        finalStatus = parsedResult.status;
+        finalMessage = parsedResult.message || "No message provided.";
+      } else {
+        // Fallback if parsed result doesn't conform to expected structure (e.g., missing 'status')
+        console.warn("Parsed result does not conform to expected interface or status is missing:", parsedResult);
+        if (responseBodyText.includes("Import has been successful")) {
+          finalStatus = "success";
+          finalMessage = "Import has been successful.";
+        } else if (responseBodyText.includes("partial_success")) {
+          finalStatus = "partial_success";
+          finalMessage = "Import completed with some errors.";
+        } else if (responseBodyText.includes("error")) {
+          finalStatus = "error";
+          finalMessage = "There was an error during import.";
+        } else {
+          finalStatus = "unknown";
+          finalMessage = `Upload failed: Unrecognized server response structure. Raw: ${responseBodyText.substring(0, 100)}...`;
         }
       }
 
-      setClinicians([...clinicians, ...newClinicians])
-      setUploadSuccessMessage(
-        `Successfully uploaded ${successCount} clinicians! ${errorCount > 0 ? `${errorCount} records had errors and were skipped.` : ""}`,
-      )
-      setSelectedFile(null)
-
-      // Auto-close after 4 seconds
-      setTimeout(() => {
-        setUploadSuccessMessage("")
-        setIsUploadModalOpen(false)
-      }, 4000)
+      // Now use finalStatus and finalMessage for display logic
+      if (response.ok) {
+        if (finalStatus === "success") {
+          setUploadSuccessMessage(finalMessage)
+          setSelectedFile(null)
+          setTimeout(() => {
+            setUploadSuccessMessage("")
+            setIsUploadModalOpen(false)
+          }, 3000)
+        } else if (finalStatus === "partial_success") {
+          setUploadErrorMessage(finalMessage)
+        } else if (finalStatus === "error") {
+          setUploadErrorMessage(finalMessage)
+        } else {
+          // This covers 'unknown' status or any other unexpected status from the backend
+          setUploadErrorMessage(finalMessage);
+        }
+      } else {
+        // If response.ok is false, it's an HTTP error (e.g., 500, 400)
+        setUploadErrorMessage(finalMessage);
+      }
     } catch (error) {
-      alert("Error processing CSV file. Please check the format and try again.")
+      console.error("Error during CSV upload or processing (outer catch):", error);
+      setUploadErrorMessage("There's an error while uploading the file due to an unexpected client-side issue.");
     } finally {
-      setIsProcessingUpload(false)
+      setIsProcessingUpload(false);
     }
   }
 
@@ -1262,7 +1303,25 @@ export default function CliniciansPage() {
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-green-800">{uploadSuccessMessage}</p>
+                  <p className="text-sm font-medium text-green-800 break-words">{uploadSuccessMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {uploadErrorMessage && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mx-6 mt-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800 break-words">{uploadErrorMessage}</p>
                 </div>
               </div>
             </div>
@@ -1278,9 +1337,13 @@ export default function CliniciansPage() {
                   ? "File selected. Click upload to process."
                   : "or click to browse files from your computer"}
               </p>
-              <input type="file" accept=".csv" onChange={handleFileSelect} className="hidden" id="csv-upload" />
+              <input type="file" accept=".csv" onChange={handleFileSelect} className="hidden" id="csv-upload" ref={fileInputRef} />
               <label htmlFor="csv-upload">
-                <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" type="button">
+                <Button
+                  className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()} // Add this onClick handler
+                >
                   Browse Files
                 </Button>
               </label>
@@ -1403,13 +1466,12 @@ export default function CliniciansPage() {
                               <TableCell className="text-[#333]">{activity.grade}</TableCell>
                               <TableCell>
                                 <div
-                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${
-                                    activity.status === "Completed"
+                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${activity.status === "Completed"
                                       ? "bg-blue-50 text-blue-700"
                                       : activity.status === "In Progress"
                                         ? "bg-yellow-50 text-yellow-700"
                                         : "bg-gray-50 text-gray-700"
-                                  }`}
+                                    }`}
                                 >
                                   {activity.status}
                                 </div>
@@ -1449,7 +1511,7 @@ export default function CliniciansPage() {
                             <TableHead className="font-medium text-[#333]">Time In</TableHead>
                             <TableHead className="font-medium text-[#333]">Time Out</TableHead>
                             <TableHead className="font-medium text-[#333]">Sanitized</TableHead>
-                            <TableHead className="font-medium text-[#333]">Status</TableHead>
+                            <TableHead className className="font-medium text-[#333]">Status</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1461,11 +1523,10 @@ export default function CliniciansPage() {
                               <TableCell className="text-[#333]">{attendance.sanitized}</TableCell>
                               <TableCell>
                                 <div
-                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${
-                                    attendance.status === "Present"
+                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${attendance.status === "Present"
                                       ? "bg-[#5C8E77]/10 text-[#5C8E77]"
                                       : "bg-red-50 text-red-700"
-                                  }`}
+                                    }`}
                                 >
                                   {attendance.status}
                                 </div>
@@ -1544,11 +1605,10 @@ export default function CliniciansPage() {
                           </div>
                         </div>
                         <div
-                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium mb-3 ${
-                            historyItem.action === "Updated"
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium mb-3 ${historyItem.action === "Updated"
                               ? "bg-blue-100 text-blue-700"
                               : "bg-green-100 text-green-700"
-                          }`}
+                            }`}
                         >
                           {historyItem.action === "Updated" ? (
                             <Edit className="h-3 w-3" />
