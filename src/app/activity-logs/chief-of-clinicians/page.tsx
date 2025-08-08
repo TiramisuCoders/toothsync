@@ -135,7 +135,7 @@ export default function ActivityLogsPage() {
   }
 
   return (
-     <div className="min-h-screen bg-[#f8f9fa] p-6">
+      <div className="flex flex-col gap-6">
         {/* Page Title */}
         <div>
           <h2 className="text-2xl font-semibold text-[#333]">Activity Logs</h2>
