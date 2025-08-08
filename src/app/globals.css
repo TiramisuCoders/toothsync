@@ -99,6 +99,8 @@
   body {
     @apply bg-background text-foreground;
     font-family: "Poppins", sans-serif;
+    margin: 0;
+    padding: 0;
   }
 
   h1,

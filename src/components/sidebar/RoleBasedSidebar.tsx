@@ -37,6 +37,8 @@ const getIconForTitle = (title: string): LucideIcon => {
       return Calendar
     case "Clinicians":
       return Users
+    case "Clerks":
+      return Users
     case "Activities":
       return FileText
     case "Dental Chairs":
@@ -65,6 +67,7 @@ export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
     { title: "Dashboard", url: "/dashboard/chief-of-clinicians" },
     { title: "Attendance", url: "/attendance/chief-of-clinicians" },
     { title: "Clinicians", url: "/clinicians/chief-of-clinicians" },
+    { title: "Clerks", url: "/clerks/chief-of-clinicians" },
     { title: "Activities", url: "/activities/chief-of-clinicians" },
     { title: "Dental Chairs", url: "/dental-chairs/chief-of-clinicians" },
     { title: "Instructor", url: "/instructor/chief-of-clinicians" },

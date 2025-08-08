@@ -6,6 +6,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
+import { supabase }from "@/lib/supabase"
 
 export default function InstructorLoginPage() {
   const router = useRouter()
@@ -33,22 +34,43 @@ export default function InstructorLoginPage() {
     setTimeout(() => setIsShaking(false), 600)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault()
+  
+       const { data: userRecord, error: roleError, status} = await supabase
+            .from("users")
+            .select("role")
+            .eq("email", email)
+            .single();
+            
+          if (roleError || !userRecord) {
+            setErrorMessage("Email not registered as an instructor.")            
+            return
+          }
+      
+          if (userRecord.role !== "R03") {
+            setErrorMessage("Only clinical instructors are allowed to log in.")
+            return
+          }
 
-    const validEmail = "instructor@clinic.com"
-    const validPassword = "secure123"
-
-    if (email === validEmail && password === validPassword) {
-      setErrorMessage("")
-      setHasError(false)
-      router.push("/dashboard/clinical-instructor")
-    } else {
-      setErrorMessage("Invalid email or password. Please check your credentials and try again.")
-      setHasError(true)
-      triggerShakeAnimation()
+      const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+  
+      if (error) {
+        setErrorMessage("Invalid email or password. Please check your credentials and try again.")
+        setHasError(true)
+        triggerShakeAnimation()
+        console.error("Supabase login error:", error)
+      } else {
+        console.log("Login success!", data)
+        setErrorMessage("")
+        setHasError(false)
+        router.push("/dashboard/clinical-instructor")
+      }
+        
     }
-  }
 
   const handleBackToRoleSelection = () => {
     router.push("/landing")
