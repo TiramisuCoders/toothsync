@@ -1,6 +1,6 @@
 "use client"
-
-import { useState } from "react"
+import type React from "react"
+import { useState, useRef, useEffect } from "react"
 import { Calendar, Plus, Edit, Upload, User, Eye, Download, History, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,92 +19,134 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { uploadCliniciansCsv } from "@/lib/csv-upload" // Assuming you have this helper from previous steps
+
+// Type definitions
+interface Clinician {
+  id: string // This will be user_id from DB (internal)
+  studentId: string // New: student_id from DB (for display)
+  firstName: string // from public.users
+  lastName: string // from public.users
+  gender: string // from public.users (sex)
+  status: string // from public.clinicians (enrollment_status)
+  birthday: string // from public.users
+  email: string // from public.users
+  contactNumber: string // from public.users
+  address: string // from public.clinicians
+  yearLevel: string // from public.clinicians
+  section: string // from public.clinicians
+}
+
+interface AttendanceRecord {
+  id: number
+  date: string
+  timeIn: string
+  timeOut: string
+  sanitized: string
+  status: string
+}
+
+interface HistoryItem {
+  timestamp: string
+  user: string
+  action: string
+  description: string
+  details: {
+    date: string
+    procedure: string
+    patient: string
+    grade: string
+    remarks: string
+  }
+}
+
+interface Activity {
+  id: string
+  date: string
+  procedure: string
+  chair: string
+  instructor: string
+  patient: string
+  grade: string
+  remarks: string
+  status: string
+  firstName: string
+  lastName: string
+  history: HistoryItem[]
+  assessmentStatus?: string
+}
+
+interface NewClinician {
+  studentId: string // New: studentId for manual add
+  firstName: string
+  lastName: string
+  gender: string
+  birthday: string
+  email: string
+  contactNumber: string
+  address: string
+  yearLevel: string
+  section: string
+  status: string
+}
 
 export default function CliniciansPage() {
-  const [activeFilter, setActiveFilter] = useState("all")
+  const [activeFilter, setActiveFilter] = useState<"all" | "enrolled" | "not-enrolled">("all")
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
-  const [currentClinician, setCurrentClinician] = useState(null)
+  const [currentClinician, setCurrentClinician] = useState<Clinician | null>(null)
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
-  const [selectedClinician, setSelectedClinician] = useState(null)
+  const [selectedClinician, setSelectedClinician] = useState<Clinician | null>(null)
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
-  const [selectedActivity, setSelectedActivity] = useState(null)
-  const [activeTab, setActiveTab] = useState("activities")
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null)
+  const [activeTab, setActiveTab] = useState<"activities" | "attendance">("activities")
   const [isActivityEditModalOpen, setIsActivityEditModalOpen] = useState(false)
-  const [currentActivity, setCurrentActivity] = useState(null)
+  const [currentActivity, setCurrentActivity] = useState<Activity | null>(null)
 
-  // Sample data for clinicians
-  const [clinicians, setClinicians] = useState([
-    {
-      id: "C2024-001",
-      firstName: "Maria",
-      lastName: "Santos",
-      gender: "Female",
-      status: "Enrolled",
-      birthday: "1998-05-15",
-      email: "maria.santos@example.com",
-      contactNumber: "+63 912 345 6789",
-      address: "123 Rizal Avenue, Manila",
-      yearLevel: "5th Year",
-      section: "A",
-    },
-    {
-      id: "C2024-002",
-      firstName: "John",
-      lastName: "Dela Cruz",
-      gender: "Male",
-      status: "Enrolled",
-      birthday: "1997-08-22",
-      email: "john.delacruz@example.com",
-      contactNumber: "+63 917 123 4567",
-      address: "456 Mabini Street, Quezon City",
-      yearLevel: "6th Year",
-      section: "B",
-    },
-    {
-      id: "C2024-003",
-      firstName: "Anna",
-      lastName: "Lim",
-      gender: "Female",
-      status: "Not Enrolled",
-      birthday: "1999-02-10",
-      email: "anna.lim@example.com",
-      contactNumber: "+63 918 765 4321",
-      address: "789 Bonifacio Avenue, Makati",
-      yearLevel: "5th Year",
-      section: "A",
-    },
-    {
-      id: "C2024-004",
-      firstName: "Mark",
-      lastName: "Aquino",
-      gender: "Male",
-      status: "Enrolled",
-      birthday: "1996-11-30",
-      email: "mark.aquino@example.com",
-      contactNumber: "+63 919 876 5432",
-      address: "321 Aguinaldo Street, Pasig",
-      yearLevel: "6th Year",
-      section: "C",
-    },
-    {
-      id: "C2024-005",
-      firstName: "Sarah",
-      lastName: "Garcia",
-      gender: "Female",
-      status: "Not Enrolled",
-      birthday: "1998-07-18",
-      email: "sarah.garcia@example.com",
-      contactNumber: "+63 915 432 1098",
-      address: "654 Luna Road, Mandaluyong",
-      yearLevel: "5th Year",
-      section: "B",
-    },
-  ])
+  const [addSuccessMessage, setAddSuccessMessage] = useState<string>("")
+  const [addErrorMessage, setAddErrorMessage] = useState<string>("") // New state for add errors
+  const [uploadSuccessMessage, setUploadSuccessMessage] = useState<string>("")
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Add sample attendance data
-  const [attendanceData] = useState([
+  const [formData, setFormData] = useState<Partial<NewClinician>>({
+    yearLevel: "5th Year",
+    section: "A",
+  })
+
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Sample data for clinicians (reduced to one entry)
+  const [clinicians, setClinicians] = useState<Clinician[]>([])
+
+  // Add this useEffect hook and fetchClinicians function
+  useEffect(() => {
+    fetchClinicians()
+  }, [])
+
+  const fetchClinicians = async () => {
+    try {
+      const response = await fetch("/api/clinicians")
+      if (!response.ok) {
+        // Log the full response for debugging
+        const errorData = await response.json()
+        console.error("Failed to fetch clinicians:", response.status, errorData)
+        throw new Error(`HTTP error! status: ${response.status} - ${errorData.message || "Unknown error"}`)
+      }
+      const data: Clinician[] = await response.json()
+      setClinicians(data)
+    } catch (error) {
+      console.error("Failed to fetch clinicians:", error)
+      // Optionally set an error message to display in the UI
+    }
+  }
+
+  // Sample attendance data (reduced to one entry)
+  const [attendanceData] = useState<AttendanceRecord[]>([
     {
       id: 1,
       date: "2025-05-08",
@@ -113,42 +155,10 @@ export default function CliniciansPage() {
       sanitized: "Yes",
       status: "Present",
     },
-    {
-      id: 2,
-      date: "2025-05-07",
-      timeIn: "08:05 AM",
-      timeOut: "04:45 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
-    {
-      id: 3,
-      date: "2025-05-06",
-      timeIn: "08:30 AM",
-      timeOut: "04:15 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
-    {
-      id: 4,
-      date: "2025-05-05",
-      timeIn: "09:00 AM",
-      timeOut: "04:00 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
-    {
-      id: 5,
-      date: "2025-05-02",
-      timeIn: "08:10 AM",
-      timeOut: "04:20 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
   ])
 
-  // Add sample activities data
-  const [activitiesData, setActivitiesData] = useState([
+  // Sample activities data (reduced to one entry)
+  const [activitiesData, setActivitiesData] = useState<Activity[]>([
     {
       id: "A001",
       date: "2025-05-08",
@@ -190,167 +200,35 @@ export default function CliniciansPage() {
         },
       ],
     },
-    {
-      id: "A002",
-      date: "2025-05-07",
-      procedure: "Dental Filling",
-      chair: "Chair 12",
-      instructor: "Dr. Mendoza",
-      patient: "Ana Reyes",
-      grade: "90",
-      remarks: "Excellent composite placement",
-      status: "Completed",
-      firstName: "John",
-      lastName: "Dela Cruz",
-      history: [
-        {
-          timestamp: "2025-05-07T16:45:00",
-          user: "dr.mendoza@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-07",
-            procedure: "Dental Filling",
-            patient: "Ana Reyes",
-            grade: "90",
-            remarks: "Excellent composite placement",
-          },
-        },
-      ],
-    },
-    {
-      id: "A003",
-      date: "2025-05-06",
-      procedure: "Dental Crown",
-      chair: "Chair 03",
-      instructor: "Dr. Santos",
-      patient: "Miguel Santos",
-      grade: "82",
-      remarks: "Needs improvement on margin preparation",
-      status: "Completed",
-      firstName: "Anna",
-      lastName: "Lim",
-      history: [
-        {
-          timestamp: "2025-05-06T15:10:00",
-          user: "dr.santos@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-06",
-            procedure: "Dental Crown",
-            patient: "Miguel Santos",
-            grade: "82",
-            remarks: "Needs improvement on margin preparation",
-          },
-        },
-      ],
-    },
-    {
-      id: "A004",
-      date: "2025-05-05",
-      procedure: "Teeth Cleaning",
-      chair: "Chair 08",
-      instructor: "Dr. Reyes",
-      patient: "Sofia Reyes",
-      grade: "88",
-      remarks: "Thorough cleaning, good patient management",
-      status: "Completed",
-      firstName: "Mark",
-      lastName: "Aquino",
-      history: [
-        {
-          timestamp: "2025-05-05T14:30:00",
-          user: "dr.reyes@example.com",
-          action: "Updated",
-          description: "Remarks updated",
-          details: {
-            date: "2025-05-05",
-            procedure: "Teeth Cleaning",
-            patient: "Sofia Reyes",
-            grade: "88",
-            remarks: "Thorough cleaning, good patient management",
-          },
-        },
-        {
-          timestamp: "2025-05-05T11:20:00",
-          user: "dr.reyes@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-05",
-            procedure: "Teeth Cleaning",
-            patient: "Sofia Reyes",
-            grade: "88",
-            remarks: "Good cleaning technique",
-          },
-        },
-      ],
-    },
-    {
-      id: "A005",
-      date: "2025-05-02",
-      procedure: "Dental Extraction",
-      chair: "Chair 10",
-      instructor: "Dr. Tan",
-      patient: "Luis Tan",
-      grade: "78",
-      remarks: "Needs to improve extraction technique",
-      status: "Completed",
-      firstName: "Sarah",
-      lastName: "Garcia",
-      history: [
-        {
-          timestamp: "2025-05-02T16:15:00",
-          user: "dr.tan@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-02",
-            procedure: "Dental Extraction",
-            patient: "Luis Tan",
-            grade: "78",
-            remarks: "Needs to improve extraction technique",
-          },
-        },
-      ],
-    },
   ])
 
-  // Function to handle edit button click
-  const handleEditClick = (clinician) => {
+  const handleEditClick = (clinician: Clinician) => {
     setCurrentClinician(clinician)
     setIsEditModalOpen(true)
   }
 
-  // Function to handle view button click
-  const handleViewClick = (clinician) => {
+  const handleViewClick = (clinician: Clinician) => {
     setSelectedClinician(clinician)
     setIsViewModalOpen(true)
   }
 
-  // Function to handle history button click
-  const handleHistoryClick = (activity) => {
+  const handleHistoryClick = (activity: Activity) => {
     setSelectedActivity(activity)
     setIsHistoryModalOpen(true)
   }
 
-  // Function to handle activity edit button click
-  const handleActivityEditClick = (activity) => {
+  const handleActivityEditClick = (activity: Activity) => {
     setCurrentActivity(activity)
     setIsActivityEditModalOpen(true)
   }
 
-  // Function to update clinician
-  const handleUpdateClinician = (updatedClinician) => {
+  const handleUpdateClinician = (updatedClinician: Clinician) => {
     setClinicians(clinicians.map((clinician) => (clinician.id === updatedClinician.id ? updatedClinician : clinician)))
     setIsEditModalOpen(false)
   }
 
-  // Function to update activity
-  const handleUpdateActivity = (updatedActivity) => {
-    // Create a new history entry
-    const newHistory = {
+  const handleUpdateActivity = (updatedActivity: Activity) => {
+    const newHistory: HistoryItem = {
       timestamp: new Date().toISOString(),
       user: "admin@example.com",
       action: "Updated",
@@ -363,7 +241,6 @@ export default function CliniciansPage() {
         remarks: updatedActivity.remarks || "",
       },
     }
-
     setActivitiesData(
       activitiesData.map((activity) =>
         activity.id === updatedActivity.id
@@ -377,31 +254,166 @@ export default function CliniciansPage() {
     setIsActivityEditModalOpen(false)
   }
 
-  // Function to add new clinician
-  const handleAddClinician = (newClinician) => {
-    setClinicians([...clinicians, { ...newClinician, id: `C2024-00${clinicians.length + 1}` }])
-    setIsAddModalOpen(false)
+  const updateFormData = (field: keyof NewClinician, value: string) => {
+    setFormData((prev: Partial<NewClinician>) => ({
+      ...prev,
+      [field]: value,
+    }))
   }
 
-  // Function to export activities to CSV
+  const resetForm = () => {
+    setFormData({
+      yearLevel: "5th Year",
+      section: "A",
+      studentId: "", // Reset studentId
+      firstName: "",
+      lastName: "",
+      gender: "",
+      birthday: "",
+      email: "",
+      contactNumber: "",
+      address: "",
+      status: "",
+    })
+    setFormErrors({})
+    setAddSuccessMessage("") // Clear messages on reset
+    setAddErrorMessage("") // Clear messages on reset
+  }
+
+  const validateForm = (): Record<string, string> => {
+    const errors: Record<string, string> = {}
+    if (!formData.studentId?.trim()) errors.studentId = "Student ID is required" // New validation
+    if (!formData.firstName?.trim()) errors.firstName = "First name is required"
+    if (!formData.lastName?.trim()) errors.lastName = "Last name is required"
+    if (!formData.gender) errors.gender = "Gender is required for medical records"
+    if (!formData.birthday) errors.birthday = "Date of birth is required for age verification"
+    if (!formData.contactNumber?.trim()) errors.contactNumber = "Contact number is required for emergencies"
+    if (!formData.email?.trim()) errors.email = "Email is required for communication"
+    if (!formData.status) errors.status = "Enrollment status is required"
+    return errors
+  }
+
+  const handleAddClinicianSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setIsSubmitting(true)
+    setFormErrors({})
+    setAddSuccessMessage("") // Clear previous messages
+    setAddErrorMessage("") // Clear previous messages
+
+    const errors = validateForm()
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors)
+      setIsSubmitting(false)
+      return
+    }
+
+    const newClinicianData: NewClinician = {
+      studentId: formData.studentId?.trim() || "", // Include studentId
+      firstName: formData.firstName?.trim() || "",
+      lastName: formData.lastName?.trim() || "",
+      gender: formData.gender || "",
+      status: formData.status === "enrolled" ? "Enrolled" : "Not Enrolled",
+      birthday: formData.birthday || "",
+      email: formData.email?.trim() || "",
+      contactNumber: formData.contactNumber?.trim() || "",
+      address: formData.address?.trim() || "",
+      yearLevel: formData.yearLevel || "5th Year",
+      section: formData.section || "A",
+    }
+
+    try {
+      const response = await fetch("/api/clinicians", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newClinicianData),
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        setAddSuccessMessage(
+          result.message ||
+            `Successfully added ${newClinicianData.firstName} ${newClinicianData.lastName} to the system!`,
+        )
+        resetForm()
+        fetchClinicians() // Refresh the list
+        setTimeout(() => {
+          setAddSuccessMessage("")
+          setIsAddModalOpen(false)
+        }, 3000)
+      } else {
+        setAddErrorMessage(result.message || "Failed to add clinician. Please try again.") // Set error message
+        setAddSuccessMessage("") // Ensure success message is cleared
+      }
+    } catch (error) {
+      console.error("Error adding clinician:", error)
+      setAddErrorMessage("An unexpected error occurred. Please try again.") // Set error message for network issues
+      setAddSuccessMessage("") // Ensure success message is cleared
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Remove the old handleAddClinician function as it's replaced by the logic in handleAddClinicianSubmit
+  // const handleAddClinician = (newClinician: NewClinician) => { ... }
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    const isCsv = !!file && (file.type === "text/csv" || file.name.toLowerCase().endsWith(".csv"))
+    if (isCsv) {
+      setSelectedFile(file)
+      setUploadErrorMessage("")
+      setUploadSuccessMessage("")
+    } else {
+      setSelectedFile(null)
+      setUploadErrorMessage("Please select a valid .csv file")
+      setUploadSuccessMessage("")
+    }
+  }
+
+  const processCSVFile = async () => {
+    if (!selectedFile) {
+      setUploadErrorMessage("Please select a valid .csv file")
+      return
+    }
+    setIsProcessingUpload(true)
+    setUploadSuccessMessage("")
+    setUploadErrorMessage("")
+    try {
+      const result = await uploadCliniciansCsv(selectedFile)
+      if (result.status === "success") {
+        setUploadSuccessMessage(result.message)
+        setSelectedFile(null)
+        fetchClinicians() // Refresh the list after CSV upload
+        setTimeout(() => {
+          setUploadSuccessMessage("")
+          setIsUploadModalOpen(false)
+        }, 3000)
+      } else if (result.status === "partial_success") {
+        setUploadErrorMessage(result.message)
+      } else {
+        setUploadErrorMessage(result.message || "There was an error during import.")
+      }
+    } catch (error) {
+      console.error("Error during CSV upload:", error)
+      setUploadErrorMessage("There's an error while uploading the file due to an unexpected client-side issue.")
+    } finally {
+      setIsProcessingUpload(false)
+    }
+  }
+
   const exportActivitiesToCSV = () => {
     if (!selectedClinician) return
-
-    // Create CSV header
     const headers = ["ID", "Date", "Procedure", "Patient", "Chair", "Instructor", "Grade", "Status", "Remarks"].join(
       ",",
     )
-
-    // Create CSV rows
     const rows = activitiesData.map(
       (activity) =>
         `"${activity.id}","${activity.date}","${activity.procedure}","${activity.patient}","${activity.chair}","${activity.instructor}","${activity.grade}","${activity.status}","${activity.remarks}"`,
     )
-
-    // Combine header and rows
     const csv = [headers, ...rows].join("\n")
-
-    // Create a blob and download
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
@@ -418,23 +430,14 @@ export default function CliniciansPage() {
     document.body.removeChild(link)
   }
 
-  // Function to export attendance to CSV
   const exportAttendanceToCSV = () => {
     if (!selectedClinician) return
-
-    // Create CSV header
     const headers = ["Date", "Time In", "Time Out", "Sanitized", "Status"].join(",")
-
-    // Create CSV rows
     const rows = attendanceData.map(
       (attendance) =>
         `"${attendance.date}","${attendance.timeIn}","${attendance.timeOut}","${attendance.sanitized}","${attendance.status}"`,
     )
-
-    // Combine header and rows
     const csv = [headers, ...rows].join("\n")
-
-    // Create a blob and download
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
@@ -451,7 +454,6 @@ export default function CliniciansPage() {
     document.body.removeChild(link)
   }
 
-  // Function to export current tab data to CSV
   const exportToCSV = () => {
     if (activeTab === "activities") {
       exportActivitiesToCSV()
@@ -460,7 +462,6 @@ export default function CliniciansPage() {
     }
   }
 
-  // Filter clinicians based on active filter
   const filteredClinicians = clinicians.filter((clinician) => {
     if (activeFilter === "all") return true
     if (activeFilter === "enrolled") return clinician.status === "Enrolled"
@@ -470,7 +471,6 @@ export default function CliniciansPage() {
 
   return (
     <>
-      {/* Academic Term - Static */}
       <div className="mb-6">
         <div className="bg-[#5C8E77]/10 border border-[#5C8E77]/20 rounded-lg px-4 py-3 flex items-center justify-between">
           <div>
@@ -483,8 +483,6 @@ export default function CliniciansPage() {
           <Badge className="bg-[#5C8E77]">Active</Badge>
         </div>
       </div>
-
-      {/* Clinicians Table */}
       <Card className="bg-white border border-gray-200 shadow-sm mb-6">
         <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
           <div className="flex items-center gap-4">
@@ -523,7 +521,12 @@ export default function CliniciansPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setIsAddModalOpen(true)}>
+              <DropdownMenuItem
+                onClick={() => {
+                  resetForm()
+                  setIsAddModalOpen(true)
+                }}
+              >
                 <User className="mr-2 h-4 w-4" />
                 <span>Add Manually</span>
               </DropdownMenuItem>
@@ -538,7 +541,7 @@ export default function CliniciansPage() {
           <Table>
             <TableHeader className="bg-white border-b border-gray-200">
               <TableRow className="hover:bg-white border-b-0">
-                <TableHead className="font-medium text-[#333]">Clinician ID</TableHead>
+                <TableHead className="font-medium text-[#333]">Student ID</TableHead>
                 <TableHead className="font-medium text-[#333]">First Name</TableHead>
                 <TableHead className="font-medium text-[#333]">Last Name</TableHead>
                 <TableHead className="font-medium text-[#333]">Year</TableHead>
@@ -552,7 +555,7 @@ export default function CliniciansPage() {
               {filteredClinicians.length > 0 ? (
                 filteredClinicians.map((clinician) => (
                   <TableRow key={clinician.id} className="hover:bg-gray-50 border-b border-gray-200">
-                    <TableCell className="font-medium text-[#333]">{clinician.id}</TableCell>
+                    <TableCell className="font-medium text-[#333]">{clinician.studentId}</TableCell>
                     <TableCell className="text-[#333]">{clinician.firstName}</TableCell>
                     <TableCell className="text-[#333]">{clinician.lastName}</TableCell>
                     <TableCell className="text-[#333]">{clinician.yearLevel}</TableCell>
@@ -600,9 +603,14 @@ export default function CliniciansPage() {
           </Table>
         </CardContent>
       </Card>
-
       {/* Add Clinician Modal */}
-      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+      <Dialog
+        open={isAddModalOpen}
+        onOpenChange={(open) => {
+          setIsAddModalOpen(open)
+          if (!open) resetForm()
+        }}
+      >
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
           <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
             <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Add New Clinician</DialogTitle>
@@ -610,127 +618,230 @@ export default function CliniciansPage() {
               Enter the clinician details to add them to the system.
             </DialogDescription>
           </DialogHeader>
-          <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
-            <Tabs defaultValue="personal" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="personal">Personal Information</TabsTrigger>
-                <TabsTrigger value="academic">Academic Information</TabsTrigger>
-              </TabsList>
-              <TabsContent value="personal" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName" className="text-[#333]">
-                      First Name
-                    </Label>
-                    <Input id="firstName" placeholder="Enter first name" className="border-gray-300" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName" className="text-[#333]">
-                      Last Name
-                    </Label>
-                    <Input id="lastName" placeholder="Enter last name" className="border-gray-300" />
-                  </div>
+          {addSuccessMessage && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-6 mt-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">{addSuccessMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {addErrorMessage && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mx-6 mt-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800 break-words">{addErrorMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <form onSubmit={handleAddClinicianSubmit}>
+            <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
+              <Tabs defaultValue="personal" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <TabsTrigger value="personal">Personal Information</TabsTrigger>
+                  <TabsTrigger value="academic">Academic Information</TabsTrigger>
+                </TabsList>
+                <TabsContent value="personal" className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="gender" className="text-[#333]">
-                      Gender
+                    <Label htmlFor="studentId" className="text-[#333]">
+                      Student ID <span className="text-red-500">*</span>
                     </Label>
-                    <Select>
-                      <SelectTrigger id="gender" className="border-gray-300">
-                        <SelectValue placeholder="Select gender" />
+                    <Input
+                      id="studentId"
+                      value={formData.studentId || ""}
+                      onChange={(e) => updateFormData("studentId", e.target.value)}
+                      placeholder="Enter student ID"
+                      className={formErrors.studentId ? "border-red-500" : "border-gray-300"}
+                    />
+                    {formErrors.studentId && <p className="text-sm text-red-500">{formErrors.studentId}</p>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName" className="text-[#333]">
+                        First Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="firstName"
+                        value={formData.firstName || ""}
+                        onChange={(e) => updateFormData("firstName", e.target.value)}
+                        placeholder="Enter first name"
+                        className={formErrors.firstName ? "border-red-500" : "border-gray-300"}
+                      />
+                      {formErrors.firstName && <p className="text-sm text-red-500">{formErrors.firstName}</p>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName" className="text-[#333]">
+                        Last Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="lastName"
+                        value={formData.lastName || ""}
+                        onChange={(e) => updateFormData("lastName", e.target.value)}
+                        placeholder="Enter last name"
+                        className={formErrors.lastName ? "border-red-500" : "border-gray-300"}
+                      />
+                      {formErrors.lastName && <p className="text-sm text-red-500">{formErrors.lastName}</p>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="gender" className="text-[#333]">
+                        Gender <span className="text-red-500">*</span>
+                      </Label>
+                      <Select value={formData.gender || ""} onValueChange={(value) => updateFormData("gender", value)}>
+                        <SelectTrigger id="gender" className={formErrors.gender ? "border-red-500" : "border-gray-300"}>
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {formErrors.gender && <p className="text-sm text-red-500">{formErrors.gender}</p>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="birthday" className="text-[#333]">
+                        Date of Birth <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="birthday"
+                        type="date"
+                        value={formData.birthday || ""}
+                        onChange={(e) => updateFormData("birthday", e.target.value)}
+                        className={formErrors.birthday ? "border-red-500" : "border-gray-300"}
+                      />
+                      {formErrors.birthday && <p className="text-sm text-red-500">{formErrors.birthday}</p>}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email" className="text-[#333]">
+                      Email <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email || ""}
+                      onChange={(e) => updateFormData("email", e.target.value)}
+                      placeholder="Enter email address"
+                      className={formErrors.email ? "border-red-500" : "border-gray-300"}
+                    />
+                    {formErrors.email && <p className="text-sm text-red-500">{formErrors.email}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="contactNumber" className="text-[#333]">
+                      Contact Number <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="contactNumber"
+                      value={formData.contactNumber || ""}
+                      onChange={(e) => updateFormData("contactNumber", e.target.value)}
+                      placeholder="Enter contact number"
+                      className={formErrors.contactNumber ? "border-red-500" : "border-gray-300"}
+                    />
+                    {formErrors.contactNumber && <p className="text-sm text-red-500">{formErrors.contactNumber}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="address" className="text-[#333]">
+                      Address
+                    </Label>
+                    <Input
+                      id="address"
+                      value={formData.address || ""}
+                      onChange={(e) => updateFormData("address", e.target.value)}
+                      placeholder="Enter address"
+                      className="border-gray-300"
+                    />
+                  </div>
+                </TabsContent>
+                <TabsContent value="academic" className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="yearLevel" className="text-[#333]">
+                      Year Level
+                    </Label>
+                    <Select
+                      value={formData.yearLevel || "5th Year"}
+                      onValueChange={(value) => updateFormData("yearLevel", value)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select Year Level" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="male">Male</SelectItem>
-                        <SelectItem value="female">Female</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
+                        <SelectItem value="5th Year">5th Year</SelectItem>
+                        <SelectItem value="6th Year">6th Year</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="birthday" className="text-[#333]">
-                      Birthday
+                    <Label htmlFor="section" className="text-[#333]">
+                      Section
                     </Label>
-                    <Input id="birthday" type="date" className="border-gray-300" />
+                    <Select value={formData.section || "A"} onValueChange={(value) => updateFormData("section", value)}>
+                      <SelectTrigger id="section" className="border-gray-300">
+                        <SelectValue placeholder="Select section" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="A">Section A</SelectItem>
+                        <SelectItem value="B">Section B</SelectItem>
+                        <SelectItem value="C">Section C</SelectItem>
+                        <SelectItem value="D">Section D</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-[#333]">
-                    Email
-                  </Label>
-                  <Input id="email" type="email" placeholder="Enter email address" className="border-gray-300" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contactNumber" className="text-[#333]">
-                    Contact Number
-                  </Label>
-                  <Input id="contactNumber" placeholder="Enter contact number" className="border-gray-300" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address" className="text-[#333]">
-                    Address
-                  </Label>
-                  <Input id="address" placeholder="Enter address" className="border-gray-300" />
-                </div>
-              </TabsContent>
-              <TabsContent value="academic" className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="yearLevel" className="text-[#333]">
-                    Year Level
-                  </Label>
-                  <Select defaultValue="all">
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Year Level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Years</SelectItem>
-                      <SelectItem value="5">5th Year</SelectItem>
-                      <SelectItem value="6">6th Year</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="section" className="text-[#333]">
-                    Section
-                  </Label>
-                  <Select>
-                    <SelectTrigger id="section" className="border-gray-300">
-                      <SelectValue placeholder="Select section" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="A">Section A</SelectItem>
-                      <SelectItem value="B">Section B</SelectItem>
-                      <SelectItem value="C">Section C</SelectItem>
-                      <SelectItem value="D">Section D</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="status" className="text-[#333]">
-                    Enrollment Status
-                  </Label>
-                  <Select>
-                    <SelectTrigger id="status" className="border-gray-300">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="enrolled">Enrolled</SelectItem>
-                      <SelectItem value="not-enrolled">Not Enrolled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-            <Button variant="outline" onClick={() => setIsAddModalOpen(false)} className="border-gray-300">
-              Cancel
-            </Button>
-            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white">Add Clinician</Button>
-          </DialogFooter>
+                  <div className="space-y-2">
+                    <Label htmlFor="status" className="text-[#333]">
+                      Enrollment Status <span className="text-red-500">*</span>
+                    </Label>
+                    <Select value={formData.status || ""} onValueChange={(value) => updateFormData("status", value)}>
+                      <SelectTrigger id="status" className={formErrors.status ? "border-red-500" : "border-gray-300"}>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="enrolled">Enrolled</SelectItem>
+                        <SelectItem value="not-enrolled">Not Enrolled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {formErrors.status && <p className="text-sm text-red-500">{formErrors.status}</p>}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+            <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                className="border-gray-300"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-[#5C8E77] hover:bg-[#406E58] text-white" disabled={isSubmitting}>
+                {isSubmitting ? "Adding..." : "Add Clinician"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
-
       {/* Edit Clinician Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
@@ -749,6 +860,17 @@ export default function CliniciansPage() {
                     <TabsTrigger value="academic">Academic Information</TabsTrigger>
                   </TabsList>
                   <TabsContent value="personal" className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-studentId" className="text-[#333]">
+                        Student ID
+                      </Label>
+                      <Input
+                        id="edit-studentId"
+                        defaultValue={currentClinician.studentId}
+                        onChange={(e) => setCurrentClinician({ ...currentClinician, studentId: e.target.value })}
+                        className="border-gray-300"
+                      />
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="edit-firstName" className="text-[#333]">
@@ -888,7 +1010,7 @@ export default function CliniciansPage() {
                           <SelectItem value="A">Section A</SelectItem>
                           <SelectItem value="B">Section B</SelectItem>
                           <SelectItem value="C">Section C</SelectItem>
-                          <SelectItem value="D">Section D</SelectItem>
+                          <SelectItem value="D">Section C</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -932,7 +1054,6 @@ export default function CliniciansPage() {
           )}
         </DialogContent>
       </Dialog>
-
       {/* Upload CSV Modal */}
       <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
         <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
@@ -942,20 +1063,80 @@ export default function CliniciansPage() {
               Upload a CSV file containing clinician information.
             </DialogDescription>
           </DialogHeader>
+          {uploadSuccessMessage && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-6 mt-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800 break-words">{uploadSuccessMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {uploadErrorMessage && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mx-6 mt-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800 break-words">{uploadErrorMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="px-6 py-8 flex flex-col items-center justify-center">
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 w-full flex flex-col items-center justify-center">
               <Upload className="h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium text-[#333] mb-2">Drag and drop your CSV file</h3>
-              <p className="text-sm text-gray-500 mb-4 text-center">or click to browse files from your computer</p>
-              <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white">Browse Files</Button>
+              <h3 className="text-lg font-medium text-[#333] mb-2">
+                {selectedFile ? selectedFile.name : "Drag and drop your CSV file"}
+              </h3>
+              <p className="text-sm text-gray-500 mb-4 text-center">
+                {selectedFile
+                  ? "File selected. Click upload to process."
+                  : "or click to browse files from your computer"}
+              </p>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileSelect}
+                className="hidden"
+                id="csv-upload"
+                ref={fileInputRef}
+              />
+              <label htmlFor="csv-upload">
+                <Button
+                  className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Browse Files
+                </Button>
+              </label>
             </div>
             <div className="mt-6 w-full">
               <h4 className="text-sm font-medium text-[#333] mb-2">CSV Format Requirements:</h4>
               <ul className="text-xs text-gray-500 list-disc pl-5 space-y-1">
                 <li>First row must contain column headers</li>
-                <li>Required columns: First Name, Last Name, Gender, Status</li>
-                <li>Optional columns: Birthday, Email, Contact Number, Address, Year Level, Section</li>
-                <li>Status must be either "Enrolled" or "Not Enrolled"</li>
+                <li>
+                  Required columns: Student ID, First Name, Last Name, Gender, Birthday, Email, Contact Number, Status
+                </li>
+                <li>Optional columns: Address, Year Level, Section</li>
+                <li>Status must be either &quot;Enrolled&quot; or &quot;Not Enrolled&quot;</li>
               </ul>
             </div>
           </div>
@@ -963,13 +1144,18 @@ export default function CliniciansPage() {
             <Button variant="outline" onClick={() => setIsUploadModalOpen(false)} className="border-gray-300">
               Cancel
             </Button>
-            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white">Upload</Button>
+            <Button
+              className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
+              onClick={processCSVFile}
+              disabled={!selectedFile || isProcessingUpload}
+            >
+              {isProcessingUpload ? "Processing..." : "Upload"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
       {/* Clinician Records View Modal */}
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen} className="max-w-4xl">
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
         <DialogContent className="sm:max-w-[900px] p-0 overflow-hidden rounded-lg">
           {selectedClinician && (
             <>
@@ -993,11 +1179,11 @@ export default function CliniciansPage() {
               <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
                 <div className="grid grid-cols-2 gap-6 mb-6">
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Clinician ID</h3>
-                    <p className="text-[#333] font-medium">{selectedClinician.id}</p>
+                    <h3 className="text-sm font-medium text-gray-500">Student ID</h3> {/* Changed to Student ID */}
+                    <p className="text-[#333] font-medium">{selectedClinician.studentId}</p> {/* Display studentId */}
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Year & Section</h3>
+                    <h3 className="text-sm font-medium text-gray-500">Year &amp; Section</h3>
                     <p className="text-[#333] font-medium">
                       {selectedClinician.yearLevel}, Section {selectedClinician.section}
                     </p>
@@ -1011,7 +1197,11 @@ export default function CliniciansPage() {
                     <p className="text-[#333] font-medium">{selectedClinician.contactNumber}</p>
                   </div>
                 </div>
-                <Tabs defaultValue="activities" className="w-full" onValueChange={(value) => setActiveTab(value)}>
+                <Tabs
+                  defaultValue="activities"
+                  className="w-full"
+                  onValueChange={(value) => setActiveTab(value as "activities" | "attendance")}
+                >
                   <div className="flex items-center justify-between mb-4">
                     <TabsList className="grid w-[300px] grid-cols-2">
                       <TabsTrigger value="activities">Activities</TabsTrigger>
@@ -1141,7 +1331,6 @@ export default function CliniciansPage() {
           )}
         </DialogContent>
       </Dialog>
-
       {/* Activity History Modal */}
       <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
         <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden rounded-lg">
@@ -1173,9 +1362,8 @@ export default function CliniciansPage() {
                   </div>
                 </div>
                 <div className="relative border-l-2 border-gray-200 pl-6 space-y-8 py-2">
-                  {selectedActivity.history.map((historyItem, index) => (
+                  {selectedActivity.history.map((historyItem: HistoryItem, index: number) => (
                     <div key={index} className="relative">
-                      {/* Timeline dot */}
                       <div className="absolute -left-[29px] top-0 h-4 w-4 rounded-full bg-[#5C8E77]"></div>
                       <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
                         <div className="flex items-center justify-between mb-2">
@@ -1243,7 +1431,6 @@ export default function CliniciansPage() {
           )}
         </DialogContent>
       </Dialog>
-
       {/* Edit Activity Modal */}
       <Dialog open={isActivityEditModalOpen} onOpenChange={setIsActivityEditModalOpen}>
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
@@ -1289,7 +1476,10 @@ export default function CliniciansPage() {
                           <Label htmlFor="edit-chair" className="text-[#333]">
                             Chair
                           </Label>
-                          <Select defaultValue={currentActivity.chair}>
+                          <Select
+                            defaultValue={currentActivity.chair}
+                            onValueChange={(value) => setCurrentActivity({ ...currentActivity, chair: value })}
+                          >
                             <SelectTrigger id="edit-chair" className="border-gray-300">
                               <SelectValue placeholder={currentActivity.chair} />
                             </SelectTrigger>
@@ -1306,7 +1496,10 @@ export default function CliniciansPage() {
                           <Label htmlFor="edit-instructor" className="text-[#333]">
                             Instructor
                           </Label>
-                          <Select defaultValue={currentActivity.instructor}>
+                          <Select
+                            defaultValue={currentActivity.instructor}
+                            onValueChange={(value) => setCurrentActivity({ ...currentActivity, instructor: value })}
+                          >
                             <SelectTrigger id="edit-instructor" className="border-gray-300">
                               <SelectValue placeholder={currentActivity.instructor} />
                             </SelectTrigger>
@@ -1334,7 +1527,10 @@ export default function CliniciansPage() {
                         <Label htmlFor="edit-procedure" className="text-[#333]">
                           Procedure
                         </Label>
-                        <Select defaultValue={currentActivity.procedure}>
+                        <Select
+                          defaultValue={currentActivity.procedure}
+                          onValueChange={(value) => setCurrentActivity({ ...currentActivity, procedure: value })}
+                        >
                           <SelectTrigger id="edit-procedure" className="border-gray-300">
                             <SelectValue placeholder={currentActivity.procedure} />
                           </SelectTrigger>
@@ -1425,7 +1621,12 @@ export default function CliniciansPage() {
                           <Label htmlFor="assessment-status" className="text-[#333]">
                             Assessment Status
                           </Label>
-                          <Select defaultValue={currentActivity.assessmentStatus || "in-progress"}>
+                          <Select
+                            defaultValue={currentActivity.assessmentStatus || "in-progress"}
+                            onValueChange={(value) =>
+                              setCurrentActivity({ ...currentActivity, assessmentStatus: value })
+                            }
+                          >
                             <SelectTrigger id="assessment-status" className="border-gray-300">
                               <SelectValue placeholder="Select status" />
                             </SelectTrigger>
