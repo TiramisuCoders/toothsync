@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useMemo } from "react"
 import Image from "next/image"
 import {
@@ -16,7 +17,6 @@ import {
   Check,
   XCircle,
 } from "lucide-react"
-import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge" // Assuming you have a Badge component from shadcn/ui
@@ -28,21 +28,55 @@ import { TicketUpdateSuccessModal } from "@/components/modals/ticket-update-succ
 import { TicketUpdateFailureModal } from "@/components/modals/ticket-update-failure-modal" // Import update failure modal
 import { FeedbackFormModal } from "@/components/modals/feedback-form-modal" // Import the new feedback form modal
 
+// Define the IncidentAttachment interface
+interface IncidentAttachment {
+  id: string
+  fileName: string
+  fileSize: number
+  fileType: string
+  uploadedBy: string
+  uploadedAt: string // ISO date string
+  downloadUrl: string
+  canDelete: boolean // Permission to delete
+}
+
+// Define the IncidentNote interface
+interface IncidentNote {
+  note_id: string
+  incident_id: string
+  author_user_id: string
+  author_name: string
+  author_email: string
+  body: string
+  created_at: string // ISO date string
+  visibility: string
+  is_system: boolean
+}
+
 // Define the Ticket interface - UPDATED
 interface Ticket {
-  id: string
+  incident_id: string
+  ticket_num: string // Display number like "#TS-2025-00123"
   title: string
-  module: string
+  reporter_user_id: string
+  reporter_email: string
+  assigned_user_id?: string
+  assigned_user_name?: string
+  affected_module_id: string
+  affected_module_name: string
+  issue_type_id: string
+  issue_type_name: string
+  severity_id: number
+  severity_name: string
+  derived_severity_score: number
   status: "Pending" | "In Progress" | "Resolved"
   priority: "Low Priority" | "Medium Priority" | "High Priority"
-  date: string // e.g., "5/10/2025"
-  time: string // e.g., "09:35 AM"
   description: string
-  reportedBy: string // email
-  attachments?: string[] // Array of attachment filenames/URLs
-  adminInCharge?: string
-  adminNotes?: string
-  category: string // Added category for modal
+  submitted_at: string // ISO date string
+  updated_at: string // ISO date string
+  resolved_at?: string // ISO date string
+  notes: IncidentNote[]
+  attachments: IncidentAttachment[]
 }
 
 export default function MyTicketsPage() {
@@ -72,111 +106,313 @@ export default function MyTicketsPage() {
     useMemo(
       () => [
         {
-          id: "#TS-2025-00123",
+          incident_id: "inc_001",
+          ticket_num: "#TS-2025-00123",
           title: "Wala po akong Instructor",
-          module: "Instructor Management",
-          category: "Instructor Not Assigned",
+          reporter_user_id: "user_001",
+          reporter_email: "johndoe@sample.com",
+          assigned_user_id: "admin_001",
+          assigned_user_name: "Mona Lisa",
+          affected_module_id: "mod_002",
+          affected_module_name: "Instructor Management",
+          issue_type_id: "issue_001",
+          issue_type_name: "Instructor Not Assigned",
+          severity_id: 2,
+          severity_name: "Medium",
+          derived_severity_score: 65,
+          status: "Pending",
+          priority: "Medium Priority",
           description:
             "Wala pong instructor na na-assign kahit na nakapagsubmit po ako ng form. I have to perform an operation today. Need instructor ASAP.",
-          status: "Pending",
-          priority: "Medium Priority",
-          date: "2025-05-10",
-          time: "09:35 AM",
-          reportedBy: "johndoe@sample.com",
-          attachments: ["/placeholder.svg?height=24&width=24"], // Placeholder for attachment
-          adminInCharge: "Mona Lisa",
-          adminNotes: "Please refresh the website and log-in again.",
+          submitted_at: "2025-01-15T09:35:00Z",
+          updated_at: "2025-01-15T10:30:00Z",
+          resolved_at: undefined,
+          notes: [
+            {
+              note_id: "note_001",
+              incident_id: "inc_001",
+              author_user_id: "user_001",
+              author_name: "John Doe",
+              author_email: "johndoe@sample.com",
+              body: "I submitted the form yesterday but still no instructor assigned. I have a patient scheduled for 2 PM today and really need help.",
+              created_at: "2025-01-15T08:30:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+            {
+              note_id: "note_002",
+              incident_id: "inc_001",
+              author_user_id: "admin_001",
+              author_name: "Mona Lisa",
+              author_email: "mona@toothsync.com",
+              body: "Hi John, I see your request. Let me check the instructor availability for today. Can you please refresh the website and try logging in again? Sometimes the assignment doesn't show immediately.",
+              created_at: "2025-01-15T09:15:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+            {
+              note_id: "note_003",
+              incident_id: "inc_001",
+              author_user_id: "user_001",
+              author_name: "John Doe",
+              author_email: "johndoe@sample.com",
+              body: "I tried refreshing and logging out/in but still no instructor showing. The patient will be here in 3 hours. Is there a manual way to assign someone?",
+              created_at: "2025-01-15T09:45:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+            {
+              note_id: "note_004",
+              incident_id: "inc_001",
+              author_user_id: "system",
+              author_name: "System",
+              author_email: "system@toothsync.com",
+              body: 'Status changed from "Pending" to "In Progress"',
+              created_at: "2025-01-15T10:00:00Z",
+              visibility: "public",
+              is_system: true,
+            },
+            {
+              note_id: "note_005",
+              incident_id: "inc_001",
+              author_user_id: "admin_001",
+              author_name: "Mona Lisa",
+              author_email: "mona@toothsync.com",
+              body: "I've manually assigned Dr. Smith to your case. You should see the assignment now. I'm also investigating why the automatic assignment failed. Please confirm if you can see Dr. Smith in your dashboard.",
+              created_at: "2025-01-15T10:05:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+            {
+              note_id: "note_006",
+              incident_id: "inc_001",
+              author_user_id: "user_001",
+              author_name: "John Doe",
+              author_email: "johndoe@sample.com",
+              body: "Perfect! I can see Dr. Smith assigned now. Thank you so much for the quick response. The patient appointment can proceed as planned.",
+              created_at: "2025-01-15T10:30:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+          ],
+          attachments: [],
         },
         {
-          id: "#TS-2025-00124",
+          incident_id: "inc_002",
+          ticket_num: "#TS-2025-00124",
           title: "Mali po 'yung nakadisplay na name ko",
-          module: "Dashboard/UI",
-          category: "Data Not Loading",
-          description: "My name is displayed incorrectly on the dashboard. It shows 'John Doe' instead of 'Jane Doe'.",
+          reporter_user_id: "user_002",
+          reporter_email: "janedoe@sample.com",
+          assigned_user_id: "admin_002",
+          assigned_user_name: "Leonardo Da Vinci",
+          affected_module_id: "mod_003",
+          affected_module_name: "Dashboard/UI",
+          issue_type_id: "issue_002",
+          issue_type_name: "Data Not Loading",
+          severity_id: 2,
+          severity_name: "Medium",
+          derived_severity_score: 60,
           status: "In Progress",
           priority: "Medium Priority",
-          date: "2025-05-06",
-          time: "04:50 PM",
-          reportedBy: "janedoe@sample.com",
+          description: "My name is displayed incorrectly on the dashboard. It shows 'John Doe' instead of 'Jane Doe'.",
+          submitted_at: "2025-01-15T04:50:00Z",
+          updated_at: "2025-01-15T05:00:00Z",
+          resolved_at: undefined,
+          notes: [
+            {
+              note_id: "note_002",
+              incident_id: "inc_002",
+              author_user_id: "admin_002",
+              author_name: "Leonardo Da Vinci",
+              author_email: "leo@toothsync.com",
+              body: "Checked database, name is correct. Investigating UI rendering issue.",
+              created_at: "2025-01-15T05:00:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+          ],
           attachments: [],
-          adminInCharge: "Leonardo Da Vinci",
-          adminNotes: "Checked database, name is correct. Investigating UI rendering issue.",
         },
         {
-          id: "#TS-2025-00125",
+          incident_id: "inc_003",
+          ticket_num: "#TS-2025-00125",
           title: "Wrong Credentials entered",
-          module: "Login & Authentication",
-          category: "Unable to Log In",
+          reporter_user_id: "user_003",
+          reporter_email: "user123@sample.com",
+          assigned_user_id: "admin_003",
+          assigned_user_name: "Raphael Sanzio",
+          affected_module_id: "mod_004",
+          affected_module_name: "Login & Authentication",
+          issue_type_id: "issue_003",
+          issue_type_name: "Unable to Log In",
+          severity_id: 3,
+          severity_name: "High",
+          derived_severity_score: 85,
+          status: "In Progress",
+          priority: "High Priority",
           description:
             "I am unable to log in using my correct credentials. It keeps saying 'invalid username or password'.",
-          status: "In Progress",
-          priority: "High Priority",
-          date: "2025-05-06",
-          time: "08:01 PM",
-          reportedBy: "user123@sample.com",
+          submitted_at: "2025-01-15T08:01:00Z",
+          updated_at: "2025-01-15T08:10:00Z",
+          resolved_at: undefined,
+          notes: [
+            {
+              note_id: "note_003",
+              incident_id: "inc_003",
+              author_user_id: "admin_003",
+              author_name: "Raphael Sanzio",
+              author_email: "raphael@toothsync.com",
+              body: "Account locked due to multiple failed attempts. Unlocked account and sent password reset link.",
+              created_at: "2025-01-15T08:10:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+          ],
           attachments: [],
-          adminInCharge: "Raphael Sanzio",
-          adminNotes: "Account locked due to multiple failed attempts. Unlocked account and sent password reset link.",
         },
         {
-          id: "#TS-2025-00126",
+          incident_id: "inc_004",
+          ticket_num: "#TS-2025-00126",
           title: "Can't submit request form",
-          module: "Service Request Form",
-          category: "Form Submission Error",
-          description: "The service request form is not submitting. I click the button, but nothing happens.",
+          reporter_user_id: "user_004",
+          reporter_email: "testuser@sample.com",
+          assigned_user_id: "admin_004",
+          assigned_user_name: "Donatello",
+          affected_module_id: "mod_005",
+          affected_module_name: "Service Request Form",
+          issue_type_id: "issue_004",
+          issue_type_name: "Form Submission Error",
+          severity_id: 2,
+          severity_name: "Medium",
+          derived_severity_score: 70,
           status: "Resolved",
           priority: "Medium Priority",
-          date: "2025-05-01",
-          time: "02:00 PM",
-          reportedBy: "testuser@sample.com",
+          description: "The service request form is not submitting. I click the button, but nothing happens.",
+          submitted_at: "2025-01-15T02:00:00Z",
+          updated_at: "2025-01-15T02:10:00Z",
+          resolved_at: "2025-01-15T02:20:00Z",
+          notes: [
+            {
+              note_id: "note_004",
+              incident_id: "inc_004",
+              author_user_id: "admin_004",
+              author_name: "Donatello",
+              author_email: "donatello@toothsync.com",
+              body: "Issue resolved. There was a temporary server-side error. Form submissions are now working.",
+              created_at: "2025-01-15T02:20:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+          ],
           attachments: [],
-          adminInCharge: "Donatello",
-          adminNotes: "Issue resolved. There was a temporary server-side error. Form submissions are now working.",
         },
         {
-          id: "#TS-2025-00127",
+          incident_id: "inc_005",
+          ticket_num: "#TS-2025-00127",
           title: "Database connection issue",
-          module: "Others",
-          category: "Unexpected Error Message",
-          description: "Getting 'Database connection failed' error when trying to access reports.",
+          reporter_user_id: "user_005",
+          reporter_email: "admin@sample.com",
+          assigned_user_id: "admin_005",
+          assigned_user_name: "Mona Lisa",
+          affected_module_id: "mod_006",
+          affected_module_name: "Others",
+          issue_type_id: "issue_005",
+          issue_type_name: "Unexpected Error Message",
+          severity_id: 3,
+          severity_name: "High",
+          derived_severity_score: 90,
           status: "Pending",
           priority: "High Priority",
-          date: "2025-05-12",
-          time: "11:00 AM",
-          reportedBy: "admin@sample.com",
+          description: "Getting 'Database connection failed' error when trying to access reports.",
+          submitted_at: "2025-01-15T11:00:00Z",
+          updated_at: "2025-01-15T11:10:00Z",
+          resolved_at: undefined,
+          notes: [
+            {
+              note_id: "note_005",
+              incident_id: "inc_005",
+              author_user_id: "admin_005",
+              author_name: "Mona Lisa",
+              author_email: "mona@toothsync.com",
+              body: "Escalated to engineering team. Investigating server logs.",
+              created_at: "2025-01-15T11:10:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+          ],
           attachments: [],
-          adminInCharge: "Mona Lisa",
-          adminNotes: "Escalated to engineering team. Investigating server logs.",
         },
         {
-          id: "#TS-2025-00128",
+          incident_id: "inc_006",
+          ticket_num: "#TS-2025-00128",
           title: "Missing report data",
-          module: "Dashboard/UI",
-          category: "Missing Logs or Data",
-          description: "Some entries are missing from the daily activity report for May 10th.",
+          reporter_user_id: "user_006",
+          reporter_email: "manager@sample.com",
+          assigned_user_id: "admin_006",
+          assigned_user_name: "Leonardo Da Vinci",
+          affected_module_id: "mod_007",
+          affected_module_name: "Dashboard/UI",
+          issue_type_id: "issue_006",
+          issue_type_name: "Missing Logs or Data",
+          severity_id: 2,
+          severity_name: "Medium",
+          derived_severity_score: 75,
           status: "In Progress",
           priority: "Medium Priority",
-          date: "2025-05-11",
-          time: "03:15 PM",
-          reportedBy: "manager@sample.com",
+          description: "Some entries are missing from the daily activity report for May 10th.",
+          submitted_at: "2025-01-15T03:15:00Z",
+          updated_at: "2025-01-15T03:25:00Z",
+          resolved_at: undefined,
+          notes: [
+            {
+              note_id: "note_006",
+              incident_id: "inc_006",
+              author_user_id: "admin_006",
+              author_name: "Leonardo Da Vinci",
+              author_email: "leo@toothsync.com",
+              body: "Running data integrity check. Will update once complete.",
+              created_at: "2025-01-15T03:25:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+          ],
           attachments: [],
-          adminInCharge: "Leonardo Da Vinci",
-          adminNotes: "Running data integrity check. Will update once complete.",
         },
         {
-          id: "#TS-2025-00129",
+          incident_id: "inc_007",
+          ticket_num: "#TS-2025-00129",
           title: "User profile not updating",
-          module: "Login & Authentication",
-          category: "Account Locked",
-          description: "My profile information (phone number) is not saving after I update it.",
+          reporter_user_id: "user_007",
+          reporter_email: "userprofile@sample.com",
+          assigned_user_id: "admin_007",
+          assigned_user_name: "Raphael Sanzio",
+          affected_module_id: "mod_008",
+          affected_module_name: "Login & Authentication",
+          issue_type_id: "issue_007",
+          issue_type_name: "Account Locked",
+          severity_id: 1,
+          severity_name: "Low",
+          derived_severity_score: 50,
           status: "Resolved",
           priority: "Low Priority",
-          date: "2025-05-09",
-          time: "10:00 AM",
-          reportedBy: "userprofile@sample.com",
+          description: "My profile information (phone number) is not saving after I update it.",
+          submitted_at: "2025-01-15T10:00:00Z",
+          updated_at: "2025-01-15T10:10:00Z",
+          resolved_at: "2025-01-15T10:20:00Z",
+          notes: [
+            {
+              note_id: "note_007",
+              incident_id: "inc_007",
+              author_user_id: "admin_007",
+              author_name: "Raphael Sanzio",
+              author_email: "raphael@toothsync.com",
+              body: "Fixed a bug in the profile update API. Changes should now save correctly.",
+              created_at: "2025-01-15T10:20:00Z",
+              visibility: "public",
+              is_system: false,
+            },
+          ],
           attachments: [],
-          adminInCharge: "Raphael Sanzio",
-          adminNotes: "Fixed a bug in the profile update API. Changes should now save correctly.",
         },
       ],
       [],
@@ -195,8 +431,8 @@ export default function MyTicketsPage() {
       filtered = filtered.filter(
         (ticket) =>
           ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          ticket.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          ticket.module.toLowerCase().includes(searchTerm.toLowerCase()),
+          ticket.ticket_num.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          ticket.affected_module_name.toLowerCase().includes(searchTerm.toLowerCase()),
       )
     }
     return filtered
@@ -241,12 +477,12 @@ export default function MyTicketsPage() {
     // For now, we'll simulate a re-fetch by updating the local state
     setAllTickets((prevTickets) =>
       prevTickets.map((ticket) =>
-        ticket.id === selectedTicket?.id ? { ...ticket, status: selectedTicket.status } : ticket,
+        ticket.incident_id === selectedTicket?.incident_id ? { ...ticket, status: selectedTicket.status } : ticket,
       ),
     )
     // You might want to fetch the updated ticket from the backend here
-    // e.g., fetchUpdatedTicket(selectedTicket.id).then(updatedTicket => {
-    //   setAllTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
+    // e.g., fetchUpdatedTicket(selectedTicket.incident_id).then(updatedTicket => {
+    //   setAllTickets(prev => prev.map(t => t.incident_id === updatedTicket.incident_id ? updatedTicket : t));
     // });
   }
 
@@ -285,7 +521,7 @@ export default function MyTicketsPage() {
 
       // Update local state
       setAllTickets((prevTickets) =>
-        prevTickets.map((ticket) => (ticket.id === ticketId ? { ...ticket, status: newStatus } : ticket)),
+        prevTickets.map((ticket) => (ticket.incident_id === ticketId ? { ...ticket, status: newStatus } : ticket)),
       )
 
       // Only show success modal (which leads to feedback) if status is Resolved
@@ -362,74 +598,76 @@ export default function MyTicketsPage() {
     }
   }
 
-  const getStatusBadgeColors = (status: Ticket["status"]) => {
-    switch (status) {
-      case "Pending":
-        return "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
-      case "In Progress":
-        return "bg-blue-100 text-blue-800 hover:bg-blue-100"
-      case "Resolved":
-        return "bg-emerald-100 text-emerald-800 hover:bg-emerald-100"
-      default:
-        return ""
+    const getStatusBadgeColors = (status: Ticket["status"]) => {
+      switch (status) {
+        case "Pending":
+          return "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
+        case "In Progress":
+          return "bg-blue-100 text-blue-800 hover:bg-blue-100"
+        case "Resolved":
+          return "bg-emerald-100 text-emerald-800 hover:bg-emerald-100"
+        default:
+          return ""
+      }
     }
-  }
 
-  const getPriorityBadgeColors = (priority: Ticket["priority"]) => {
-    switch (priority) {
-      case "Low Priority":
-        return "bg-gray-100 text-gray-800 hover:bg-gray-100"
-      case "Medium Priority":
-        return "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
-      case "High Priority":
-        return "bg-red-100 text-red-800 hover:bg-red-100"
-      default:
-        return ""
+    const getPriorityBadgeColors = (priority: Ticket["priority"]) => {
+      switch (priority) {
+        case "Low Priority":
+          return "bg-gray-100 text-gray-800 hover:bg-gray-100"
+        case "Medium Priority":
+          return "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
+        case "High Priority":
+          return "bg-red-100 text-red-800 hover:bg-red-100"
+        default:
+          return ""
+      }
     }
-  }
 
   return (
     <div className="min-h-screen bg-gray-100 font-poppins flex flex-col">
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-emerald-700 text-white p-4 flex items-center justify-between shadow-md">
-        <div className="flex items-center gap-3">
-            <Link href="/landing" passHref>
-              <Image
-                src="/images/DOMC-logo.png"
-                alt="App Logo"
-                width={75}
-                height={75}
-                className="object-contain cursor-pointer"
-              />
-            </Link>
-          <div>
-            <h1 className="text-xl font-bold">Ticket Tracker</h1>
-            <p className="text-sm text-emerald-100">Dental Clinic Laboratory Support System</p>
-          </div>
+    <header className="fixed top-0 left-0 right-0 z-50 bg-emerald-700 text-white p-4 flex items-center justify-between shadow-md">
+      <div className="flex items-center gap-3">
+        <Link href="/landing" aria-label="Go to landing page" className="flex items-center">
+          <Image
+            src="/images/DOMC-logo.png"
+            alt="App Logo"
+            width={75}
+            height={75}
+            className="object-contain cursor-pointer"
+            priority
+          />
+        </Link>
+        <div>
+          <h1 className="text-xl font-bold">Ticket Tracker</h1>
+          <p className="text-sm text-emerald-100">Dental Clinic Laboratory Support System</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <Input
-              type="text"
-              placeholder="Search tickets by ID or title..."
-              className="pl-10 pr-4 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:border-white w-64"
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value)
-                setCurrentPage(1) // Reset to first page on search
-              }}
-            />
-          </div>
-          <Button
-            onClick={handleNewTicket}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            New Ticket
-          </Button>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-200/80 w-5 h-5" />
+          <Input
+            type="text"
+            placeholder="Search tickets by ID or title..."
+            className="pl-10 pr-4 py-2 rounded-lg bg-white/20 border border-white/30 text-white placeholder:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:border-white w-64"
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value)
+              setCurrentPage(1)
+            }}
+          />
         </div>
-      </header>
+        <Button
+          onClick={handleNewTicket}
+          className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+        >
+          <Plus className="w-5 h-5" />
+          New Ticket
+        </Button>
+      </div>
+    </header>
 
       {/* Main Content Area */}
       <main className="flex-1 p-6">
@@ -470,18 +708,18 @@ export default function MyTicketsPage() {
             {paginatedTickets.length > 0 ? (
               paginatedTickets.map((ticket) => (
                 <div
-                  key={ticket.id}
+                  key={ticket.incident_id}
                   className="flex items-center p-4 border border-gray-200 rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow duration-200"
                 >
                   <div className="flex-shrink-0 mr-4">{getStatusIcon(ticket.status)}</div>
                   <div className="flex-1">
                     <h3 className="text-base font-semibold text-gray-800">{ticket.title}</h3>
-                    <p className="text-sm text-gray-500">{ticket.module}</p>
+                    <p className="text-sm text-gray-500">{ticket.affected_module_name}</p>
                     <div className="flex items-center text-xs text-gray-400 mt-1">
                       <Calendar className="w-3 h-3 mr-1" />
-                      <span>{ticket.date}</span>
+                      <span>{ticket.submitted_at.split("T")[0]}</span>
                       <Clock className="w-3 h-3 ml-3 mr-1" />
-                      <span>{ticket.time}</span>
+                      <span>{ticket.submitted_at.split("T")[1]}</span>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 ml-4">
@@ -509,16 +747,19 @@ export default function MyTicketsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleCopyTicketId(ticket.id)}>
+                          <DropdownMenuItem onClick={() => handleCopyTicketId(ticket.ticket_num)}>
+                            <Copy className="mr-2 h-4 w-4" />
                             <span>Copy Ticket ID</span>
                           </DropdownMenuItem>
                           {ticket.status !== "Resolved" && ( // Only show if not already resolved
-                            <DropdownMenuItem onClick={() => handleUpdateTicketStatus(ticket.id, "Resolved")}>
+                            <DropdownMenuItem onClick={() => handleUpdateTicketStatus(ticket.incident_id, "Resolved")}>
+                              <Check className="mr-2 h-4 w-4 text-emerald-600" />
                               <span>Mark as Resolved</span>
                             </DropdownMenuItem>
                           )}
                           {ticket.status !== "Resolved" && ( // Only show if not already resolved
-                            <DropdownMenuItem onClick={() => handleUpdateTicketStatus(ticket.id, "Pending")}>
+                            <DropdownMenuItem onClick={() => handleUpdateTicketStatus(ticket.incident_id, "Pending")}>
+                              <XCircle className="mr-2 h-4 w-4 text-red-600" />
                               <span>Cancel Ticket</span>
                             </DropdownMenuItem>
                           )}
