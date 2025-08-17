@@ -365,11 +365,11 @@ export default function MyTicketsPage() {
   const getStatusBadgeColors = (status: Ticket["status"]) => {
     switch (status) {
       case "Pending":
-        return "bg-yellow-100 text-yellow-800"
+        return "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
       case "In Progress":
-        return "bg-blue-100 text-blue-800"
+        return "bg-blue-100 text-blue-800 hover:bg-blue-100"
       case "Resolved":
-        return "bg-emerald-100 text-emerald-800"
+        return "bg-emerald-100 text-emerald-800 hover:bg-emerald-100"
       default:
         return ""
     }
@@ -378,11 +378,11 @@ export default function MyTicketsPage() {
   const getPriorityBadgeColors = (priority: Ticket["priority"]) => {
     switch (priority) {
       case "Low Priority":
-        return "bg-gray-100 text-gray-800"
+        return "bg-gray-100 text-gray-800 hover:bg-gray-100"
       case "Medium Priority":
-        return "bg-yellow-100 text-yellow-800"
+        return "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
       case "High Priority":
-        return "bg-red-100 text-red-800"
+        return "bg-red-100 text-red-800 hover:bg-red-100"
       default:
         return ""
     }
