@@ -1,7 +1,7 @@
 "use client"
 import type React from "react"
-import { useState, useRef } from "react"
-import { Calendar, Plus, Edit, Upload, User, Eye, Download, History, X } from 'lucide-react'
+import { useState, useRef, useEffect } from "react"
+import { Calendar, Plus, Edit, Upload, User, Eye, Download, History, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -19,21 +19,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-// import { supabase } from '@/lib/supabase'; // Commented out as it's not used in the provided snippet
+import { uploadCliniciansCsv } from "@/lib/csv-upload" // Assuming you have this helper from previous steps
 
 // Type definitions
 interface Clinician {
-  id: string
-  firstName: string
-  lastName: string
-  gender: string
-  status: string
-  birthday: string
-  email: string
-  contactNumber: string
-  address: string
-  yearLevel: string
-  section: string
+  id: string // This will be user_id from DB (internal)
+  studentId: string // New: student_id from DB (for display)
+  firstName: string // from public.users
+  lastName: string // from public.users
+  gender: string // from public.users (sex)
+  status: string // from public.clinicians (enrollment_status)
+  birthday: string // from public.users
+  email: string // from public.users
+  contactNumber: string // from public.users
+  address: string // from public.clinicians
+  yearLevel: string // from public.clinicians
+  section: string // from public.clinicians
 }
 
 interface AttendanceRecord {
@@ -76,6 +77,7 @@ interface Activity {
 }
 
 interface NewClinician {
+  studentId: string // New: studentId for manual add
   firstName: string
   lastName: string
   gender: string
@@ -102,95 +104,48 @@ export default function CliniciansPage() {
   const [isActivityEditModalOpen, setIsActivityEditModalOpen] = useState(false)
   const [currentActivity, setCurrentActivity] = useState<Activity | null>(null)
 
-  // Add these new state variables after the existing useState declarations
   const [addSuccessMessage, setAddSuccessMessage] = useState<string>("")
+  const [addErrorMessage, setAddErrorMessage] = useState<string>("") // New state for add errors
   const [uploadSuccessMessage, setUploadSuccessMessage] = useState<string>("")
   const [isProcessingUpload, setIsProcessingUpload] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("") // New state for upload errors
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const fileInputRef = useRef<HTMLInputElement>(null); // Add this line
-
-  // Form data state that persists across tabs
   const [formData, setFormData] = useState<Partial<NewClinician>>({
     yearLevel: "5th Year",
     section: "A",
   })
 
-  // Add form validation state after the existing useState declarations:
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Sample data for clinicians (replace with data fetched from Supabase in a real app)
-  const [clinicians, setClinicians] = useState<Clinician[]>([
-    {
-      id: "C2024-001",
-      firstName: "Maria",
-      lastName: "Santos",
-      gender: "Female",
-      status: "Enrolled",
-      birthday: "1998-05-15",
-      email: "maria.santos@example.com",
-      contactNumber: "+63 912 345 6789",
-      address: "123 Rizal Avenue, Manila",
-      yearLevel: "5th Year",
-      section: "A",
-    },
-    {
-      id: "C2024-002",
-      firstName: "John",
-      lastName: "Dela Cruz",
-      gender: "Male",
-      status: "Enrolled",
-      birthday: "1997-08-22",
-      email: "john.delacruz@example.com",
-      contactNumber: "+63 917 123 4567",
-      address: "456 Mabini Street, Quezon City",
-      yearLevel: "6th Year",
-      section: "B",
-    },
-    {
-      id: "C2024-003",
-      firstName: "Anna",
-      lastName: "Lim",
-      gender: "Female",
-      status: "Not Enrolled",
-      birthday: "1999-02-10",
-      email: "anna.lim@example.com",
-      contactNumber: "+63 918 765 4321",
-      address: "789 Bonifacio Avenue, Makati",
-      yearLevel: "5th Year",
-      section: "A",
-    },
-    {
-      id: "C2024-004",
-      firstName: "Mark",
-      lastName: "Aquino",
-      gender: "Male",
-      status: "Enrolled",
-      birthday: "1996-11-30",
-      email: "mark.aquino@example.com",
-      contactNumber: "+63 919 876 5432",
-      address: "321 Aguinaldo Street, Pasig",
-      yearLevel: "6th Year",
-      section: "C",
-    },
-    {
-      id: "C2024-005",
-      firstName: "Sarah",
-      lastName: "Garcia",
-      gender: "Female",
-      status: "Not Enrolled",
-      birthday: "1998-07-18",
-      email: "sarah.garcia@example.com",
-      contactNumber: "+63 915 432 1098",
-      address: "654 Luna Road, Mandaluyong",
-      yearLevel: "5th Year",
-      section: "B",
-    },
-  ])
+  // Sample data for clinicians (reduced to one entry)
+  const [clinicians, setClinicians] = useState<Clinician[]>([])
 
-  // Add sample attendance data
+  // Add this useEffect hook and fetchClinicians function
+  useEffect(() => {
+    fetchClinicians()
+  }, [])
+
+  const fetchClinicians = async () => {
+    try {
+      const response = await fetch("/api/clinicians")
+      if (!response.ok) {
+        // Log the full response for debugging
+        const errorData = await response.json()
+        console.error("Failed to fetch clinicians:", response.status, errorData)
+        throw new Error(`HTTP error! status: ${response.status} - ${errorData.message || "Unknown error"}`)
+      }
+      const data: Clinician[] = await response.json()
+      setClinicians(data)
+    } catch (error) {
+      console.error("Failed to fetch clinicians:", error)
+      // Optionally set an error message to display in the UI
+    }
+  }
+
+  // Sample attendance data (reduced to one entry)
   const [attendanceData] = useState<AttendanceRecord[]>([
     {
       id: 1,
@@ -200,41 +155,9 @@ export default function CliniciansPage() {
       sanitized: "Yes",
       status: "Present",
     },
-    {
-      id: 2,
-      date: "2025-05-07",
-      timeIn: "08:05 AM",
-      timeOut: "04:45 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
-    {
-      id: 3,
-      date: "2025-05-06",
-      timeIn: "08:30 AM",
-      timeOut: "04:15 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
-    {
-      id: 4,
-      date: "2025-05-05",
-      timeIn: "09:00 AM",
-      timeOut: "04:00 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
-    {
-      id: 5,
-      date: "2025-05-02",
-      timeIn: "08:10 AM",
-      timeOut: "04:20 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
   ])
 
-  // Add sample activities data
+  // Sample activities data (reduced to one entry)
   const [activitiesData, setActivitiesData] = useState<Activity[]>([
     {
       id: "A001",
@@ -277,166 +200,34 @@ export default function CliniciansPage() {
         },
       ],
     },
-    {
-      id: "A002",
-      date: "2025-05-07",
-      procedure: "Dental Filling",
-      chair: "Chair 12",
-      instructor: "Dr. Mendoza",
-      patient: "Ana Reyes",
-      grade: "90",
-      remarks: "Excellent composite placement",
-      status: "Completed",
-      firstName: "John",
-      lastName: "Dela Cruz",
-      history: [
-        {
-          timestamp: "2025-05-07T16:45:00",
-          user: "dr.mendoza@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-07",
-            procedure: "Dental Filling",
-            patient: "Ana Reyes",
-            grade: "90",
-            remarks: "Excellent composite placement",
-          },
-        },
-      ],
-    },
-    {
-      id: "A003",
-      date: "2025-05-06",
-      procedure: "Dental Crown",
-      chair: "Chair 03",
-      instructor: "Dr. Santos",
-      patient: "Miguel Santos",
-      grade: "82",
-      remarks: "Needs improvement on margin preparation",
-      status: "Completed",
-      firstName: "Anna",
-      lastName: "Lim",
-      history: [
-        {
-          timestamp: "2025-05-06T15:10:00",
-          user: "dr.santos@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-06",
-            procedure: "Dental Crown",
-            patient: "Miguel Santos",
-            grade: "82",
-            remarks: "Needs improvement on margin preparation",
-          },
-        },
-      ],
-    },
-    {
-      id: "A004",
-      date: "2025-05-05",
-      procedure: "Teeth Cleaning",
-      chair: "Chair 08",
-      instructor: "Dr. Reyes",
-      patient: "Sofia Reyes",
-      grade: "88",
-      remarks: "Thorough cleaning, good patient management",
-      status: "Completed",
-      firstName: "Mark",
-      lastName: "Aquino",
-      history: [
-        {
-          timestamp: "2025-05-05T14:30:00",
-          user: "dr.reyes@example.com",
-          action: "Updated",
-          description: "Remarks updated",
-          details: {
-            date: "2025-05-05",
-            procedure: "Teeth Cleaning",
-            patient: "Sofia Reyes",
-            grade: "88",
-            remarks: "Thorough cleaning, good patient management",
-          },
-        },
-        {
-          timestamp: "2025-05-05T11:20:00",
-          user: "dr.reyes@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-05",
-            procedure: "Teeth Cleaning",
-            patient: "Sofia Reyes",
-            grade: "88",
-            remarks: "Good cleaning technique",
-          },
-        },
-      ],
-    },
-    {
-      id: "A005",
-      date: "2025-05-02",
-      procedure: "Dental Extraction",
-      chair: "Chair 10",
-      instructor: "Dr. Tan",
-      patient: "Luis Tan",
-      grade: "78",
-      remarks: "Needs to improve extraction technique",
-      status: "Completed",
-      firstName: "Sarah",
-      lastName: "Garcia",
-      history: [
-        {
-          timestamp: "2025-05-02T16:15:00",
-          user: "dr.tan@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-02",
-            procedure: "Dental Extraction",
-            patient: "Luis Tan",
-            grade: "78",
-            remarks: "Needs to improve extraction technique",
-          },
-        },
-      ],
-    },
   ])
 
-  // Function to handle edit button click
   const handleEditClick = (clinician: Clinician) => {
     setCurrentClinician(clinician)
     setIsEditModalOpen(true)
   }
 
-  // Function to handle view button click
   const handleViewClick = (clinician: Clinician) => {
     setSelectedClinician(clinician)
     setIsViewModalOpen(true)
   }
 
-  // Function to handle history button click
   const handleHistoryClick = (activity: Activity) => {
     setSelectedActivity(activity)
     setIsHistoryModalOpen(true)
   }
 
-  // Function to handle activity edit button click
   const handleActivityEditClick = (activity: Activity) => {
     setCurrentActivity(activity)
     setIsActivityEditModalOpen(true)
   }
 
-  // Function to update clinician
   const handleUpdateClinician = (updatedClinician: Clinician) => {
     setClinicians(clinicians.map((clinician) => (clinician.id === updatedClinician.id ? updatedClinician : clinician)))
     setIsEditModalOpen(false)
   }
 
-  // Function to update activity
   const handleUpdateActivity = (updatedActivity: Activity) => {
-    // Create a new history entry
     const newHistory: HistoryItem = {
       timestamp: new Date().toISOString(),
       user: "admin@example.com",
@@ -454,16 +245,15 @@ export default function CliniciansPage() {
       activitiesData.map((activity) =>
         activity.id === updatedActivity.id
           ? {
-            ...updatedActivity,
-            history: [newHistory, ...activity.history],
-          }
+              ...updatedActivity,
+              history: [newHistory, ...activity.history],
+            }
           : activity,
       ),
     )
     setIsActivityEditModalOpen(false)
   }
 
-  // Function to update form data
   const updateFormData = (field: keyof NewClinician, value: string) => {
     setFormData((prev: Partial<NewClinician>) => ({
       ...prev,
@@ -471,19 +261,28 @@ export default function CliniciansPage() {
     }))
   }
 
-  // Reset form when modal opens/closes
   const resetForm = () => {
     setFormData({
       yearLevel: "5th Year",
       section: "A",
+      studentId: "", // Reset studentId
+      firstName: "",
+      lastName: "",
+      gender: "",
+      birthday: "",
+      email: "",
+      contactNumber: "",
+      address: "",
+      status: "",
     })
     setFormErrors({})
+    setAddSuccessMessage("") // Clear messages on reset
+    setAddErrorMessage("") // Clear messages on reset
   }
 
-  // Validation function with realistic required fields
   const validateForm = (): Record<string, string> => {
     const errors: Record<string, string> = {}
-    // Essential fields for a medical/dental student
+    if (!formData.studentId?.trim()) errors.studentId = "Student ID is required" // New validation
     if (!formData.firstName?.trim()) errors.firstName = "First name is required"
     if (!formData.lastName?.trim()) errors.lastName = "Last name is required"
     if (!formData.gender) errors.gender = "Gender is required for medical records"
@@ -498,13 +297,18 @@ export default function CliniciansPage() {
     event.preventDefault()
     setIsSubmitting(true)
     setFormErrors({})
+    setAddSuccessMessage("") // Clear previous messages
+    setAddErrorMessage("") // Clear previous messages
+
     const errors = validateForm()
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors)
       setIsSubmitting(false)
       return
     }
-    const newClinician: NewClinician = {
+
+    const newClinicianData: NewClinician = {
+      studentId: formData.studentId?.trim() || "", // Include studentId
       firstName: formData.firstName?.trim() || "",
       lastName: formData.lastName?.trim() || "",
       gender: formData.gender || "",
@@ -516,160 +320,100 @@ export default function CliniciansPage() {
       yearLevel: formData.yearLevel || "5th Year",
       section: formData.section || "A",
     }
-    handleAddClinician(newClinician)
-    setIsSubmitting(false)
-  }
 
-  const handleAddClinician = (newClinician: NewClinician) => {
-    const clinicianWithId: Clinician = {
-      ...newClinician,
-      id: `C2024-00${clinicians.length + 1}`,
+    try {
+      const response = await fetch("/api/clinicians", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newClinicianData),
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        setAddSuccessMessage(
+          result.message ||
+            `Successfully added ${newClinicianData.firstName} ${newClinicianData.lastName} to the system!`,
+        )
+        resetForm()
+        fetchClinicians() // Refresh the list
+        setTimeout(() => {
+          setAddSuccessMessage("")
+          setIsAddModalOpen(false)
+        }, 3000)
+      } else {
+        setAddErrorMessage(result.message || "Failed to add clinician. Please try again.") // Set error message
+        setAddSuccessMessage("") // Ensure success message is cleared
+      }
+    } catch (error) {
+      console.error("Error adding clinician:", error)
+      setAddErrorMessage("An unexpected error occurred. Please try again.") // Set error message for network issues
+      setAddSuccessMessage("") // Ensure success message is cleared
+    } finally {
+      setIsSubmitting(false)
     }
-    setClinicians([...clinicians, clinicianWithId])
-    setAddSuccessMessage(`Successfully added ${newClinician.firstName} ${newClinician.lastName} to the system!`)
-    resetForm()
-    // Auto-close success message after 3 seconds
-    setTimeout(() => {
-      setAddSuccessMessage("")
-      setIsAddModalOpen(false)
-    }, 3000)
   }
 
-  // Modified function to handle file selection and upload to API
+  // Remove the old handleAddClinician function as it's replaced by the logic in handleAddClinicianSubmit
+  // const handleAddClinician = (newClinician: NewClinician) => { ... }
+
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file && file.type === "text/csv") {
+    const isCsv = !!file && (file.type === "text/csv" || file.name.toLowerCase().endsWith(".csv"))
+    if (isCsv) {
       setSelectedFile(file)
-      setUploadErrorMessage("") // Clear any previous error
-      setUploadSuccessMessage("") // Clear any previous success
+      setUploadErrorMessage("")
+      setUploadSuccessMessage("")
     } else {
       setSelectedFile(null)
-      setUploadErrorMessage("Please enter valid .csv file")
-      setUploadSuccessMessage("") // Clear any previous success
+      setUploadErrorMessage("Please select a valid .csv file")
+      setUploadSuccessMessage("")
     }
   }
 
   const processCSVFile = async () => {
     if (!selectedFile) {
-      setUploadErrorMessage("Please enter valid .csv file")
+      setUploadErrorMessage("Please select a valid .csv file")
       return
     }
     setIsProcessingUpload(true)
     setUploadSuccessMessage("")
     setUploadErrorMessage("")
-
     try {
-      const formData = new FormData()
-      formData.append("file", selectedFile) // Append the selected file to FormData
-
-      const response = await fetch("/api/upload-csv", {
-        method: "POST",
-        body: formData, // Correctly pass formData as the body
-      })
-
-      const responseBodyText = await response.text();
-      console.log("Raw API Response Text (frontend):", responseBodyText);
-
-      let parsedResult: { status?: string; message?: string } | null = null;
-      let finalStatus: string = "error";
-      let finalMessage: string = "An unknown error occurred.";
-
-      // Attempt to clean and parse the response
-      let cleanedText = responseBodyText;
-      if (responseBodyText.startsWith("Success: ")) {
-        cleanedText = responseBodyText.substring("Success: ".length);
-      }
-
-      try {
-        parsedResult = JSON.parse(cleanedText);
-        console.log("Parsed JSON Result (after cleaning):", parsedResult);
-      } catch (jsonError) {
-        console.error("Final JSON parsing failed after cleaning:", jsonError);
-        // If JSON parsing fails even after cleaning, fall back to text analysis
-        if (responseBodyText.includes("Import has been successful")) {
-          finalStatus = "success";
-          finalMessage = "Import has been successful.";
-        } else if (responseBodyText.includes("partial_success")) {
-          finalStatus = "partial_success";
-          finalMessage = "Import completed with some errors.";
-        } else if (responseBodyText.includes("error")) {
-          finalStatus = "error";
-          finalMessage = "There was an error during import.";
-        } else {
-          finalStatus = "unknown";
-          finalMessage = `Upload failed: Could not parse server response. Raw: ${responseBodyText.substring(0, 100)}...`;
-        }
-        setUploadErrorMessage(finalMessage);
-        setIsProcessingUpload(false);
-        return;
-      }
-
-      // Determine final status and message from parsedResult
-      if (parsedResult && typeof parsedResult === 'object' && parsedResult.status) {
-        finalStatus = parsedResult.status;
-        finalMessage = parsedResult.message || "No message provided.";
+      const result = await uploadCliniciansCsv(selectedFile)
+      if (result.status === "success") {
+        setUploadSuccessMessage(result.message)
+        setSelectedFile(null)
+        fetchClinicians() // Refresh the list after CSV upload
+        setTimeout(() => {
+          setUploadSuccessMessage("")
+          setIsUploadModalOpen(false)
+        }, 3000)
+      } else if (result.status === "partial_success") {
+        setUploadErrorMessage(result.message)
       } else {
-        // Fallback if parsed result doesn't conform to expected structure (e.g., missing 'status')
-        console.warn("Parsed result does not conform to expected interface or status is missing:", parsedResult);
-        if (responseBodyText.includes("Import has been successful")) {
-          finalStatus = "success";
-          finalMessage = "Import has been successful.";
-        } else if (responseBodyText.includes("partial_success")) {
-          finalStatus = "partial_success";
-          finalMessage = "Import completed with some errors.";
-        } else if (responseBodyText.includes("error")) {
-          finalStatus = "error";
-          finalMessage = "There was an error during import.";
-        } else {
-          finalStatus = "unknown";
-          finalMessage = `Upload failed: Unrecognized server response structure. Raw: ${responseBodyText.substring(0, 100)}...`;
-        }
-      }
-
-      // Now use finalStatus and finalMessage for display logic
-      if (response.ok) {
-        if (finalStatus === "success") {
-          setUploadSuccessMessage(finalMessage)
-          setSelectedFile(null)
-          setTimeout(() => {
-            setUploadSuccessMessage("")
-            setIsUploadModalOpen(false)
-          }, 3000)
-        } else if (finalStatus === "partial_success") {
-          setUploadErrorMessage(finalMessage)
-        } else if (finalStatus === "error") {
-          setUploadErrorMessage(finalMessage)
-        } else {
-          // This covers 'unknown' status or any other unexpected status from the backend
-          setUploadErrorMessage(finalMessage);
-        }
-      } else {
-        // If response.ok is false, it's an HTTP error (e.g., 500, 400)
-        setUploadErrorMessage(finalMessage);
+        setUploadErrorMessage(result.message || "There was an error during import.")
       }
     } catch (error) {
-      console.error("Error during CSV upload or processing (outer catch):", error);
-      setUploadErrorMessage("There's an error while uploading the file due to an unexpected client-side issue.");
+      console.error("Error during CSV upload:", error)
+      setUploadErrorMessage("There's an error while uploading the file due to an unexpected client-side issue.")
     } finally {
-      setIsProcessingUpload(false);
+      setIsProcessingUpload(false)
     }
   }
 
-  // Function to export activities to CSV
   const exportActivitiesToCSV = () => {
     if (!selectedClinician) return
-    // Create CSV header
     const headers = ["ID", "Date", "Procedure", "Patient", "Chair", "Instructor", "Grade", "Status", "Remarks"].join(
       ",",
     )
-    // Create CSV rows
     const rows = activitiesData.map(
       (activity) =>
         `"${activity.id}","${activity.date}","${activity.procedure}","${activity.patient}","${activity.chair}","${activity.instructor}","${activity.grade}","${activity.status}","${activity.remarks}"`,
     )
-    // Combine header and rows
     const csv = [headers, ...rows].join("\n")
-    // Create a blob and download
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
@@ -686,19 +430,14 @@ export default function CliniciansPage() {
     document.body.removeChild(link)
   }
 
-  // Function to export attendance to CSV
   const exportAttendanceToCSV = () => {
     if (!selectedClinician) return
-    // Create CSV header
     const headers = ["Date", "Time In", "Time Out", "Sanitized", "Status"].join(",")
-    // Create CSV rows
     const rows = attendanceData.map(
       (attendance) =>
         `"${attendance.date}","${attendance.timeIn}","${attendance.timeOut}","${attendance.sanitized}","${attendance.status}"`,
     )
-    // Combine header and rows
     const csv = [headers, ...rows].join("\n")
-    // Create a blob and download
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
@@ -715,7 +454,6 @@ export default function CliniciansPage() {
     document.body.removeChild(link)
   }
 
-  // Function to export current tab data to CSV
   const exportToCSV = () => {
     if (activeTab === "activities") {
       exportActivitiesToCSV()
@@ -724,7 +462,6 @@ export default function CliniciansPage() {
     }
   }
 
-  // Filter clinicians based on active filter
   const filteredClinicians = clinicians.filter((clinician) => {
     if (activeFilter === "all") return true
     if (activeFilter === "enrolled") return clinician.status === "Enrolled"
@@ -734,7 +471,6 @@ export default function CliniciansPage() {
 
   return (
     <>
-      {/* Academic Term - Static */}
       <div className="mb-6">
         <div className="bg-[#5C8E77]/10 border border-[#5C8E77]/20 rounded-lg px-4 py-3 flex items-center justify-between">
           <div>
@@ -747,8 +483,6 @@ export default function CliniciansPage() {
           <Badge className="bg-[#5C8E77]">Active</Badge>
         </div>
       </div>
-
-      {/* Clinicians Table */}
       <Card className="bg-white border border-gray-200 shadow-sm mb-6">
         <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
           <div className="flex items-center gap-4">
@@ -807,7 +541,7 @@ export default function CliniciansPage() {
           <Table>
             <TableHeader className="bg-white border-b border-gray-200">
               <TableRow className="hover:bg-white border-b-0">
-                <TableHead className="font-medium text-[#333]">Clinician ID</TableHead>
+                <TableHead className="font-medium text-[#333]">Student ID</TableHead>
                 <TableHead className="font-medium text-[#333]">First Name</TableHead>
                 <TableHead className="font-medium text-[#333]">Last Name</TableHead>
                 <TableHead className="font-medium text-[#333]">Year</TableHead>
@@ -821,7 +555,7 @@ export default function CliniciansPage() {
               {filteredClinicians.length > 0 ? (
                 filteredClinicians.map((clinician) => (
                   <TableRow key={clinician.id} className="hover:bg-gray-50 border-b border-gray-200">
-                    <TableCell className="font-medium text-[#333]">{clinician.id}</TableCell>
+                    <TableCell className="font-medium text-[#333]">{clinician.studentId}</TableCell>
                     <TableCell className="text-[#333]">{clinician.firstName}</TableCell>
                     <TableCell className="text-[#333]">{clinician.lastName}</TableCell>
                     <TableCell className="text-[#333]">{clinician.yearLevel}</TableCell>
@@ -869,7 +603,6 @@ export default function CliniciansPage() {
           </Table>
         </CardContent>
       </Card>
-
       {/* Add Clinician Modal */}
       <Dialog
         open={isAddModalOpen}
@@ -903,6 +636,24 @@ export default function CliniciansPage() {
               </div>
             </div>
           )}
+          {addErrorMessage && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mx-6 mt-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800 break-words">{addErrorMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
           <form onSubmit={handleAddClinicianSubmit}>
             <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
               <Tabs defaultValue="personal" className="w-full">
@@ -911,6 +662,19 @@ export default function CliniciansPage() {
                   <TabsTrigger value="academic">Academic Information</TabsTrigger>
                 </TabsList>
                 <TabsContent value="personal" className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="studentId" className="text-[#333]">
+                      Student ID <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="studentId"
+                      value={formData.studentId || ""}
+                      onChange={(e) => updateFormData("studentId", e.target.value)}
+                      placeholder="Enter student ID"
+                      className={formErrors.studentId ? "border-red-500" : "border-gray-300"}
+                    />
+                    {formErrors.studentId && <p className="text-sm text-red-500">{formErrors.studentId}</p>}
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="firstName" className="text-[#333]">
@@ -1078,7 +842,6 @@ export default function CliniciansPage() {
           </form>
         </DialogContent>
       </Dialog>
-
       {/* Edit Clinician Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
@@ -1097,6 +860,17 @@ export default function CliniciansPage() {
                     <TabsTrigger value="academic">Academic Information</TabsTrigger>
                   </TabsList>
                   <TabsContent value="personal" className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-studentId" className="text-[#333]">
+                        Student ID
+                      </Label>
+                      <Input
+                        id="edit-studentId"
+                        defaultValue={currentClinician.studentId}
+                        onChange={(e) => setCurrentClinician({ ...currentClinician, studentId: e.target.value })}
+                        className="border-gray-300"
+                      />
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="edit-firstName" className="text-[#333]">
@@ -1236,7 +1010,7 @@ export default function CliniciansPage() {
                           <SelectItem value="A">Section A</SelectItem>
                           <SelectItem value="B">Section B</SelectItem>
                           <SelectItem value="C">Section C</SelectItem>
-                          <SelectItem value="D">Section D</SelectItem>
+                          <SelectItem value="D">Section C</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1280,7 +1054,6 @@ export default function CliniciansPage() {
           )}
         </DialogContent>
       </Dialog>
-
       {/* Upload CSV Modal */}
       <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
         <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
@@ -1337,12 +1110,19 @@ export default function CliniciansPage() {
                   ? "File selected. Click upload to process."
                   : "or click to browse files from your computer"}
               </p>
-              <input type="file" accept=".csv" onChange={handleFileSelect} className="hidden" id="csv-upload" ref={fileInputRef} />
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileSelect}
+                className="hidden"
+                id="csv-upload"
+                ref={fileInputRef}
+              />
               <label htmlFor="csv-upload">
                 <Button
                   className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
                   type="button"
-                  onClick={() => fileInputRef.current?.click()} // Add this onClick handler
+                  onClick={() => fileInputRef.current?.click()}
                 >
                   Browse Files
                 </Button>
@@ -1352,9 +1132,11 @@ export default function CliniciansPage() {
               <h4 className="text-sm font-medium text-[#333] mb-2">CSV Format Requirements:</h4>
               <ul className="text-xs text-gray-500 list-disc pl-5 space-y-1">
                 <li>First row must contain column headers</li>
-                <li>Required columns: First Name, Last Name, Gender, Birthday, Email, Contact Number, Status</li>
+                <li>
+                  Required columns: Student ID, First Name, Last Name, Gender, Birthday, Email, Contact Number, Status
+                </li>
                 <li>Optional columns: Address, Year Level, Section</li>
-                <li>Status must be either "Enrolled" or "Not Enrolled"</li>
+                <li>Status must be either &quot;Enrolled&quot; or &quot;Not Enrolled&quot;</li>
               </ul>
             </div>
           </div>
@@ -1372,7 +1154,6 @@ export default function CliniciansPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
       {/* Clinician Records View Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
         <DialogContent className="sm:max-w-[900px] p-0 overflow-hidden rounded-lg">
@@ -1398,11 +1179,11 @@ export default function CliniciansPage() {
               <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
                 <div className="grid grid-cols-2 gap-6 mb-6">
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Clinician ID</h3>
-                    <p className="text-[#333] font-medium">{selectedClinician.id}</p>
+                    <h3 className="text-sm font-medium text-gray-500">Student ID</h3> {/* Changed to Student ID */}
+                    <p className="text-[#333] font-medium">{selectedClinician.studentId}</p> {/* Display studentId */}
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Year & Section</h3>
+                    <h3 className="text-sm font-medium text-gray-500">Year &amp; Section</h3>
                     <p className="text-[#333] font-medium">
                       {selectedClinician.yearLevel}, Section {selectedClinician.section}
                     </p>
@@ -1466,12 +1247,13 @@ export default function CliniciansPage() {
                               <TableCell className="text-[#333]">{activity.grade}</TableCell>
                               <TableCell>
                                 <div
-                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${activity.status === "Completed"
+                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${
+                                    activity.status === "Completed"
                                       ? "bg-blue-50 text-blue-700"
                                       : activity.status === "In Progress"
                                         ? "bg-yellow-50 text-yellow-700"
                                         : "bg-gray-50 text-gray-700"
-                                    }`}
+                                  }`}
                                 >
                                   {activity.status}
                                 </div>
@@ -1511,7 +1293,7 @@ export default function CliniciansPage() {
                             <TableHead className="font-medium text-[#333]">Time In</TableHead>
                             <TableHead className="font-medium text-[#333]">Time Out</TableHead>
                             <TableHead className="font-medium text-[#333]">Sanitized</TableHead>
-                            <TableHead className className="font-medium text-[#333]">Status</TableHead>
+                            <TableHead className="font-medium text-[#333]">Status</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1523,10 +1305,11 @@ export default function CliniciansPage() {
                               <TableCell className="text-[#333]">{attendance.sanitized}</TableCell>
                               <TableCell>
                                 <div
-                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${attendance.status === "Present"
+                                  className={`px-3 py-1 rounded-full text-xs inline-flex items-center justify-center font-medium ${
+                                    attendance.status === "Present"
                                       ? "bg-[#5C8E77]/10 text-[#5C8E77]"
                                       : "bg-red-50 text-red-700"
-                                    }`}
+                                  }`}
                                 >
                                   {attendance.status}
                                 </div>
@@ -1548,7 +1331,6 @@ export default function CliniciansPage() {
           )}
         </DialogContent>
       </Dialog>
-
       {/* Activity History Modal */}
       <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
         <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden rounded-lg">
@@ -1582,7 +1364,6 @@ export default function CliniciansPage() {
                 <div className="relative border-l-2 border-gray-200 pl-6 space-y-8 py-2">
                   {selectedActivity.history.map((historyItem: HistoryItem, index: number) => (
                     <div key={index} className="relative">
-                      {/* Timeline dot */}
                       <div className="absolute -left-[29px] top-0 h-4 w-4 rounded-full bg-[#5C8E77]"></div>
                       <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
                         <div className="flex items-center justify-between mb-2">
@@ -1605,10 +1386,11 @@ export default function CliniciansPage() {
                           </div>
                         </div>
                         <div
-                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium mb-3 ${historyItem.action === "Updated"
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium mb-3 ${
+                            historyItem.action === "Updated"
                               ? "bg-blue-100 text-blue-700"
                               : "bg-green-100 text-green-700"
-                            }`}
+                          }`}
                         >
                           {historyItem.action === "Updated" ? (
                             <Edit className="h-3 w-3" />
@@ -1649,7 +1431,6 @@ export default function CliniciansPage() {
           )}
         </DialogContent>
       </Dialog>
-
       {/* Edit Activity Modal */}
       <Dialog open={isActivityEditModalOpen} onOpenChange={setIsActivityEditModalOpen}>
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
