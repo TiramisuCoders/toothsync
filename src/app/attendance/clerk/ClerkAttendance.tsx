@@ -16,225 +16,299 @@ import { toast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { supabase } from "@/lib/supabase"
 
+
 // Font configuration
 const poppinsFont = {
   fontFamily: "'Poppins', sans-serif",
 }
 
-export interface Record{
-    id: string
-    firstName: string
-    lastName: string
-    timeIn: string
-    timeOut: string
-    date: string
-    sanitize: string
-    status: string
+export interface Record {
+  id: string
+  firstName: string
+  lastName: string
+  timeIn: string
+  timeOut: string
+  date: string
+  sanitize: string
+  status: string
 }
 
-export default function ClerkAttendance({ data }: { data: Record[]}) {
-  const [isModalOpen, setIsModalOpen] = useState(false)
+export default function ClerkAttendance() {
+  const [attendanceRecords, setAttendanceRecords] = useState<Record[]>([])
+  const [loading, setLoading] = useState(true)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false)
-  const [attendanceToDelete, setAttendanceToDelete] = useState(null)
-  const [clinicianToTimeout, setClinicianToTimeout] = useState(null)
+  const [attendanceToDelete, setAttendanceToDelete] = useState<Record | null>(null)
+  const [clinicianToTimeout, setClinicianToTimeout] = useState<Record | null>(null)
   const [activeFilter, setActiveFilter] = useState("all")
 
-  
+  // Fetch attendance records on component mount
   useEffect(() => {
-    const fetchData = async () => {
-
-      const { data: userData, error: userError } = await supabase.auth.getUser()
-      console.log(userData); // Must not be null
-        if (userError || !userData.user) {
-          console.error("User not authenticated:", userError)
-          return
-        }
-        if (!userError && userData.user) {
-          setUpdateAttendance((prev) => ({
-            ...prev,
-            clerkId: userData.user.id,  // store the ID here
-          }))
-        }     
+    
+    const checkSession = async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession()
+      console.log('🔍 Client session check:')
+      console.log('- Session exists:', !!session)
+      console.log('- User ID:', session?.user?.id)
+      console.log('- Access token exists:', !!session?.access_token)
+      console.log('- Session error:', error)
+      
+      // Check if cookies are being set
+      console.log('- Document cookies:', document.cookie)
+    } catch (err) {
+      console.error('❌ Session check failed:', err)
     }
-    fetchData()
+  }
+  
+  checkSession()
+  fetchAttendanceRecords()
   }, [])
-  // Sample data for attendance records
-  const [attendanceRecords, setAttendanceRecords] = useState(data)
-  // console.log(attendanceRecords)
+  
 
-  const [updateAttendance, setUpdateAttendance] = useState({
-      clerkId: "", 
-      sanitize: "",
-      status: "",
+  const fetchAttendanceRecords = async () => {
+    try {
+      setLoading(true)
+    console.log('🔍 Fetching from client...')
+    
+    // Add headers to include credentials
+    const response = await fetch('/api/attendance/clerk', {
+      method: 'GET',
+      credentials: 'include', // Important: include cookies
+      headers: {
+        'Content-Type': 'application/json',
+      }
     })
+    
+    console.log('- Response status:', response.status)
+    console.log('- Response ok:', response.ok)
+    
+    const result = await response.json()
+    console.log('- Response body:', result)
 
-  const handleConfirmAttendance = async (id: string) => {
-  // Optimistically update local state
-  setAttendanceRecords((prev) =>
-    prev.map((record) =>
-      record.id === id ? { ...record, status: "Confirmed" } : record,
-    ),
-  )
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to fetch attendance records')
+    }
 
-  // Update in Supabase
-  const { error } = await supabase
-    .from("request")
-    .update({ status: "Confirmed", clerk_id: updateAttendance.clerkId, is_sanitized: "TRUE"  })
-    .eq("request_id", id)
-
-    console.log(id)
-
-  if (error) {
-    console.error("Failed to confirm attendance:", error.message)
-
+    setAttendanceRecords(result.data || [])
+  } catch (error) {
+    console.error('❌ Client error:', error)
     toast({
-      title: "Update Failed",
-      description: "There was a problem confirming the attendance.",
+      title: "Fetch Failed",
+      description: error.message,
       variant: "destructive",
     })
-
-    // Optionally rollback local state
-    setAttendanceRecords((prev) =>
-      prev.map((record) =>
-        record.id === id ? { ...record, status: "Pending" } : record,
-      ),
-    )
-    return
+  } finally {
+    setLoading(false)
+  }
   }
 
-  toast({
-    title: "Attendance Confirmed",
-    description: "The clinician has been marked as present.",
-  })
-}
+  // Function to handle confirm attendance
+  const handleConfirmAttendance = async (id: string) => {
+    try {
+      // Optimistically update local state
+      setAttendanceRecords(prev =>
+        prev.map(record =>
+          record.id === id ? { ...record, status: "Confirmed" } : record
+        )
+      )
 
-    const handleDeleteClick = (record) => {
-      setAttendanceToDelete(record)
-      setIsDeleteModalOpen(true)
-    }
-    
-    // Function to handle timeout click
-    const handleTimeoutClick = (record) => {
-      setClinicianToTimeout(record)
-      setIsTimeoutModalOpen(true)
-    }
+      const response = await fetch('/api/attendance/clerk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'confirm',
+          request_id: id
+        })
+      })
 
-const handleDeleteConfirm = () => {
-  if (attendanceToDelete) {
-    setAttendanceRecords(attendanceRecords.filter((record) => record.id !== attendanceToDelete.id))
-    setIsDeleteModalOpen(false)
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to confirm attendance')
+      }
+
+      toast({
+        title: "Attendance Confirmed",
+        description: "The clinician has been marked as present.",
+      })
+
+    } catch (error) {
+      console.error("Failed to confirm attendance:", error)
+      
+      // Rollback optimistic update
+      setAttendanceRecords(prev =>
+        prev.map(record =>
+          record.id === id ? { ...record, status: "Pending" } : record
+        )
+      )
+
+      toast({
+        title: "Update Failed",
+        description: "There was a problem confirming the attendance.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Function to handle sanitization update
+  const handleSanitizeChange = async (id: string, value: string) => {
+    try {
+      // Optimistically update local state
+      const newSanitizeValue = value.charAt(0).toUpperCase() + value.slice(1)
+      setAttendanceRecords(prev =>
+        prev.map(record =>
+          record.id === id ? { ...record, sanitize: newSanitizeValue } : record
+        )
+      )
+
+      const response = await fetch('/api/attendance/clerk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_sanitize',
+          request_id: id,
+          sanitize: newSanitizeValue
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update sanitization')
+      }
+
+    } catch (error) {
+      console.error("Failed to update sanitization:", error)
+      
+      // Rollback optimistic update
+      setAttendanceRecords(prev =>
+        prev.map(record =>
+          record.id === id ? { ...record, sanitize: record.sanitize } : record
+        )
+      )
+
+      toast({
+        title: "Update Failed",
+        description: "Could not update sanitization status.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Function to handle delete click
+  const handleDeleteClick = (record: Record) => {
+    setAttendanceToDelete(record)
+    setIsDeleteModalOpen(true)
+  }
+
+  // Function to handle timeout click
+  const handleTimeoutClick = (record: Record) => {
+    setClinicianToTimeout(record)
+    setIsTimeoutModalOpen(true)
+  }
+
+  // Function to handle delete confirmation
+  const handleDeleteConfirm = async () => {
+    if (!attendanceToDelete) return
+
+    try {
+      const response = await fetch('/api/attendance/clerk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete',
+          request_id: attendanceToDelete.id
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to delete attendance')
+      }
+
+      // Remove from local state
+      setAttendanceRecords(prev =>
+        prev.filter(record => record.id !== attendanceToDelete.id)
+      )
+
+      setIsDeleteModalOpen(false)
+      setAttendanceToDelete(null)
+
       toast({
         title: "Attendance Deleted",
         description: "The attendance record has been deleted.",
         variant: "destructive",
       })
+
+    } catch (error) {
+      console.error("Failed to delete attendance:", error)
+      toast({
+        title: "Delete Failed",
+        description: "Could not delete the attendance record.",
+        variant: "destructive",
+      })
+    }
   }
-}
-
-//     [
-//     {
-//       id: "1",
-//       firstName: "Maria",
-//       lastName: "Santos",
-//       timeIn: "08:15 AM",
-//       timeOut: "",
-//       date: "2025-05-04",
-//       sanitize: "Yes",
-//       status: "Pending",
-//       hasActivities: true,
-//       activitiesInProgress: 2,
-//       activitiesCompleted: 0,
-//     },
-//     {
-//       id: "2",
-//       firstName: "John",
-//       lastName: "Dela Cruz",
-//       timeIn: "08:30 AM",
-//       timeOut: "",
-//       date: "2025-05-04",
-//       sanitize: "No",
-//       status: "Pending",
-//       hasActivities: false,
-//       activitiesInProgress: 0,
-//       activitiesCompleted: 0,
-//     },
-//     {
-//       id: "3",
-//       firstName: "Anna",
-//       lastName: "Lim",
-//       timeIn: "07:55 AM",
-//       timeOut: "",
-//       date: "2025-05-04",
-//       sanitize: "Yes",
-//       status: "Present",
-//       hasActivities: true,
-//       activitiesInProgress: 0,
-//       activitiesCompleted: 3,
-//     },
-//     {
-//       id: "4",
-//       firstName: "Mark",
-//       lastName: "Aquino",
-//       timeIn: "09:10 AM",
-//       timeOut: "",
-//       date: "2025-05-04",
-//       sanitize: "Yes",
-//       status: "Pending",
-//       hasActivities: true,
-//       activitiesInProgress: 1,
-//       activitiesCompleted: 1,
-//     },
-//     {
-//       id: "5",
-//       firstName: "Sarah",
-//       lastName: "Garcia",
-//       timeIn: "08:00 AM",
-//       timeOut: "",
-//       date: "2025-05-04",
-//       sanitize: "No",
-//       status: "Pending",
-//       hasActivities: false,
-//       activitiesInProgress: 0,
-//       activitiesCompleted: 0,
-//     },
-//   ]
-
-  // Function to handle confirm attendance
-  
-
-  // Function to handle delete click
-  
-
-  // Function to handle delete confirmation
-  
 
   // Function to handle timeout confirmation
-  const handleTimeoutConfirm = () => {
-    if (clinicianToTimeout) {
-      const currentTime = new Date()
-      const hours = currentTime.getHours()
-      const minutes = currentTime.getMinutes()
-      const ampm = hours >= 12 ? "PM" : "AM"
-      const formattedHours = hours % 12 || 12
-      const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes
-      const timeOut = `${formattedHours}:${formattedMinutes} ${ampm}`
+  const handleTimeoutConfirm = async () => {
+    if (!clinicianToTimeout) return
 
-      setAttendanceRecords(
-        attendanceRecords.map((record) =>
-          record.id === clinicianToTimeout.id ? { ...record, timeOut: timeOut } : record,
-        ),
+    try {
+      const response = await fetch('/api/attendance/clerk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'timeout',
+          request_id: clinicianToTimeout.id
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to record timeout')
+      }
+
+      // Generate current time for display
+      const currentTime = new Date()
+      const timeOut = currentTime.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      })
+
+      // Update local state
+      setAttendanceRecords(prev =>
+        prev.map(record =>
+          record.id === clinicianToTimeout.id 
+            ? { ...record, timeOut: timeOut }
+            : record
+        )
       )
+
       setIsTimeoutModalOpen(false)
+      setClinicianToTimeout(null)
+
       toast({
         title: "Timeout Recorded",
         description: `${clinicianToTimeout.firstName} ${clinicianToTimeout.lastName} has been timed out at ${timeOut}.`,
+      })
+
+    } catch (error) {
+      console.error("Failed to record timeout:", error)
+      toast({
+        title: "Timeout Failed",
+        description: "Could not record the timeout.",
+        variant: "destructive",
       })
     }
   }
 
   // Function to get status badge color
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "Confirmed":
         return <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{status}</Badge>
@@ -252,9 +326,17 @@ const handleDeleteConfirm = () => {
   // Filter attendance records based on active filter
   const filteredRecords = attendanceRecords.filter((record) => {
     if (activeFilter === "all") return true
+    if (activeFilter === "present") return record.status === "Confirmed"
     return record.status.toLowerCase() === activeFilter.toLowerCase()
   })
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-gray-500">Loading attendance records...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -290,7 +372,6 @@ const handleDeleteConfirm = () => {
               </Button>
             </div>
           </div>
-          {/* No "New Attendance" button for clerk view as per requirements */}
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -320,15 +401,7 @@ const handleDeleteConfirm = () => {
                     <TableCell className="text-[#333]">
                       <Select
                         value={record.sanitize.toLowerCase()}
-                        onValueChange={(value) => {
-                          setAttendanceRecords(
-                            attendanceRecords.map((r) =>
-                              r.id === record.id
-                                ? { ...r, sanitize: value.charAt(0).toUpperCase() + value.slice(1) }
-                                : r,
-                            ),
-                          )
-                        }}
+                        onValueChange={(value) => handleSanitizeChange(record.id, value)}
                       >
                         <SelectTrigger
                           className={`w-20 h-7 ${record.sanitize === "Yes" ? "text-[#5C8E77]" : "text-red-500"}`}
@@ -395,30 +468,16 @@ const handleDeleteConfirm = () => {
                                       <Button
                                         size="icon"
                                         variant="ghost"
-                                        className={`h-8 w-8 ${
-                                          record.activitiesInProgress === 0
-                                            ? "text-blue-600 hover:bg-blue-50"
-                                            : "text-gray-400 cursor-not-allowed"
-                                        }`}
-                                        onClick={() => {
-                                          if (record.activitiesInProgress === 0) {
-                                            handleTimeoutClick(record)
-                                          }
-                                        }}
-                                        disabled={record.activitiesInProgress > 0}
+                                        className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                                        onClick={() => handleTimeoutClick(record)}
                                       >
                                         <Clock className="h-4 w-4" />
                                       </Button>
                                     </div>
                                   </TooltipTrigger>
-                                  {record.activitiesInProgress > 0 && (
-                                    <TooltipContent>
-                                      <p>
-                                        Cannot time out: Clinician has {record.activitiesInProgress} activities in
-                                        progress
-                                      </p>
-                                    </TooltipContent>
-                                  )}
+                                  <TooltipContent>
+                                    <p>Record time out for this clinician</p>
+                                  </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
                             )}
@@ -439,7 +498,7 @@ const handleDeleteConfirm = () => {
               ) : (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center py-12 text-gray-500">
-                    No attendance records found.
+                    {loading ? "Loading..." : "No attendance records found."}
                   </TableCell>
                 </TableRow>
               )}
@@ -495,11 +554,6 @@ const handleDeleteConfirm = () => {
                 <p className="text-sm text-gray-500">
                   {clinicianToTimeout.date} • Time in: {clinicianToTimeout.timeIn}
                 </p>
-                {clinicianToTimeout.activitiesCompleted > 0 && (
-                  <p className="text-sm text-[#5C8E77] mt-2">
-                    Completed activities: {clinicianToTimeout.activitiesCompleted}
-                  </p>
-                )}
               </div>
             )}
           </div>
@@ -517,4 +571,8 @@ const handleDeleteConfirm = () => {
       <Toaster />
     </div>
   )
+}
+
+function createClientComponentClient() {
+  throw new Error("Function not implemented.")
 }
