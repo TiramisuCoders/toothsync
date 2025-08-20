@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Edit, Info } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -88,80 +88,16 @@ export default function InstructorPage() {
   const { toast } = useToast()
 
   // Sample data for instructors
-  const [instructors, setInstructors] = useState<Instructor[]>([
-    {
-      id: "I2024-001",
-      firstName: "Dr. Maria",
-      lastName: "Reyes",
-      gender: "Female",
-      status: "Available",
-      email: "maria.reyes@example.com",
-      contactNumber: "+63 912 345 6789",
-      address: "123 Rizal Avenue, Manila",
-      expertise: ["Extraction", "Root Canal", "General Dentistry"],
-      archived: false,
-    },
-    {
-      id: "I2024-002",
-      firstName: "Dr. Juan",
-      lastName: "Mendoza",
-      gender: "Male",
-      status: "Available",
-      email: "juan.mendoza@example.com",
-      contactNumber: "+63 917 123 4567",
-      address: "456 Mabini Street, Quezon City",
-      expertise: ["Dental Filling", "Teeth Cleaning", "General Dentistry"],
-      archived: false,
-    },
-    {
-      id: "I2024-003",
-      firstName: "Dr. Anna",
-      lastName: "Santos",
-      gender: "Female",
-      status: "Not Available",
-      email: "anna.santos@example.com",
-      contactNumber: "+63 918 765 4321",
-      address: "789 Bonifacio Avenue, Makati",
-      expertise: ["Dental Crown", "Root Canal", "Orthodontics"],
-      archived: false,
-    },
-    {
-      id: "I2024-004",
-      firstName: "Dr. Carlos",
-      lastName: "Tan",
-      gender: "Male",
-      status: "Available",
-      email: "carlos.tan@example.com",
-      contactNumber: "+63 919 876 5432",
-      address: "321 Aguinaldo Street, Pasig",
-      expertise: ["Extraction", "Dental Filling", "Teeth Cleaning"],
-      archived: false,
-    },
-    {
-      id: "I2024-005",
-      firstName: "Dr. Sofia",
-      lastName: "Garcia",
-      gender: "Female",
-      status: "Not Available",
-      email: "sofia.garcia@example.com",
-      contactNumber: "+63 915 432 1098",
-      address: "654 Luna Road, Mandaluyong",
-      expertise: ["Orthodontics", "Dental Crown", "General Dentistry"],
-      archived: false,
-    },
-  ])
+  const [instructors, setInstructors] = useState<Instructor[]>([])
 
   // Available dental services/expertise
   const dentalServices = [
+    "Endodontics",
     "Extraction",
-    "Root Canal",
-    "Dental Filling",
-    "Dental Crown",
-    "Teeth Cleaning",
-    "Orthodontics",
-    "General Dentistry",
-    "Periodontics",
+    "Oral Prophylaxis",
     "Prosthodontics",
+    "Restorative",
+    "Simulation/Typodont",
   ]
 
   const validateForm = (): boolean => {
@@ -222,6 +158,9 @@ export default function InstructorPage() {
 
   // Function to handle edit button click
   const handleEditClick = (instructor: Instructor) => {
+    console.log("[v0] Opening edit modal for instructor:", instructor.firstName, instructor.lastName)
+    console.log("[v0] Instructor expertise data:", instructor.expertise)
+
     setCurrentInstructor(instructor)
     setFormData({
       firstName: instructor.firstName,
@@ -231,13 +170,16 @@ export default function InstructorPage() {
       email: instructor.email,
       contactNumber: instructor.contactNumber,
       address: instructor.address,
-      expertise: instructor.expertise,
+      expertise: Array.isArray(instructor.expertise) ? instructor.expertise : [],
     })
+    setFormErrors({}) // Clear any previous errors
     setIsEditModalOpen(true)
+
+    console.log("[v0] Form data set with expertise:", Array.isArray(instructor.expertise) ? instructor.expertise : [])
   }
 
   // Function to update instructor
-  const handleUpdateInstructor = () => {
+  const handleUpdateInstructor = async () => {
     if (!currentInstructor) return
 
     if (!validateForm()) {
@@ -249,28 +191,49 @@ export default function InstructorPage() {
       return
     }
 
-    const updatedInstructor: Instructor = {
-      ...currentInstructor,
-      ...formData,
-      status: formData.status as "Available" | "Not Available",
+    try {
+      const response = await fetch("/api/instructors", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: currentInstructor.id,
+          ...formData,
+        }),
+      })
+
+      if (response.ok) {
+        await fetchInstructors() // Refresh the list
+        setIsEditModalOpen(false)
+        setCurrentInstructor(null)
+        resetFormData()
+        setFormErrors({})
+
+        toast({
+          title: "Success",
+          description: `Instructor ${formData.firstName} ${formData.lastName} has been updated successfully.`,
+        })
+      } else {
+        const errorData = await response.json()
+        toast({
+          title: "Error",
+          description: errorData.message || "Failed to update instructor",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error updating instructor:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update instructor",
+        variant: "destructive",
+      })
     }
-
-    setInstructors(
-      instructors.map((instructor) => (instructor.id === updatedInstructor.id ? updatedInstructor : instructor)),
-    )
-    setIsEditModalOpen(false)
-    setCurrentInstructor(null)
-    resetFormData()
-    setFormErrors({})
-
-    toast({
-      title: "Success",
-      description: `Instructor ${updatedInstructor.firstName} ${updatedInstructor.lastName} has been updated successfully.`,
-    })
   }
 
   // Function to add new instructor
-  const handleAddInstructor = () => {
+  const handleAddInstructor = async () => {
     if (!validateForm()) {
       toast({
         title: "Error",
@@ -280,22 +243,41 @@ export default function InstructorPage() {
       return
     }
 
-    const newInstructor: Instructor = {
-      id: `I2024-${String(instructors.length + 1).padStart(3, "0")}`,
-      ...formData,
-      status: formData.status as "Available" | "Not Available",
-      archived: false,
+    try {
+      const response = await fetch("/api/instructors", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      })
+
+      if (response.ok) {
+        await fetchInstructors() // Refresh the list
+        setIsAddModalOpen(false)
+        resetFormData()
+        setFormErrors({})
+
+        toast({
+          title: "Success",
+          description: `Instructor ${formData.firstName} ${formData.lastName} has been added successfully.`,
+        })
+      } else {
+        const errorData = await response.json()
+        toast({
+          title: "Error",
+          description: errorData.message || "Failed to add instructor",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error adding instructor:", error)
+      toast({
+        title: "Error",
+        description: "Failed to add instructor",
+        variant: "destructive",
+      })
     }
-
-    setInstructors([...instructors, newInstructor])
-    setIsAddModalOpen(false)
-    resetFormData()
-    setFormErrors({})
-
-    toast({
-      title: "Success",
-      description: `Instructor ${newInstructor.firstName} ${newInstructor.lastName} has been added successfully.`,
-    })
   }
 
   // Handle form field changes
@@ -356,6 +338,50 @@ export default function InstructorPage() {
   const getFieldError = (field: keyof FormErrors) => {
     return formErrors[field] ? <p className="text-sm text-red-600 mt-1">{formErrors[field]}</p> : null
   }
+
+  // API integration functions
+  const fetchInstructors = async () => {
+    try {
+      console.log("[v0] Fetching instructors from API...")
+      const response = await fetch("/api/instructors")
+      if (response.ok) {
+        const data = await response.json()
+        console.log("[v0] Successfully fetched instructors with expertise:", data)
+        const validatedData = data.map((instructor: any) => ({
+          ...instructor,
+          expertise: Array.isArray(instructor.expertise) ? instructor.expertise : [],
+        }))
+        setInstructors(validatedData)
+      } else {
+        const errorText = await response.text()
+        console.error("[v0] Failed to fetch instructors:", response.status, errorText)
+        if (response.status === 500 && errorText.includes("Environment variables missing")) {
+          toast({
+            title: "Configuration Error",
+            description: "Supabase environment variables are not configured. Please add them in Project Settings.",
+            variant: "destructive",
+          })
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to fetch instructors",
+            variant: "destructive",
+          })
+        }
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching instructors:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch instructors",
+        variant: "destructive",
+      })
+    }
+  }
+
+  useEffect(() => {
+    fetchInstructors()
+  }, [])
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-6">
