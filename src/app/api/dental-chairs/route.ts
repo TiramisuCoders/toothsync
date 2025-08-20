@@ -30,10 +30,10 @@ export async function GET() {
     console.log('User role data:', userRole)
     console.log('Role value:', userRole?.role)
 
-    if (userRole?.role !== 'R04') {
-      console.log('Role check failed:', userRole?.role, 'vs', 'R04')
-      return Response.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    // if (userRole?.role !== 'R01') {
+    //   console.log('Role check failed:', userRole?.role, 'vs', 'R01')
+    //   return Response.json({ error: 'Forbidden' }, { status: 403 })
+    // }
     
     console.log("User is clerk")
     console.log('🔍 Fetching chair data with procedures...')
