@@ -11,8 +11,8 @@ const parseSex = (gender: string): "Male" | "Female" | "Other" => {
 }
 
 // Helper to parse status for instructors
-const parseStatus = (status: string): boolean => {
-  return status === "Available"
+const parseStatus = (status: string): string => {
+  return status
 }
 
 // GET /api/instructors - Fetch all instructors with their specializations
@@ -53,7 +53,7 @@ export async function GET() {
 
     const { data: instructorsData, error: instructorsError } = await supabaseAdmin
       .from("instructors")
-      .select("instructor_id, user_id, is_active")
+      .select("instructor_id, user_id, status")
 
     if (instructorsError) {
       console.error("[v0] Error fetching instructors data:", instructorsError)
@@ -132,12 +132,12 @@ export async function GET() {
           firstName: userData?.first_name || "",
           lastName: userData?.last_name || "",
           gender: userData?.sex || "Other",
-          status: instructor.is_active ? "Available" : "Not Available",
+          status: instructor.status || "Not Available",
           email: userData?.email || "",
           contactNumber: userData?.contact_number || "",
           address: userData?.address || "",
-          expertise: specializations, // This should now properly contain the specializations
-          archived: false,
+          expertise: specializations,
+          archived: instructor.status === "Archived",
         }
       }),
     )
@@ -262,7 +262,7 @@ export async function POST(req: Request) {
       last_name: lastName,
       gender: parseSex(gender),
       email: email,
-      is_active: parseStatus(status),
+      status: status,
       updated_at: new Date().toISOString(),
     }
 
@@ -330,7 +330,7 @@ export async function PUT(req: Request) {
       last_name: lastName,
       gender: parseSex(gender),
       email: email,
-      is_active: parseStatus(status),
+      status: status,
       updated_at: new Date().toISOString(),
     }
 
