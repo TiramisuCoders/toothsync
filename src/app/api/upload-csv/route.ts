@@ -34,8 +34,26 @@ export async function POST(req: NextRequest) {
     }
 
     const pythonExecutable = process.env.PYTHON_EXECUTABLE || "python3"
+    console.log("[v0] Using Python executable:", pythonExecutable)
+
+    if (!fs.existsSync(pythonExecutable)) {
+      fs.unlinkSync(tempPath)
+      return NextResponse.json(
+        {
+          status: "error",
+          message: `Python executable not found at: ${pythonExecutable}. Please check your PYTHON_EXECUTABLE environment variable.`,
+        },
+        { status: 500 },
+      )
+    }
 
     const result = await new Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>((resolve) => {
+      console.log("[v0] Spawning Python process with:", pythonExecutable, [
+        pythonScriptPath,
+        tempPath,
+        supabaseUrl,
+        supabaseKey,
+      ])
       const python = spawn(pythonExecutable, [pythonScriptPath, tempPath, supabaseUrl, supabaseKey], {
         stdio: ["ignore", "pipe", "pipe"],
       })
@@ -44,18 +62,26 @@ export async function POST(req: NextRequest) {
       let stderr = ""
 
       python.stdout.on("data", (data) => {
-        stdout += data.toString()
+        const output = data.toString()
+        stdout += output
+        console.log("[v0] Python stdout:", output.trim())
       })
 
       python.stderr.on("data", (data) => {
-        stderr += data.toString()
+        const output = data.toString()
+        stderr += output
+        console.log("[v0] Python stderr:", output.trim())
       })
 
       python.on("close", (code) => {
+        console.log("[v0] Python process exited with code:", code)
+        console.log("[v0] Final stdout:", stdout.trim())
+        console.log("[v0] Final stderr:", stderr.trim())
         resolve({ ok: code === 0, stdout, stderr, exitCode: code ?? -1 })
       })
 
       python.on("error", (err) => {
+        console.log("[v0] Python spawn error:", err.message)
         resolve({ ok: false, stdout, stderr: `Failed to spawn Python: ${err.message}`, exitCode: -1 })
       })
     })
