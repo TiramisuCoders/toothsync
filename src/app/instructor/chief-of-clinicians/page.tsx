@@ -28,7 +28,7 @@ interface Instructor {
   firstName: string
   lastName: string
   gender: string
-  status: "Available" | "Not Available"
+  status: "Available" | "Not Available" | "Archived"
   email: string
   contactNumber: string
   address: string
@@ -64,7 +64,7 @@ interface NotificationState {
   message: string
 }
 
-type FilterType = "all" | "available" | "not-available"
+type FilterType = "all" | "available" | "not-available" | "archived"
 
 export default function InstructorPage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("all")
@@ -84,7 +84,6 @@ export default function InstructorPage() {
 
   const [formErrors, setFormErrors] = useState<FormErrors>({})
   const [notification, setNotification] = useState<NotificationState>({ show: false, type: "success", message: "" })
-  const [showArchived, setShowArchived] = useState(false)
   const { toast } = useToast()
 
   // Sample data for instructors
@@ -294,18 +293,52 @@ export default function InstructorPage() {
   }
 
   // Function to archive/unarchive instructor
-  const handleArchiveInstructor = (instructorId: string) => {
-    setInstructors(
-      instructors.map((instructor: Instructor) =>
-        instructor.id === instructorId ? { ...instructor, archived: !instructor.archived } : instructor,
-      ),
-    )
-
+  const handleArchiveInstructor = async (instructorId: string) => {
     const instructor = instructors.find((i) => i.id === instructorId)
-    if (instructor) {
+    if (!instructor) return
+
+    const newStatus = instructor.archived || instructor.status === "Archived" ? "Available" : "Archived"
+    const isArchiving = newStatus === "Archived"
+
+    try {
+      const response = await fetch("/api/instructors", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: instructorId,
+          firstName: instructor.firstName,
+          lastName: instructor.lastName,
+          gender: instructor.gender,
+          status: newStatus,
+          email: instructor.email,
+          contactNumber: instructor.contactNumber,
+          address: instructor.address,
+          expertise: instructor.expertise,
+        }),
+      })
+
+      if (response.ok) {
+        await fetchInstructors() // Refresh the list from database
+        toast({
+          title: "Success",
+          description: `Instructor ${instructor.firstName} ${instructor.lastName} has been ${isArchiving ? "archived" : "unarchived"}.`,
+        })
+      } else {
+        const errorData = await response.json()
+        toast({
+          title: "Error",
+          description: errorData.message || `Failed to ${isArchiving ? "archive" : "unarchive"} instructor`,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error(`Error ${isArchiving ? "archiving" : "unarchiving"} instructor:`, error)
       toast({
-        title: "Success",
-        description: `Instructor ${instructor.firstName} ${instructor.lastName} has been ${instructor.archived ? "unarchived" : "archived"}.`,
+        title: "Error",
+        description: `Failed to ${isArchiving ? "archive" : "unarchive"} instructor`,
+        variant: "destructive",
       })
     }
   }
@@ -313,8 +346,8 @@ export default function InstructorPage() {
   // Filter instructors based on active filter
   const filteredInstructors = instructors.filter((instructor) => {
     // First filter by archived status
-    if (showArchived && !instructor.archived) return false
-    if (!showArchived && instructor.archived) return false
+    if (activeFilter === "archived" && !instructor.archived) return false
+    if (activeFilter !== "archived" && instructor.archived) return false
 
     // Then filter by availability status
     if (activeFilter === "all") return true
@@ -399,7 +432,7 @@ export default function InstructorPage() {
         <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
           <div className="flex items-center gap-4">
             <CardTitle className="text-xl font-semibold text-[#333]">
-              {showArchived ? "Archived Instructors" : "Active Instructors"}
+              {activeFilter === "archived" ? "Archived Instructors" : "Active Instructors"}
             </CardTitle>
             <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
               <Button
@@ -427,12 +460,12 @@ export default function InstructorPage() {
                 Not Available
               </Button>
               <Button
-                variant="ghost"
+                variant={activeFilter === "archived" ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setShowArchived(!showArchived)}
-                className="text-gray-600"
+                className={activeFilter === "archived" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("archived")}
               >
-                {showArchived ? "Hide" : "Show"} Archived
+                Archived
               </Button>
             </div>
           </div>
@@ -470,14 +503,13 @@ export default function InstructorPage() {
                       <div className="flex items-center gap-2">
                         {instructor.status === "Available" ? (
                           <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{instructor.status}</Badge>
+                        ) : instructor.status === "Archived" || instructor.archived ? (
+                          <Badge variant="outline" className="text-orange-600 border-orange-600">
+                            Archived
+                          </Badge>
                         ) : (
                           <Badge variant="outline" className="text-red-600 border-red-600">
                             {instructor.status}
-                          </Badge>
-                        )}
-                        {instructor.archived && (
-                          <Badge variant="outline" className="text-orange-600 border-orange-600">
-                            Archived
                           </Badge>
                         )}
                       </div>
@@ -613,6 +645,7 @@ export default function InstructorPage() {
                       <SelectContent>
                         <SelectItem value="Available">Available</SelectItem>
                         <SelectItem value="Not Available">Not Available</SelectItem>
+                        <SelectItem value="Archived">Archived</SelectItem>
                       </SelectContent>
                     </Select>
                     {getFieldError("status")}
@@ -776,6 +809,7 @@ export default function InstructorPage() {
                           <SelectContent>
                             <SelectItem value="Available">Available</SelectItem>
                             <SelectItem value="Not Available">Not Available</SelectItem>
+                            <SelectItem value="Archived">Archived</SelectItem>
                           </SelectContent>
                         </Select>
                         {getFieldError("status")}
