@@ -1,102 +1,84 @@
-// app/api/dental-chairs/route.ts
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+// api/dental-chairs/route.ts
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { headers, cookies } from 'next/headers'
+import { NextRequest } from 'next/server'
+import { createServerClient } from "@supabase/ssr";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { Json } from 'node_modules/@supabase/postgrest-js/dist/cjs/select-query-parser/types';
 
-// ===== Helpers =====
-function assertEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env var: ${name}`);
-  return v;
-}
-
-function adminClient() {
-  const url = assertEnv("NEXT_PUBLIC_SUPABASE_URL");
-  const key = assertEnv("SUPABASE_SERVICE_ROLE_KEY"); // service key bypasses RLS, ideal for debugging
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
-type Row = {
-  chair_id: string;
-  status: "Available" | "Occupied" | "Under Maintenance" | null;
-  procedures: string[] | null;
-};
-
-// ===== Normal GET (returns chairs) =====
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const debug = url.searchParams.get("debug") === "1";
-
+export async function GET() {
+  const supabase = await createSupabaseServerClient()
+  
   try {
-    const supabase = adminClient();
+    const { data, error: authError } = await supabase.auth.getUser()
+    
+    console.log('🔍 Auth Debug:')
+    console.log('User ID:', data)
+    console.log('Auth error:', authError)
+    
+    const user = data?.user
+    if (authError || !user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    
+    const { data: userRole } = await supabase
+      .from('users')
+      .select('role')
+      .eq('auth_user_id', user.id)
+      .single()
 
-    // 1) Quick connectivity sanity check
-    const ping = await supabase.from("chair").select("chair_id").limit(1);
-    if (ping.error && debug) {
-      return NextResponse.json(
-        { step: "ping chair", error: ping.error, hint: "Does table public.chair exist?" },
-        { status: 500 },
-      );
+    console.log('User role data:', userRole)
+    console.log('Role value:', userRole?.role)
+
+    if (userRole?.role !== 'R04') {
+      console.log('Role check failed:', userRole?.role, 'vs', 'R04')
+      return Response.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    
+    console.log("User is clerk")
+    console.log('🔍 Fetching chair data with procedures...')
+
+    // No need to parse since procedures is already JSON from the view
+
+    const { data: chairs, error: chairError } = await supabase
+      .from("dental_chair_status_v")
+      .select(`
+        chair_id,
+        status,
+        procedures
+      `);
+
+    console.log('- Chair query result:', chairs)
+    console.log('- Chair query error:', chairError)
+
+    if (chairError) {
+      console.log('❌ Database query failed:', chairError.message)
+      return Response.json({ error: 'Database error', details: chairError.message }, { status: 500 })
     }
 
-    // 2) Actual view query
-    const { data, error } = await supabase
-      .from<Row>("dental_chair_status_v")
-      .select("chair_id,status,procedures")
-      .order("chair_id", { ascending: true });
-
-    if (error) {
-      if (debug) {
-        return NextResponse.json(
-          {
-            step: "select view",
-            message: "Error fetching dental chairs from view",
-            error: {
-              message: error.message,
-              details: (error as any).details ?? null,
-              hint: (error as any).hint ?? null,
-              code: (error as any).code ?? null,
-            },
-            tips: [
-              "Confirm the view name is exactly public.dental_chair_status_v",
-              "If your base tables are mixed-case (\"Chair_Availability\", \"Chair_Procedures\"), ensure the VIEW uses quoted names",
-              "Test in SQL Editor: SELECT * FROM public.dental_chair_status_v LIMIT 1;",
-            ],
-          },
-          { status: 500 },
-        );
+    // Transform data to match your interface
+    const transformedData = chairs?.map(chair => {
+      // Since procedures is already JSON from the view, use it directly
+      const procedures = Array.isArray(chair.procedures) ? chair.procedures : []
+      
+      return {
+        id: chair.chair_id,
+        procedures: procedures,
+        status: chair.status,
+        student: null // You might want to fetch this from another table if available
       }
-      return NextResponse.json({ message: "Error fetching dental chairs", error: error.message }, { status: 500 });
-    }
+    }) || []
 
-    // 3) Success
-    return NextResponse.json(
-      (data ?? []).map((r) => ({
-        id: r.chair_id,
-        status: r.status,
-        procedures: r.procedures ?? [],
-        student: null,
-      })),
-      { status: 200 },
-    );
-  } catch (e: any) {
-    if (debug) {
-      return NextResponse.json(
-        {
-          step: "route crash",
-          message: "Unexpected server error",
-          error: e?.message ?? String(e),
-          envPresent: {
-            NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-            SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-          },
-          tips: [
-            "Restart dev server after editing .env.local",
-            "Ensure import paths are valid (this file should not import '@/lib/supabase/admin' for this debug build)",
-          ],
-        },
-        { status: 500 },
-      );
-    }
-    return NextResponse.json({ message: "Internal server error", error: e?.message ?? String(e) }, { status: 500 });
+    console.log('Transformed data:', transformedData)
+    
+    return Response.json({ 
+      success: true, 
+      data: transformedData,
+      user_id: user.id 
+    })
+    
+  } catch (error) {
+    console.error('Error in GET /api/dental-chairs:', error)
+    return Response.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
