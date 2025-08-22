@@ -4,6 +4,10 @@ import sys
 from datetime import datetime, timezone
 from supabase import create_client, Client
 import uuid # Import uuid for generating temporary passwords
+import certifi
+
+os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+os.environ['CURL_CA_BUNDLE'] = certifi.where()
 
 # Read Supabase URL and Key from command-line arguments
 if len(sys.argv) < 4:
@@ -24,7 +28,14 @@ if not SUPABASE_URL or not SUPABASE_KEY:
   print("Error: Supabase URL or Key not found from command-line arguments.", file=sys.stderr)
   sys.exit(1)
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+try:
+    # Using environment variables for SSL certificates
+    print(f"DEBUG: Using SSL certificates from: {certifi.where()}")
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    print("DEBUG: Supabase client created successfully")
+except Exception as e:
+    print(f"Error creating Supabase client: {e}", file=sys.stderr)
+    sys.exit(1)
 
 def parse_year_level(raw: str) -> str | None:
   """
