@@ -1,4 +1,4 @@
-﻿Student ID,First Name,Last Name,Gender,Birthday,Email,Contact Number,Status,Address,Year Level,Section
-2022175162,Alice,Smith,Female,1/15/2000,jf10172004@gmail.com,1234567890,Enrolled,123 Main St,2,A
-2022327182,Bob,Johnson,Male,7/22/1999,judeflores1017@gmail.com,1987654321,Not Enrolled,456 Oak Ave,1,B
-2022160452,Charlie,Brown,Male,3/10/2001,floresjude1017@gmail.com,1122334455,Enrolled,789 Pine Ln,3,C
+﻿Student ID,First Name,Last Name,Gender,Email,Contact Number,Status,Year Level,Section
+2022175162,Alice,Smith,Female,jf10172004@gmail.com,1234567890,Enrolled,2,A
+2022327182,Bob,Johnson,Male,judeflores1017@gmail.com,1987654321,Not Enrolled,1,B
+2022160452,Charlie,Brown,Male,floresjude1017@gmail.com,1122334455,Enrolled,3,C

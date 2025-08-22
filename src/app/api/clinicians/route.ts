@@ -10,6 +10,14 @@ const parseSex = (gender: string): "Male" | "Female" | "Other" => {
   return "Other"
 }
 
+// Helper to parse enrollment status to match DB enum
+const parseEnrollmentStatus = (status: string): string => {
+  const statusLower = status.toLowerCase()
+  if (statusLower === "enrolled") return "Enrolled"
+  if (statusLower === "not-enrolled" || statusLower === "not enrolled") return "Not Enrolled"
+  return "Not Enrolled" // Default fallback
+}
+
 // Helper to parse year level string (if needed, otherwise just return as is)
 const parseYearLevel = (yearLevel: string): string => {
   // This helper might be simplified if yearLevel is always stored exactly as received
@@ -30,7 +38,7 @@ export async function GET() {
           enrollment_status,
           year_level,
           section,
-          users(first_name, last_name, email, sex, birthday, contact_number, address)
+          users(first_name, last_name, email, sex, contact_number)
         `)
       .order("user_id", { ascending: true })
 
@@ -52,9 +60,7 @@ export async function GET() {
         gender: c.users?.sex || "Other",
         status: c.enrollment_status || "Not Enrolled",
         email: c.users?.email || "",
-        birthday: c.users?.birthday || "",
         contactNumber: c.users?.contact_number || "",
-        address: c.users?.address || "", // Now from public.users
         yearLevel: c.year_level || "", // Now from public.clinicians
         section: c.section || "", // Now from public.clinicians
       }
@@ -75,10 +81,8 @@ export async function POST(req: Request) {
       firstName,
       lastName,
       gender,
-      birthday,
       email,
       contactNumber,
-      address, // Now handled in users table
       yearLevel, // Now handled in clinicians table
       section, // Now handled in clinicians table
       status,
@@ -148,9 +152,7 @@ export async function POST(req: Request) {
       email: email,
       sex: parseSex(gender),
       role: "R01", // Assuming 'R01' is the role_id for clinicians
-      birthday: birthday || null,
       contact_number: contactNumber || null,
-      address: address || null, // Address now stored in users table
     }
 
     const { data: existingUser, error: fetchUserError } = await supabaseAdmin
@@ -190,7 +192,7 @@ export async function POST(req: Request) {
     const clinicianPayload = {
       user_id: authUserId,
       student_id: studentId,
-      enrollment_status: status,
+      enrollment_status: parseEnrollmentStatus(status),
       year_level: parseYearLevel(yearLevel), // Year level now stored in clinicians table
       section: section, // Section now stored in clinicians table
       updated_at: new Date().toISOString(),

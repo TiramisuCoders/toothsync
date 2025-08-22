@@ -48,30 +48,16 @@ def parse_sex(gender: str) -> str:
   else:
       return 'Other'
 
-def parse_birthday(birthday_str: str) -> str | None:
-  """
-  Parses a birthday string into ISO 8601 format (YYYY-MM-DD).
-  Handles common formats like YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY.
-  """
-  if not birthday_str:
-      return None
-  
-  formats = [
-      "%Y-%m-%d", # 2023-01-15
-      "%m/%d/%Y", # 01/15/2023
-      "%d/%m/%Y", # 15/01/2023
-      "%Y%m%d",   # 20230115
-  ]
-  
-  for fmt in formats:
-      try:
-          dt_obj = datetime.strptime(birthday_str, fmt)
-          return dt_obj.isoformat().split('T')[0] # Return only date part
-      except ValueError:
-          continue
-  
-  print(f"WARNING: Could not parse birthday '{birthday_str}'. Storing as None.", file=sys.stderr)
-  return None
+def parse_enrollment_status(status: str) -> str:
+  """Parse enrollment status to match database enum values"""
+  status_lower = status.lower().strip()
+  if status_lower in ['enrolled', 'active', 'current']:
+      return 'Enrolled'
+  elif status_lower in ['not-enrolled', 'not enrolled', 'inactive', 'dropped']:
+      return 'Not Enrolled'
+  else:
+      return 'Not Enrolled'  # Default fallback
+
 
 def get_or_create_auth_user(email: str):
     """
@@ -97,31 +83,20 @@ def get_or_create_auth_user(email: str):
             users_list = response_from_list_users
             print(f"DEBUG: list_users() returned a direct list for {email}.")
         else:
-            # This case means the response is neither a direct list nor an object with a .data list.
-            # This is an unexpected response format, so we log it and proceed to try creating a new user.
             print(f"WARNING: Unexpected response format from list_users() for {email}. Type: {type(response_from_list_users)}. Response: {response_from_list_users}", file=sys.stderr)
-            users_list = [] # Ensure it's an empty list to prevent errors in the loop below
+            users_list = []
 
         for user in users_list:
-            # Ensure the user object itself has an 'id' and 'email' attribute before accessing them
             if hasattr(user, 'id') and hasattr(user, 'email') and user.email == email:
                 auth_user_id = user.id
                 created_new_user = False
                 print(f"  Found existing auth user: {email} with ID: {auth_user_id}")
-                break # Found user, exit loop
+                break
 
-    except AttributeError as e:
-        # This specific error indicates that an attribute access failed, likely within the Supabase client's
-        # internal handling of list_users() if it received an unexpected response format (e.g., a raw list
-        # when it expected an object with .data).
-        print(f"  AttributeError when listing users for {email}: {e}. This suggests an issue with the Supabase client's response parsing.", file=sys.stderr)
-        # auth_user_id remains None, so we will proceed to try creating a new user.
     except Exception as e:
-        # Catch any other unexpected errors during user listing
-        print(f"  General error listing existing users for {email}: {e}", file=sys.stderr)
-        # auth_user_id remains None, so we will proceed to try creating a new user.
+        print(f"  Error listing existing users for {email}: {e}", file=sys.stderr)
 
-    # If auth_user_id was not found by listing (either because it doesn't exist or listing failed), try to create a new user
+    # If auth_user_id was not found, try to create a new user
     if auth_user_id is None:
         try:
             new_auth_user_response = supabase.auth.admin.create_user({
@@ -134,37 +109,11 @@ def get_or_create_auth_user(email: str):
                 created_new_user = True
                 print(f"  Successfully created new auth user: {email} with ID: {auth_user_id}")
             else:
-                # If creation failed, it might be because the user already exists (e.g., if listing failed silently)
                 print(f"  Failed to create auth user for {email}: {new_auth_user_response.error.message}", file=sys.stderr)
-                # If the error is "User already registered", try to retrieve the user again as a fallback.
-                if "User already registered" in str(new_auth_user_response.error):
-                    print(f"  User already registered, attempting to retrieve existing user by email for {email} as fallback...", file=sys.stderr)
-                    try:
-                        # This is the problematic call, but we try it again as a fallback.
-                        # If it fails again, we'll log it and return None.
-                        fallback_response = supabase.auth.admin.list_users()
-                        fallback_users_list = []
-                        if hasattr(fallback_response, 'data') and isinstance(fallback_response.data, list):
-                            fallback_users_list = fallback_response.data
-                        elif isinstance(fallback_response, list):
-                            fallback_users_list = fallback_response
-                        
-                        for user in fallback_users_list:
-                            if hasattr(user, 'id') and hasattr(user, 'email') and user.email == email:
-                                auth_user_id = user.id
-                                created_new_user = False
-                                print(f"  Successfully retrieved existing auth user: {email} with ID: {auth_user_id} via fallback.")
-                                break
-                        if auth_user_id is None:
-                            print(f"  Fallback: Could not retrieve existing user {email} even after 'User already registered' error.", file=sys.stderr)
-                    except Exception as e_fallback:
-                        print(f"  Fallback: Error retrieving existing user by email for {email}: {e_fallback}", file=sys.stderr)
-                # If user creation failed and it's not a "user already registered" error, or fallback failed
-                if auth_user_id is None:
-                    return None, False 
+                return None, False
         except Exception as e:
             print(f"  Auth user creation failed for {email}: {e}", file=sys.stderr)
-            return None, False # Return None if an unexpected error occurred during creation
+            return None, False
 
     return auth_user_id, created_new_user
 
@@ -186,7 +135,7 @@ def main():
   for encoding in encodings_to_try:
       try:
           with open(csv_file_path, 'r', encoding=encoding, newline='') as f:
-              f.read(1024) # Read a small chunk to test encoding
+              f.read(1024)
           selected_encoding = encoding
           print(f"Successfully identified CSV encoding: {encoding}")
           break
@@ -213,7 +162,7 @@ def main():
               print("WARNING: No CSV headers detected. This might cause issues.", file=sys.stderr)
           
           for i, row in enumerate(reader):
-              row_num = i + 2 # Account for header row and 0-based index
+              row_num = i + 2
               print(f"Processing row {row_num}: {row}")
               try:
                   # Extract and clean data from CSV row
@@ -225,8 +174,6 @@ def main():
                   enrollment_status = row.get('Status', '').strip()
                   year_level_raw = row.get('Year Level', '').strip()
                   contact_number = row.get('Contact Number', '').strip()
-                  address = row.get('Address', '').strip()
-                  birthday_str = row.get('Birthday', '').strip()
                   section = row.get('Section', '').strip()
 
                   print(f"  Values for validation: Student ID='{student_id}', First Name='{first_name}', Email='{email}', Gender='{gender}', Status='{enrollment_status}'")
@@ -240,7 +187,7 @@ def main():
                   # Parse and format data
                   parsed_gender = parse_sex(gender)
                   parsed_year_level = parse_year_level(year_level_raw)
-                  parsed_birthday = parse_birthday(birthday_str)
+                  parsed_enrollment_status = parse_enrollment_status(enrollment_status)
 
                   # Get or create auth user
                   auth_user_id, created_new_user = get_or_create_auth_user(email)
@@ -258,16 +205,14 @@ def main():
                       "email": email,
                       "sex": parsed_gender,
                       "role": "R01", # clinician role
-                      "birthday": parsed_birthday,
                       "contact_number": contact_number if contact_number else None,
-                      "address": address if address else None,
                   }
 
                   # Check if user exists in public.users using .limit(1)
                   try:
                       user_response = supabase.table('users').select('auth_user_id').eq('auth_user_id', auth_user_id).limit(1).execute()
                       
-                      if user_response.data: # Will be [] if not found, or [{...}] if found
+                      if user_response.data:
                           # User exists, update it
                           print(f"  User with auth_user_id {auth_user_id} found in public.users. Attempting update.")
                           update_user_response = supabase.table('users').update(user_payload).eq('auth_user_id', auth_user_id).execute()
@@ -285,13 +230,13 @@ def main():
                               raise Exception(f"Failed to insert user into public.users: {insert_user_response.error.message}. Payload: {user_payload}")
                   except Exception as db_error:
                       print(f"  Database operation error for public.users (auth_user_id: {auth_user_id}): {db_error}", file=sys.stderr)
-                      raise # Re-raise to be caught by the outer try-except for row processing
+                      raise
 
                   # 2. Handle public.clinicians table (Insert or Update)
                   clinician_payload = {
                       "user_id": auth_user_id,
                       "student_id": student_id,
-                      "enrollment_status": enrollment_status,
+                      "enrollment_status": parsed_enrollment_status,
                       "year_level": parsed_year_level,
                       "section": section if section else None,
                       "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -301,7 +246,7 @@ def main():
                   try:
                       clinician_response = supabase.table('clinicians').select('user_id').eq('user_id', auth_user_id).limit(1).execute()
 
-                      if clinician_response.data: # Will be [] if not found, or [{...}] if found
+                      if clinician_response.data:
                           # Clinician exists, update it
                           print(f"  Clinician with user_id {auth_user_id} found in public.clinicians. Attempting update.")
                           update_clinician_response = supabase.table('clinicians').update(clinician_payload).eq('user_id', auth_user_id).execute()
@@ -319,7 +264,7 @@ def main():
                               raise Exception(f"Failed to insert clinician: {insert_clinician_response.error.message}. Payload: {clinician_payload}")
                   except Exception as db_error:
                       print(f"  Database operation error for public.clinicians (user_id: {auth_user_id}): {db_error}", file=sys.stderr)
-                      raise # Re-raise to be caught by the outer try-except for row processing
+                      raise
 
                   processed_count += 1
 
@@ -332,8 +277,8 @@ def main():
       
       print(f"Finished processing CSV. Total clinicians processed: {processed_count}, Skipped: {skipped_count}")
       if skipped_count > 0:
-          sys.exit(1) # Indicate partial success/failure
-      sys.exit(0) # Indicate full success
+          sys.exit(1)
+      sys.exit(0)
 
   except csv.Error as e:
       print(f"CSV parsing error: {e}", file=sys.stderr)

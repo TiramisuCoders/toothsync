@@ -15,10 +15,10 @@ const parseStatus = (status: string): string => {
   return status
 }
 
-// GET /api/instructors - Fetch all instructors with their specializations
+// GET /api/instructors - Fetch all instructors with their specializations (OPTIMIZED)
 export async function GET() {
   try {
-    console.log("[v0] Starting GET /api/instructors")
+    console.log("[v0] Starting optimized GET /api/instructors")
 
     if (!supabaseAdmin) {
       console.error("[v0] Supabase admin client not available - missing environment variables")
@@ -51,6 +51,25 @@ export async function GET() {
 
     console.log("[v0] Database connection successful")
 
+    const { data: allProcedures, error: proceduresError } = await supabaseAdmin
+      .from("procedure")
+      .select("procedure_id, name")
+
+    if (proceduresError) {
+      console.error("[v0] Error fetching procedures:", proceduresError)
+      return NextResponse.json(
+        { message: "Error fetching procedures", error: proceduresError.message },
+        { status: 500 },
+      )
+    }
+
+    console.log("[v0] Fetched all procedures once:", allProcedures?.length || 0)
+
+    const procedureMap = new Map()
+    allProcedures?.forEach((proc: any) => {
+      procedureMap.set(proc.procedure_id, proc.name)
+    })
+
     const { data: instructorsData, error: instructorsError } = await supabaseAdmin
       .from("instructors")
       .select("instructor_id, user_id, status")
@@ -65,67 +84,56 @@ export async function GET() {
 
     console.log("[v0] Fetched instructors:", instructorsData?.length || 0)
 
-    const instructors = await Promise.all(
-      instructorsData.map(async (instructor: any) => {
-        const { data: userData } = await supabaseAdmin
-          .from("users")
-          .select("first_name, last_name, email, sex, contact_number, address, birthday")
-          .eq("auth_user_id", instructor.user_id)
-          .single()
+    const userIds = instructorsData?.map((instructor: any) => instructor.user_id) || []
+    const { data: usersData, error: usersError } = await supabaseAdmin
+      .from("users")
+      .select("auth_user_id, first_name, last_name, email, sex, contact_number, address, birthday")
+      .in("auth_user_id", userIds)
 
-        const { data: specializationsData, error: specializationsError } = await supabaseAdmin
-          .from("Instructors_Specialization")
-          .select("specialized_procedure")
-          .eq("instructor_id", instructor.instructor_id)
+    if (usersError) {
+      console.error("[v0] Error fetching users data:", usersError)
+      return NextResponse.json({ message: "Error fetching users data", error: usersError.message }, { status: 500 })
+    }
 
-        let specializations: string[] = []
-        if (specializationsError) {
-          console.error(
-            `[v0] Error fetching specializations for instructor ${instructor.instructor_id}:`,
-            specializationsError,
-          )
-        } else if (specializationsData && specializationsData.length > 0) {
-          const procedureIds = specializationsData.map((spec: any) => spec.specialized_procedure)
-          console.log(`[v0] Found procedure IDs for instructor ${instructor.instructor_id}:`, procedureIds)
+    console.log("[v0] Fetched users data:", usersData?.length || 0)
 
-          const { data: allProcedures, error: allProceduresError } = await supabaseAdmin
-            .from("procedure")
-            .select("procedure_id, name")
+    const userMap = new Map()
+    usersData?.forEach((user: any) => {
+      userMap.set(user.auth_user_id, user)
+    })
 
-          console.log(`[v0] All procedures in database:`, allProcedures)
+    const instructorIds = instructorsData?.map((instructor: any) => instructor.instructor_id) || []
+    const { data: allSpecializations, error: specializationsError } = await supabaseAdmin
+      .from("Instructors_Specialization")
+      .select("instructor_id, specialized_procedure")
+      .in("instructor_id", instructorIds)
 
-          const { data: proceduresData, error: proceduresError } = await supabaseAdmin
-            .from("procedure")
-            .select("procedure_id, name")
-            .in("procedure_id", procedureIds)
+    if (specializationsError) {
+      console.error("[v0] Error fetching specializations:", specializationsError)
+      return NextResponse.json(
+        { message: "Error fetching specializations", error: specializationsError.message },
+        { status: 500 },
+      )
+    }
 
-          console.log(`[v0] Query result for procedure IDs ${procedureIds}:`, proceduresData)
+    console.log("[v0] Fetched all specializations in single query:", allSpecializations?.length || 0)
 
-          if (proceduresError) {
-            console.error(`[v0] Error fetching procedures for instructor ${instructor.instructor_id}:`, proceduresError)
-          } else if (proceduresData && proceduresData.length > 0) {
-            specializations = proceduresData.map((proc: any) => proc.name)
-            console.log(`[v0] Mapped specializations for instructor ${instructor.instructor_id}:`, specializations)
-          } else {
-            console.log(`[v0] No procedure names found for instructor ${instructor.instructor_id}`)
-            const procedureMapping: { [key: string]: string } = {
-              P01: "Endodontics",
-              P02: "Oral Prophylaxis",
-              P03: "Restorative",
-              P04: "Extraction",
-              P05: "Simulation/Typodont",
-              P06: "Prosthodontics",
-            }
+    const specializationsByInstructor = new Map()
+    allSpecializations?.forEach((spec: any) => {
+      if (!specializationsByInstructor.has(spec.instructor_id)) {
+        specializationsByInstructor.set(spec.instructor_id, [])
+      }
+      specializationsByInstructor.get(spec.instructor_id).push(spec.specialized_procedure)
+    })
 
-            specializations = procedureIds
-              .map((id: string) => procedureMapping[id])
-              .filter((name: string) => name !== undefined)
+    const instructors =
+      instructorsData?.map((instructor: any) => {
+        const userData = userMap.get(instructor.user_id)
+        const procedureIds = specializationsByInstructor.get(instructor.instructor_id) || []
 
-            console.log(`[v0] Using fallback mapping for instructor ${instructor.instructor_id}:`, specializations)
-          }
-        } else {
-          console.log(`[v0] No specializations found for instructor ${instructor.instructor_id}`)
-        }
+        const specializations = procedureIds
+          .map((id: string) => procedureMap.get(id))
+          .filter((name: string) => name !== undefined)
 
         return {
           id: instructor.instructor_id.toString(),
@@ -139,13 +147,9 @@ export async function GET() {
           expertise: specializations,
           archived: instructor.status === "Archived",
         }
-      }),
-    )
+      }) || []
 
-    console.log(
-      "[v0] Final processed instructors with expertise:",
-      instructors.map((i) => ({ id: i.id, name: `${i.firstName} ${i.lastName}`, expertise: i.expertise })),
-    )
+    console.log("[v0] Final processed instructors (optimized):", instructors.length)
     return NextResponse.json(instructors, { status: 200 })
   } catch (error: any) {
     console.error("[v0] Unexpected error in GET /api/instructors:", error)
