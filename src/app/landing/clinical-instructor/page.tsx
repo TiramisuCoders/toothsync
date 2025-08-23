@@ -2,11 +2,12 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
 import { supabase }from "@/lib/supabase"
+import { loginAction } from "@/app/login/actions"
 
 export default function InstructorLoginPage() {
   const router = useRouter()
@@ -18,6 +19,7 @@ export default function InstructorLoginPage() {
   const [errorMessage, setErrorMessage] = useState("")
   const [isShaking, setIsShaking] = useState(false)
   const [hasError, setHasError] = useState(false)
+  const [isPending, startTransition] = useTransition()
 
   const backgroundImages = ["/images/landing-page/school-1.png", "/images/landing-page/school-2.png"]
 
@@ -53,22 +55,32 @@ export default function InstructorLoginPage() {
             return
           }
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+          startTransition(async () => {
+                const { error } = await loginAction(email, password)
+          
+                if (error) {
+                  setErrorMessage(error.message)
+                } else {
+                  router.push("/dashboard/clinical-instructor") // ✅ redirect after login
+                }
+              })
+
+    //   const { data, error } = await supabase.auth.signInWithPassword({
+    //   email,
+    //   password,
+    // })
   
-      if (error) {
-        setErrorMessage("Invalid email or password. Please check your credentials and try again.")
-        setHasError(true)
-        triggerShakeAnimation()
-        console.error("Supabase login error:", error)
-      } else {
-        console.log("Login success!", data)
-        setErrorMessage("")
-        setHasError(false)
-        router.push("/dashboard/clinical-instructor")
-      }
+    //   if (error) {
+    //     setErrorMessage("Invalid email or password. Please check your credentials and try again.")
+    //     setHasError(true)
+    //     triggerShakeAnimation()
+    //     console.error("Supabase login error:", error)
+    //   } else {
+    //     console.log("Login success!", data)
+    //     setErrorMessage("")
+    //     setHasError(false)
+    //     router.push("/dashboard/clinical-instructor")
+    //   }
         
     }
 
