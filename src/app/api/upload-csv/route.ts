@@ -3,13 +3,57 @@ import { spawn } from "child_process"
 import fs from "fs"
 import path from "path"
 import os from "os"
+import { supabaseAdmin } from "@/lib/supabase/admin"
+
+async function logActivity(userId: string | null, role: string, action: string, details?: string) {
+  try {
+    if (!supabaseAdmin) {
+      console.error("[v0] Cannot log activity: Supabase admin client not available")
+      return
+    }
+
+    console.log("[v0] Logging activity:", { userId, role, action, details })
+    const { data, error } = await supabaseAdmin.from("activity_logs").insert([
+      {
+        user_id: userId ?? null, // ✅ null if not a real UUID
+        role,
+        action,
+        details,
+      },
+    ])
+
+    if (error) {
+      console.error("[v0] Failed to log activity - Supabase error:", error)
+    } else {
+      console.log("[v0] Activity logged successfully:", data)
+    }
+  } catch (error) {
+    console.error("[v0] Failed to log activity - Exception:", error)
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
     const file = formData.get("file") as File | null
+    const userId = formData.get("userId") as string | null
+    const role = formData.get("role") as string | null
+
+    console.log("[v0] CSV upload parameters:", { fileName: file?.name, userId, role })
+
+    // ✅ Ensure correct values
+    const safeUserId = userId && userId !== "Admin" ? userId : null
+    const safeRole = role || "Admin"
+
     if (!file) {
       return NextResponse.json({ status: "error", message: "No file uploaded." }, { status: 400 })
+    }
+
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { status: "error", message: "Server configuration error: Supabase admin client not available." },
+        { status: 500 },
+      )
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
@@ -94,7 +138,6 @@ export async function POST(req: NextRequest) {
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter(Boolean)
-      // Prefer the "Finished processing CSV..." line if present
       const finished = [...lines].reverse().find((l) => /^Finished processing CSV\./.test(l))
       if (finished) return finished
       const total = lines.find((l) => /Total .* processed/i.test(l))
@@ -104,10 +147,20 @@ export async function POST(req: NextRequest) {
 
     if (result.ok) {
       const message = extractSummary(result.stdout)
+
+      // ✅ Log successful CSV upload
+      console.log("[v0] CSV upload successful, logging activity...")
+      await logActivity(safeUserId, safeRole, "UPLOAD_CSV", `File ${file.name} uploaded successfully.`)
+
       return NextResponse.json({ status: "success", message, logs: result.stdout }, { status: 200 })
     } else {
       const firstErrLine =
         (result.stderr || result.stdout).split(/\r?\n/).find((l) => l.trim().length > 0) || "ETL script failed."
+
+      // ❌ Log failed CSV upload
+      console.log("[v0] CSV upload failed, logging activity...")
+      await logActivity(safeUserId, safeRole, "UPLOAD_CSV_FAILED", `File ${file?.name} failed. Error: ${firstErrLine}`)
+
       return NextResponse.json(
         { status: "error", message: firstErrLine, logs: result.stderr || result.stdout, exitCode: result.exitCode },
         { status: 500 },
@@ -115,6 +168,11 @@ export async function POST(req: NextRequest) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown server error"
+
+    // ❌ Log exception
+    console.log("[v0] CSV upload exception, logging activity...")
+    await logActivity("Admin", "Admin", "UPLOAD_CSV_EXCEPTION", message) // ✅ null user_id
+
     return NextResponse.json({ status: "error", message }, { status: 500 })
   }
 }

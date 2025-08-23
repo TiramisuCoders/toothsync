@@ -18,10 +18,8 @@ const parseStatus = (status: string): string => {
 // GET /api/instructors - Fetch all instructors with their specializations (OPTIMIZED)
 export async function GET() {
   try {
-    console.log("[v0] Starting optimized GET /api/instructors")
-
     if (!supabaseAdmin) {
-      console.error("[v0] Supabase admin client not available - missing environment variables")
+      console.error("Supabase admin client not available - missing environment variables")
       return NextResponse.json(
         {
           message: "Database Configuration Required",
@@ -32,14 +30,13 @@ export async function GET() {
       )
     }
 
-    console.log("[v0] Testing database connection...")
     const { data: testData, error: testError } = await supabaseAdmin
       .from("instructors")
       .select("instructor_id")
       .limit(1)
 
     if (testError) {
-      console.error("[v0] Database connection test failed:", testError.message)
+      console.error("Database connection test failed:", testError.message)
       return NextResponse.json(
         {
           message: "Database Connection Failed",
@@ -49,21 +46,17 @@ export async function GET() {
       )
     }
 
-    console.log("[v0] Database connection successful")
-
     const { data: allProcedures, error: proceduresError } = await supabaseAdmin
       .from("procedure")
       .select("procedure_id, name")
 
     if (proceduresError) {
-      console.error("[v0] Error fetching procedures:", proceduresError)
+      console.error("Error fetching procedures:", proceduresError)
       return NextResponse.json(
         { message: "Error fetching procedures", error: proceduresError.message },
         { status: 500 },
       )
     }
-
-    console.log("[v0] Fetched all procedures once:", allProcedures?.length || 0)
 
     const procedureMap = new Map()
     allProcedures?.forEach((proc: any) => {
@@ -75,27 +68,23 @@ export async function GET() {
       .select("instructor_id, user_id, status")
 
     if (instructorsError) {
-      console.error("[v0] Error fetching instructors data:", instructorsError)
+      console.error("Error fetching instructors data:", instructorsError)
       return NextResponse.json(
         { message: "Error fetching instructors data", error: instructorsError.message },
         { status: 500 },
       )
     }
 
-    console.log("[v0] Fetched instructors:", instructorsData?.length || 0)
-
     const userIds = instructorsData?.map((instructor: any) => instructor.user_id) || []
     const { data: usersData, error: usersError } = await supabaseAdmin
       .from("users")
-      .select("auth_user_id, first_name, last_name, email, sex, contact_number, address, birthday")
+      .select("auth_user_id, first_name, last_name, email, sex, contact_number")
       .in("auth_user_id", userIds)
 
     if (usersError) {
-      console.error("[v0] Error fetching users data:", usersError)
+      console.error("Error fetching users data:", usersError)
       return NextResponse.json({ message: "Error fetching users data", error: usersError.message }, { status: 500 })
     }
-
-    console.log("[v0] Fetched users data:", usersData?.length || 0)
 
     const userMap = new Map()
     usersData?.forEach((user: any) => {
@@ -109,14 +98,12 @@ export async function GET() {
       .in("instructor_id", instructorIds)
 
     if (specializationsError) {
-      console.error("[v0] Error fetching specializations:", specializationsError)
+      console.error("Error fetching specializations:", specializationsError)
       return NextResponse.json(
         { message: "Error fetching specializations", error: specializationsError.message },
         { status: 500 },
       )
     }
-
-    console.log("[v0] Fetched all specializations in single query:", allSpecializations?.length || 0)
 
     const specializationsByInstructor = new Map()
     allSpecializations?.forEach((spec: any) => {
@@ -143,16 +130,14 @@ export async function GET() {
           status: instructor.status || "Not Available",
           email: userData?.email || "",
           contactNumber: userData?.contact_number || "",
-          address: userData?.address || "",
           expertise: specializations,
           archived: instructor.status === "Archived",
         }
       }) || []
 
-    console.log("[v0] Final processed instructors (optimized):", instructors.length)
     return NextResponse.json(instructors, { status: 200 })
   } catch (error: any) {
-    console.error("[v0] Unexpected error in GET /api/instructors:", error)
+    console.error("Unexpected error in GET /api/instructors:", error)
     return NextResponse.json({ message: "Internal server error", error: error.message }, { status: 500 })
   }
 }
@@ -171,7 +156,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const { firstName, lastName, gender, email, contactNumber, address, status, expertise } = await req.json()
+    const { firstName, lastName, gender, email, contactNumber, status, expertise } = await req.json()
 
     if (!firstName || !lastName || !email || !gender || !status) {
       return NextResponse.json({ message: "Missing required fields" }, { status: 400 })
@@ -223,7 +208,6 @@ export async function POST(req: Request) {
       sex: parseSex(gender),
       role: "R03",
       contact_number: contactNumber || null,
-      address: address || null,
     }
 
     const { data: existingUser, error: fetchUserError } = await supabaseAdmin
@@ -323,7 +307,7 @@ export async function PUT(req: Request) {
       )
     }
 
-    const { id, firstName, lastName, gender, email, contactNumber, address, status, expertise } = await req.json()
+    const { id, firstName, lastName, gender, email, contactNumber, status, expertise } = await req.json()
 
     if (!id) {
       return NextResponse.json({ message: "Instructor ID is required" }, { status: 400 })
@@ -364,7 +348,6 @@ export async function PUT(req: Request) {
         email: email,
         sex: parseSex(gender),
         contact_number: contactNumber || null,
-        address: address || null,
       }
 
       await supabaseAdmin.from("users").update(userPayload).eq("auth_user_id", instructorData.user_id)
