@@ -21,6 +21,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { uploadCliniciansCsv } from "@/lib/csv-upload" // Assuming you have this helper from previous steps
 
+import { createBrowserClient } from "@supabase/ssr"
+
 // Type definitions
 interface Clinician {
   id: string // This will be user_id from DB (internal)
@@ -118,6 +120,24 @@ export default function CliniciansPage() {
 
   // Sample data for clinicians (reduced to one entry)
   const [clinicians, setClinicians] = useState<Clinician[]>([])
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (user) {
+        setCurrentUserId(user.id)
+      }
+    }
+    getCurrentUser()
+  }, [])
 
   // Add this useEffect hook and fetchClinicians function
   useEffect(() => {
@@ -369,11 +389,18 @@ export default function CliniciansPage() {
       setUploadErrorMessage("Please select a valid .csv file")
       return
     }
+
+    if (!currentUserId) {
+      setUploadErrorMessage("User not authenticated. Please log in and try again.")
+      return
+    }
+
     setIsProcessingUpload(true)
     setUploadSuccessMessage("")
     setUploadErrorMessage("")
     try {
-      const result = await uploadCliniciansCsv(selectedFile)
+      console.log("[v0] Frontend CSV upload - currentUserId:", currentUserId, "role:", "chief-of-clinicians")
+      const result = await uploadCliniciansCsv(selectedFile, currentUserId, "chief-of-clinicians")
       if (result.status === "success") {
         setUploadSuccessMessage(result.message)
         setSelectedFile(null)
@@ -1031,7 +1058,7 @@ export default function CliniciansPage() {
                   <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
                     <path
                       fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 001.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
                       clipRule="evenodd"
                     />
                   </svg>
