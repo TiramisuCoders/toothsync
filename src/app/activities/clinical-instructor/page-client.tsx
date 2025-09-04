@@ -15,7 +15,7 @@ function LoadingActivities() {
 }
 
 // Dynamically import the actual component with SSR disabled
-const InstructorActivitiesContent = dynamic(() => import("./instructor-activities-content"), {
+const InstructorActivitiesContent = dynamic(() => import("./InstructorsActivities"), {
   ssr: false,
   loading: () => <LoadingActivities />,
 })

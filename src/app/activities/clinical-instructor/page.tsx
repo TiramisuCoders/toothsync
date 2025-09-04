@@ -1,4 +1,4 @@
-import InstructorActivitiesContent from "./instructor-activities-content"
+import InstructorActivitiesContent from "./InstructorsActivities"
 
 export default function InstructorActivitiesPage() {
   return (

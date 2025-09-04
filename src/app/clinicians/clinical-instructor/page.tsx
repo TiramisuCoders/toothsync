@@ -1,69 +1,112 @@
 "use client"
-
-import { useState } from "react"
-import { Eye, Download, History, Edit, X, User, Plus, Calendar } from "lucide-react"
+import type React from "react"
+import { useState, useEffect } from "react"
+import { Calendar, Eye, Download, History, X, User } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-export default function InstructorCliniciansPage() {
+// Type definitions
+interface Clinician {
+  id: string // This will be user_id from DB (internal)
+  studentId: string // New: student_id from DB (for display)
+  firstName: string // from public.users
+  lastName: string // from public.users
+  gender: string // from public.users (sex)
+  status: string // from public.clinicians (enrollment_status)
+  birthday: string // from public.users
+  email: string // from public.users
+  contactNumber: string // from public.users
+  address: string // from public.clinicians
+  yearLevel: string // from public.clinicians
+  section: string // from public.clinicians
+}
+
+interface AttendanceRecord {
+  id: number
+  date: string
+  timeIn: string
+  timeOut: string
+  sanitized: string
+  status: string
+}
+
+interface HistoryItem {
+  timestamp: string
+  user: string
+  action: string
+  description: string
+  details: {
+    date: string
+    procedure: string
+    patient: string
+    grade: string
+    remarks: string
+  }
+}
+
+interface Activity {
+  id: string
+  date: string
+  procedure: string
+  chair: string
+  instructor: string
+  patient: string
+  grade: string
+  remarks: string
+  status: string
+  firstName: string
+  lastName: string
+  history: HistoryItem[]
+  assessmentStatus?: string
+}
+
+export default function CliniciansPage() {
+  const [activeFilter, setActiveFilter] = useState<"all" | "enrolled" | "not-enrolled">("all")
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
-  const [selectedClinician, setSelectedClinician] = useState(null)
+  const [selectedClinician, setSelectedClinician] = useState<Clinician | null>(null)
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
-  const [selectedActivity, setSelectedActivity] = useState(null)
-  const [activeTab, setActiveTab] = useState("activities")
-  const [isActivityEditModalOpen, setIsActivityEditModalOpen] = useState(false)
-  const [currentActivity, setCurrentActivity] = useState(null)
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null)
+  const [activeTab, setActiveTab] = useState<"activities" | "attendance">("activities")
 
-  // Sample data for clinicians - only showing enrolled clinicians
-  const [clinicians] = useState([
-    {
-      id: "C2024-001",
-      firstName: "Maria",
-      lastName: "Santos",
-      gender: "Female",
-      status: "Enrolled",
-      birthday: "1998-05-15",
-      email: "maria.santos@example.com",
-      contactNumber: "+63 912 345 6789",
-      address: "123 Rizal Avenue, Manila",
-      yearLevel: "5th Year",
-      section: "A",
-    },
-    {
-      id: "C2024-002",
-      firstName: "John",
-      lastName: "Dela Cruz",
-      gender: "Male",
-      status: "Enrolled",
-      birthday: "1997-08-22",
-      email: "john.delacruz@example.com",
-      contactNumber: "+63 917 123 4567",
-      address: "456 Mabini Street, Quezon City",
-      yearLevel: "6th Year",
-      section: "B",
-    },
-    {
-      id: "C2024-004",
-      firstName: "Mark",
-      lastName: "Aquino",
-      gender: "Male",
-      status: "Enrolled",
-      birthday: "1996-11-30",
-      email: "mark.aquino@example.com",
-      contactNumber: "+63 919 876 5432",
-      address: "321 Aguinaldo Street, Pasig",
-      yearLevel: "5th Year",
-      section: "C",
-    },
-  ])
+  // Sample data for clinicians (reduced to one entry)
+  const [clinicians, setClinicians] = useState<Clinician[]>([])
 
-  // Add sample attendance data
-  const [attendanceData] = useState([
+  // Add this useEffect hook and fetchClinicians function
+  useEffect(() => {
+    fetchClinicians()
+  }, [])
+
+  const fetchClinicians = async () => {
+    try {
+      const response = await fetch("/api/clinicians")
+      if (!response.ok) {
+        // Log the full response for debugging
+        const errorData = await response.json()
+        console.error("Failed to fetch clinicians:", response.status, errorData)
+        throw new Error(`HTTP error! status: ${response.status} - ${errorData.message || "Unknown error"}`)
+      }
+      const data: Clinician[] = await response.json()
+      setClinicians(data)
+    } catch (error) {
+      console.error("Failed to fetch clinicians:", error)
+      // Optionally set an error message to display in the UI
+    }
+  }
+
+  // Sample attendance data (reduced to one entry)
+  const [attendanceData] = useState<AttendanceRecord[]>([
     {
       id: 1,
       date: "2025-05-08",
@@ -72,32 +115,16 @@ export default function InstructorCliniciansPage() {
       sanitized: "Yes",
       status: "Present",
     },
-    {
-      id: 2,
-      date: "2025-05-07",
-      timeIn: "08:05 AM",
-      timeOut: "04:45 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
-    {
-      id: 3,
-      date: "2025-05-06",
-      timeIn: "08:30 AM",
-      timeOut: "04:15 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
   ])
 
-  // Add sample activities data
-  const [activitiesData] = useState([
+  // Sample activities data (reduced to one entry)
+  const [activitiesData] = useState<Activity[]>([
     {
       id: "A001",
       date: "2025-05-08",
       procedure: "Root Canal Treatment",
       chair: "Chair 05",
-      instructor: "Dr. Sales",
+      instructor: "Dr. Reyes",
       patient: "Juan Dela Cruz",
       grade: "85",
       remarks: "Good work on canal preparation",
@@ -107,7 +134,7 @@ export default function InstructorCliniciansPage() {
       history: [
         {
           timestamp: "2025-05-08T15:30:00",
-          user: "dr.sales@example.com",
+          user: "dr.reyes@example.com",
           action: "Updated",
           description: "Grade changed from 80 to 85",
           details: {
@@ -120,7 +147,7 @@ export default function InstructorCliniciansPage() {
         },
         {
           timestamp: "2025-05-08T14:20:00",
-          user: "dr.sales@example.com",
+          user: "dr.reyes@example.com",
           action: "Created",
           description: "Initial activity record created",
           details: {
@@ -133,73 +160,28 @@ export default function InstructorCliniciansPage() {
         },
       ],
     },
-    {
-      id: "A002",
-      date: "2025-05-07",
-      procedure: "Dental Filling",
-      chair: "Chair 12",
-      instructor: "Dr. Sales",
-      patient: "Ana Reyes",
-      grade: "90",
-      remarks: "Excellent composite placement",
-      status: "Completed",
-      firstName: "John",
-      lastName: "Dela Cruz",
-      history: [
-        {
-          timestamp: "2025-05-07T16:45:00",
-          user: "dr.sales@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-07",
-            procedure: "Dental Filling",
-            patient: "Ana Reyes",
-            grade: "90",
-            remarks: "Excellent composite placement",
-          },
-        },
-      ],
-    },
   ])
 
-  // Function to handle view button click
-  const handleViewClick = (clinician) => {
+  const handleViewClick = (clinician: Clinician) => {
     setSelectedClinician(clinician)
     setIsViewModalOpen(true)
   }
 
-  // Function to handle history button click
-  const handleHistoryClick = (activity) => {
+  const handleHistoryClick = (activity: Activity) => {
     setSelectedActivity(activity)
     setIsHistoryModalOpen(true)
   }
 
-  // Function to handle activity edit button click
-  const handleActivityEditClick = (activity) => {
-    setCurrentActivity(activity)
-    setIsActivityEditModalOpen(true)
-  }
-
-  // Function to export activities to CSV
   const exportActivitiesToCSV = () => {
     if (!selectedClinician) return
-
-    // Create CSV header
     const headers = ["ID", "Date", "Procedure", "Patient", "Chair", "Instructor", "Grade", "Status", "Remarks"].join(
       ",",
     )
-
-    // Create CSV rows
     const rows = activitiesData.map(
       (activity) =>
         `"${activity.id}","${activity.date}","${activity.procedure}","${activity.patient}","${activity.chair}","${activity.instructor}","${activity.grade}","${activity.status}","${activity.remarks}"`,
     )
-
-    // Combine header and rows
     const csv = [headers, ...rows].join("\n")
-
-    // Create a blob and download
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
@@ -216,23 +198,14 @@ export default function InstructorCliniciansPage() {
     document.body.removeChild(link)
   }
 
-  // Function to export attendance to CSV
   const exportAttendanceToCSV = () => {
     if (!selectedClinician) return
-
-    // Create CSV header
     const headers = ["Date", "Time In", "Time Out", "Sanitized", "Status"].join(",")
-
-    // Create CSV rows
     const rows = attendanceData.map(
       (attendance) =>
         `"${attendance.date}","${attendance.timeIn}","${attendance.timeOut}","${attendance.sanitized}","${attendance.status}"`,
     )
-
-    // Combine header and rows
     const csv = [headers, ...rows].join("\n")
-
-    // Create a blob and download
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
@@ -249,7 +222,6 @@ export default function InstructorCliniciansPage() {
     document.body.removeChild(link)
   }
 
-  // Function to export current tab data to CSV
   const exportToCSV = () => {
     if (activeTab === "activities") {
       exportActivitiesToCSV()
@@ -258,9 +230,15 @@ export default function InstructorCliniciansPage() {
     }
   }
 
+  const filteredClinicians = clinicians.filter((clinician) => {
+    if (activeFilter === "all") return true
+    if (activeFilter === "enrolled") return clinician.status === "Enrolled"
+    if (activeFilter === "not-enrolled") return clinician.status === "Not Enrolled"
+    return true
+  })
+
   return (
     <>
-      {/* Academic Term - Static */}
       <div className="mb-6">
         <div className="bg-[#5C8E77]/10 border border-[#5C8E77]/20 rounded-lg px-4 py-3 flex items-center justify-between">
           <div>
@@ -273,30 +251,43 @@ export default function InstructorCliniciansPage() {
           <Badge className="bg-[#5C8E77]">Active</Badge>
         </div>
       </div>
-
-      {/* Clinicians Table */}
       <Card className="bg-white border border-gray-200 shadow-sm mb-6">
         <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
-          <CardTitle className="text-xl font-semibold text-[#333]">Assigned Clinicians</CardTitle>
+          <div className="flex items-center gap-4">
+            <CardTitle className="text-xl font-semibold text-[#333]">List of Clinicians</CardTitle>
+            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+              <Button
+                variant={activeFilter === "all" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "all" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("all")}
+              >
+                All
+              </Button>
+              <Button
+                variant={activeFilter === "enrolled" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "enrolled" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("enrolled")}
+              >
+                Enrolled
+              </Button>
+              <Button
+                variant={activeFilter === "not-enrolled" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "not-enrolled" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("not-enrolled")}
+              >
+                Not Enrolled
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="flex items-center justify-between px-4 py-2">
-            <div></div>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Year Level" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Years</SelectItem>
-                <SelectItem value="5">5th Year</SelectItem>
-                <SelectItem value="6">6th Year</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           <Table>
             <TableHeader className="bg-white border-b border-gray-200">
               <TableRow className="hover:bg-white border-b-0">
-                <TableHead className="font-medium text-[#333]">Clinician ID</TableHead>
+                <TableHead className="font-medium text-[#333]">Student ID</TableHead>
                 <TableHead className="font-medium text-[#333]">First Name</TableHead>
                 <TableHead className="font-medium text-[#333]">Last Name</TableHead>
                 <TableHead className="font-medium text-[#333]">Year</TableHead>
@@ -307,27 +298,35 @@ export default function InstructorCliniciansPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {clinicians.length > 0 ? (
-                clinicians.map((clinician) => (
+              {filteredClinicians.length > 0 ? (
+                filteredClinicians.map((clinician) => (
                   <TableRow key={clinician.id} className="hover:bg-gray-50 border-b border-gray-200">
-                    <TableCell className="font-medium text-[#333]">{clinician.id}</TableCell>
+                    <TableCell className="font-medium text-[#333]">{clinician.studentId}</TableCell>
                     <TableCell className="text-[#333]">{clinician.firstName}</TableCell>
                     <TableCell className="text-[#333]">{clinician.lastName}</TableCell>
                     <TableCell className="text-[#333]">{clinician.yearLevel}</TableCell>
                     <TableCell className="text-[#333]">{clinician.section}</TableCell>
                     <TableCell className="text-[#333]">{clinician.gender}</TableCell>
                     <TableCell>
-                      <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{clinician.status}</Badge>
+                      {clinician.status === "Enrolled" ? (
+                        <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{clinician.status}</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-red-600 border-red-600">
+                          {clinician.status}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-blue-600 hover:bg-blue-50"
-                        onClick={() => handleViewClick(clinician)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                          onClick={() => handleViewClick(clinician)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -344,7 +343,7 @@ export default function InstructorCliniciansPage() {
       </Card>
 
       {/* Clinician Records View Modal */}
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen} className="max-w-4xl">
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
         <DialogContent className="sm:max-w-[900px] p-0 overflow-hidden rounded-lg">
           {selectedClinician && (
             <>
@@ -358,7 +357,7 @@ export default function InstructorCliniciansPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="h-16 w-16 rounded-full bg-[#e6f7eb] flex items-center justify-center text-[#5C8E77] text-xl font-semibold">
+                    <div className="h-16 w-16 rounded-full bg-[#e6f7eb] flex items-center justify-center text-[#5C8E77] text-xl font-bold">
                       {selectedClinician.firstName.charAt(0)}
                       {selectedClinician.lastName.charAt(0)}
                     </div>
@@ -368,11 +367,11 @@ export default function InstructorCliniciansPage() {
               <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
                 <div className="grid grid-cols-2 gap-6 mb-6">
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Clinician ID</h3>
-                    <p className="text-[#333] font-medium">{selectedClinician.id}</p>
+                    <h3 className="text-sm font-medium text-gray-500">Student ID</h3>
+                    <p className="text-[#333] font-medium">{selectedClinician.studentId}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Year & Section</h3>
+                    <h3 className="text-sm font-medium text-gray-500">Year &amp; Section</h3>
                     <p className="text-[#333] font-medium">
                       {selectedClinician.yearLevel}, Section {selectedClinician.section}
                     </p>
@@ -386,8 +385,11 @@ export default function InstructorCliniciansPage() {
                     <p className="text-[#333] font-medium">{selectedClinician.contactNumber}</p>
                   </div>
                 </div>
-
-                <Tabs defaultValue="activities" className="w-full" onValueChange={(value) => setActiveTab(value)}>
+                <Tabs
+                  defaultValue="activities"
+                  className="w-full"
+                  onValueChange={(value) => setActiveTab(value as "activities" | "attendance")}
+                >
                   <div className="flex items-center justify-between mb-4">
                     <TabsList className="grid w-[300px] grid-cols-2">
                       <TabsTrigger value="activities">Activities</TabsTrigger>
@@ -397,7 +399,7 @@ export default function InstructorCliniciansPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex items-center gap-1 border-[#5C8E77] text-[#5C8E77]"
+                        className="flex items-center gap-1 border-[#5C8E77] text-[#5C8E77] bg-transparent"
                         onClick={exportToCSV}
                       >
                         <Download className="h-4 w-4" />
@@ -446,14 +448,6 @@ export default function InstructorCliniciansPage() {
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8 text-blue-600 hover:bg-blue-50"
-                                    onClick={() => handleActivityEditClick(activity)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
                                   <Button
                                     size="icon"
                                     variant="ghost"
@@ -548,13 +542,10 @@ export default function InstructorCliniciansPage() {
                     {selectedActivity.procedure} - Tooth #{selectedActivity.id.slice(-1)}
                   </div>
                 </div>
-
                 <div className="relative border-l-2 border-gray-200 pl-6 space-y-8 py-2">
-                  {selectedActivity.history.map((historyItem, index) => (
+                  {selectedActivity.history.map((historyItem: HistoryItem, index: number) => (
                     <div key={index} className="relative">
-                      {/* Timeline dot */}
                       <div className="absolute -left-[29px] top-0 h-4 w-4 rounded-full bg-[#5C8E77]"></div>
-
                       <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
@@ -575,7 +566,6 @@ export default function InstructorCliniciansPage() {
                             <div className="text-sm text-gray-500">{historyItem.user}</div>
                           </div>
                         </div>
-
                         <div
                           className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium mb-3 ${
                             historyItem.action === "Updated"
@@ -583,15 +573,9 @@ export default function InstructorCliniciansPage() {
                               : "bg-green-100 text-green-700"
                           }`}
                         >
-                          {historyItem.action === "Updated" ? (
-                            <Edit className="h-3 w-3" />
-                          ) : (
-                            <Plus className="h-3 w-3" />
-                          )}
                           {historyItem.action}
                         </div>
                         <div className="text-sm font-medium text-gray-700 mb-4">{historyItem.description}</div>
-
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <div className="text-gray-500 mb-1">DATE</div>

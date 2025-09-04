@@ -35,19 +35,18 @@ export default function ClinicianLoginPage() {
     setTimeout(() => setIsShaking(false), 600)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+       e.preventDefault()
 
     const {
   data: { session },
 } = await supabase.auth.getSession();
 
-console.log("Session:", session);
+// console.log("Session:", session);
 
 
-const test = await supabase.from("users").select("id").limit(1);
-console.log(test);
+// const test = await supabase.from("users").select("id").limit(1);
+// console.log(test);
 
       const { data: userRecord, error: roleError, status} = await supabase
       .from("users")
