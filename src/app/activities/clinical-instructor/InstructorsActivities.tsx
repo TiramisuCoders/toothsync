@@ -1,6 +1,8 @@
+// activities > clinical - instructor
+
 "use client"
 
-import { useState } from "react"
+import {useEffect, useState } from "react"
 import { Edit, Check, X, ChevronUp, ChevronDown, ArrowUpDown, Star, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -31,17 +33,17 @@ interface Activity {
   selectedProcedures?: string[]
 }
 
-interface NewActivity {
-  firstName: string
-  lastName: string
-  patientName: string
-  chair: string
-  procedures: string[]
-  status: string
-  grade: string
-  assessmentStatus: string
-  remarks: string
-}
+// interface NewActivity {
+//   firstName: string
+//   lastName: string
+//   patientName: string
+//   chair: string
+//   procedures: string[]
+//   status: string
+//   grade: string
+//   assessmentStatus: string
+//   remarks: string
+// }
 
 export default function InstructorActivitiesContent() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -59,100 +61,132 @@ export default function InstructorActivitiesContent() {
   const [isAddProcedureModalOpen, setIsAddProcedureModalOpen] = useState(false)
   const [selectedProcedures, setSelectedProcedures] = useState<string[]>([])
   const [isNewActivityModalOpen, setIsNewActivityModalOpen] = useState(false)
-  const [newActivity, setNewActivity] = useState<NewActivity>({
-    firstName: "",
-    lastName: "",
-    patientName: "",
-    chair: "",
-    procedures: [] as string[],
-    status: "Not started",
-    grade: "",
-    assessmentStatus: "Not Started",
-    remarks: "",
-  })
+  const [activities, setActivitiesRecords] = useState<Activity[]>([])
+  // const [newActivity, setNewActivity] = useState<NewActivity>({
+  //   firstName: "",
+  //   lastName: "",
+  //   patientName: "",
+  //   chair: "",
+  //   procedures: [] as string[],
+  //   status: "Not started",
+  //   grade: "",
+  //   assessmentStatus: "Not Started",
+  //   remarks: "",
+  // })
 
   // Available procedures
-  const availableProcedures = [
-    "Root Canal Treatment",
-    "Dental Filling",
-    "Dental Crown",
-    "Teeth Cleaning",
-    "Dental Extraction",
-    "Dental Implant",
-    "Dental Bridge",
-    "Teeth Whitening",
-    "Dental X-Ray",
-    "Orthodontic Adjustment",
-  ]
+  // const availableProcedures = [
+  //   "Root Canal Treatment",
+  //   "Dental Filling",
+  //   "Dental Crown",
+  //   "Teeth Cleaning",
+  //   "Dental Extraction",
+  //   "Dental Implant",
+  //   "Dental Bridge",
+  //   "Teeth Whitening",
+  //   "Dental X-Ray",
+  //   "Orthodontic Adjustment",
+  // ]
 
   // Sample data for activities assigned to this instructor
-  const [activities, setActivities] = useState<Activity[]>([
-    {
-      id: "1",
-      firstName: "Maria",
-      lastName: "Santos",
-      patientName: "Juan Dela Cruz",
-      chair: "Chair 05",
-      date: "2025-05-09",
-      procedures: ["Root Canal Treatment", "Dental Filling"],
-      status: "Started",
-      grade: "",
-      assessmentStatus: "In Progress",
-      remarks: "",
-    },
-    {
-      id: "2",
-      firstName: "John",
-      lastName: "Dela Cruz",
-      patientName: "Ana Reyes",
-      chair: "Chair 12",
-      date: "2025-05-09",
-      procedures: ["Dental Filling"],
-      status: "Not started",
-      grade: "",
-      assessmentStatus: "Not Started",
-      remarks: "",
-    },
-    {
-      id: "3",
-      firstName: "Anna",
-      lastName: "Lim",
-      patientName: "Miguel Santos",
-      chair: "Chair 03",
-      date: "2025-05-09",
-      procedures: ["Dental Crown", "Teeth Cleaning", "Dental X-Ray"],
-      status: "Started",
-      grade: "",
-      assessmentStatus: "In Progress",
-      remarks: "",
-    },
-    {
-      id: "4",
-      firstName: "Mark",
-      lastName: "Aquino",
-      patientName: "Sofia Reyes",
-      chair: "Chair 08",
-      date: "2025-05-09",
-      procedures: ["Teeth Cleaning"],
-      status: "Completed",
-      grade: "85",
-      assessmentStatus: "Completed",
-      remarks: "Good work, clean execution.",
-    },
-    {
-      id: "5",
-      firstName: "Sarah",
-      lastName: "Garcia",
-      patientName: "Luis Tan",
-      chair: "Chair 10",
-      date: "2025-05-09",
-      procedures: ["Dental Extraction", "Dental X-Ray"],
-      status: "Incomplete",
-      grade: "60",
-      assessmentStatus: "Needs Improvement",
-      remarks: "Procedure was not completed properly.",
-    },
-  ])
+  // const [activities, setActivities] = useState<Activity[]>([
+  //   {
+  //     id: "1",
+  //     firstName: "Maria",
+  //     lastName: "Santos",
+  //     patientName: "Juan Dela Cruz",
+  //     chair: "Chair 05",
+  //     date: "2025-05-09",
+  //     procedures: ["Root Canal Treatment", "Dental Filling"],
+  //     status: "Started",
+  //     grade: "",
+  //     assessmentStatus: "In Progress",
+  //     remarks: "",
+  //   },
+  //   {
+  //     id: "2",
+  //     firstName: "John",
+  //     lastName: "Dela Cruz",
+  //     patientName: "Ana Reyes",
+  //     chair: "Chair 12",
+  //     date: "2025-05-09",
+  //     procedures: ["Dental Filling"],
+  //     status: "Not started",
+  //     grade: "",
+  //     assessmentStatus: "Not Started",
+  //     remarks: "",
+  //   },
+  //   {
+  //     id: "3",
+  //     firstName: "Anna",
+  //     lastName: "Lim",
+  //     patientName: "Miguel Santos",
+  //     chair: "Chair 03",
+  //     date: "2025-05-09",
+  //     procedures: ["Dental Crown", "Teeth Cleaning", "Dental X-Ray"],
+  //     status: "Started",
+  //     grade: "",
+  //     assessmentStatus: "In Progress",
+  //     remarks: "",
+  //   },
+  //   {
+  //     id: "4",
+  //     firstName: "Mark",
+  //     lastName: "Aquino",
+  //     patientName: "Sofia Reyes",
+  //     chair: "Chair 08",
+  //     date: "2025-05-09",
+  //     procedures: ["Teeth Cleaning"],
+  //     status: "Completed",
+  //     grade: "85",
+  //     assessmentStatus: "Completed",
+  //     remarks: "Good work, clean execution.",
+  //   },
+  //   {
+  //     id: "5",
+  //     firstName: "Sarah",
+  //     lastName: "Garcia",
+  //     patientName: "Luis Tan",
+  //     chair: "Chair 10",
+  //     date: "2025-05-09",
+  //     procedures: ["Dental Extraction", "Dental X-Ray"],
+  //     status: "Incomplete",
+  //     grade: "60",
+  //     assessmentStatus: "Needs Improvement",
+  //     remarks: "Procedure was not completed properly.",
+  //   },
+  // ])
+
+
+  useEffect(() => {
+    const fetchRecords = async () => {
+      try {
+        const fetchRecords = await fetch('/api/activities/clinical-instructors', {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        })
+
+        if (!fetchRecords.ok) {
+          throw new Error(`HTTP error! status: ${fetchRecords.status}`)
+        }
+
+        const records = await fetchRecords.json()
+        
+        if (records.success) {
+          setActivitiesRecords(records.data)
+        } else {
+          throw new Error(records.error || 'Failed to fetch records')
+        }
+      } catch (err) {
+        console.error('Error fetching attendance:', err)
+        // setError(err instanceof Error ? err.message : 'An error occurred')
+      } 
+    }
+    fetchRecords()
+  }, []) 
 
   // Function to get status color
   const getStatusColor = (status: string) => {
@@ -302,32 +336,32 @@ export default function InstructorActivitiesContent() {
   }
 
   // Function to create a new activity
-  const handleCreateActivity = () => {
-    const newId = (activities.length + 1).toString()
-    const activityToAdd = {
-      ...newActivity,
-      id: newId,
-      date: new Date().toISOString().split("T")[0],
-    }
-    setActivities([...activities, activityToAdd])
-    setIsNewActivityModalOpen(false)
-    toast({
-      title: "Activity Created",
-      description: `New activity created for ${newActivity.firstName} ${newActivity.lastName}.`,
-    })
-    // Reset the form
-    setNewActivity({
-      firstName: "",
-      lastName: "",
-      patientName: "",
-      chair: "",
-      procedures: [],
-      status: "Not started",
-      grade: "",
-      assessmentStatus: "Not Started",
-      remarks: "",
-    })
-  }
+  // const handleCreateActivity = () => {
+  //   const newId = (activities.length + 1).toString()
+  //   const activityToAdd = {
+  //     ...newActivity,
+  //     id: newId,
+  //     date: new Date().toISOString().split("T")[0],
+  //   }
+  //   setActivities([...activities, activityToAdd])
+  //   setIsNewActivityModalOpen(false)
+  //   toast({
+  //     title: "Activity Created",
+  //     description: `New activity created for ${newActivity.firstName} ${newActivity.lastName}.`,
+  //   })
+  //   // Reset the form
+  //   setNewActivity({
+  //     firstName: "",
+  //     lastName: "",
+  //     patientName: "",
+  //     chair: "",
+  //     procedures: [],
+  //     status: "Not started",
+  //     grade: "",
+  //     assessmentStatus: "Not Started",
+  //     remarks: "",
+  //   })
+  // }
 
   // Function to handle sorting
   const handleSort = (field: string) => {
@@ -363,12 +397,13 @@ export default function InstructorActivitiesContent() {
       <Card className="bg-white border border-gray-200 shadow-sm mb-6">
         <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
           <CardTitle className="text-xl font-semibold text-[#333]">Activities & Grades</CardTitle>
+          {/* Remove New Activity Button
           <Button
             className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
             onClick={() => setIsNewActivityModalOpen(true)}
           >
             <Plus className="mr-2 h-4 w-4" /> New Activity
-          </Button>
+          </Button> */}
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -921,7 +956,7 @@ export default function InstructorActivitiesContent() {
       </Dialog>
 
       {/* New Activity Modal */}
-      <Dialog open={isNewActivityModalOpen} onOpenChange={setIsNewActivityModalOpen}>
+      {/* <Dialog open={isNewActivityModalOpen} onOpenChange={setIsNewActivityModalOpen}>
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
           <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
             <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Create New Activity</DialogTitle>
@@ -1056,7 +1091,7 @@ export default function InstructorActivitiesContent() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog> */}
 
       <Toaster />
     </>
