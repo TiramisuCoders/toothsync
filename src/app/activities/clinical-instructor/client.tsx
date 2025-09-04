@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import InstructorActivitiesContent from "./instructor-activities-content"
+import InstructorActivitiesContent from "./InstructorsActivities"
 
 export default function InstructorActivitiesClient() {
   const [isMounted, setIsMounted] = useState(false)

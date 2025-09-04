@@ -112,21 +112,14 @@ export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
         <div className="p-6 pb-4">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-[#5C8E77] rounded-lg flex items-center justify-center">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z" />
-                <path d="M12 11v4" />
-                <path d="M11 15h2" />
-              </svg>
+      
+              <Image 
+                src="/images/tslogo1.png" 
+                alt="TS Logo" 
+                width={30} 
+                height={30} 
+              />
+
             </div>
             <span className="text-xl font-semibold text-gray-900">ToothSync</span>
           </div>

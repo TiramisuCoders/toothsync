@@ -5,16 +5,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Toaster } from "@/components/ui/toaster"
 import { supabase } from "@/lib/supabase"
+
+interface Procedure {
+  procedure_id: string
+  name: string
+}
 
 export default function ClinicianForm() {
   const [formData, setFormData] = useState({
     firstName: "", 
     lastName: "",
-    yearLevel: "", 
-    section: "",   
+    shift: "",
     patientName: "",
     selectedProcedures: [] as string[],
     chair: "Auto-assigned",
@@ -26,76 +31,67 @@ export default function ClinicianForm() {
   const [submitProgress, setSubmitProgress] = useState(0)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showConfirmation, setShowConfirmation] = useState(false)
-  // const [procedures, setProcedures] = useState<string[]>([])
-  const [procedures, setProcedures] = useState<{ procedure_id: string; name: string }[]>([])
+  const [procedures, setProcedures] = useState<Procedure[]>([])
 
-  
   useEffect(() => {
     const fetchData = async () => {
+      try {
+        // Get authenticated user
+        const { data: userData, error: userError } = await supabase.auth.getUser()
+        if (userError || !userData.user) {
+          console.error("User not authenticated:", userError)
+          toast("Authentication Error", { description: "Please log in to continue." })
+          return
+        }
 
-    const { data: userData, error: userError } = await supabase.auth.getUser()
-    // console.log(userData); // Must not be null
-    if (userError || !userData.user) {
-      console.error("User not authenticated:", userError)
-      return
+        // Set user ID
+        setFormData((prev) => ({
+          ...prev,
+          clinicianUserId: userData.user.id,
+        }))
+
+        // Fetch user details
+        const { data: clinician, error: clinicianError } = await supabase
+          .from("users")
+          .select("first_name, last_name")
+          .eq("auth_user_id", userData.user.id)
+          .single()
+
+        if (clinicianError) {
+          console.error("Failed to fetch clinician data:", clinicianError)
+          toast("Error", { description: "Failed to load user data." })
+        } else {
+          setFormData((prev) => ({
+            ...prev,
+            firstName: clinician.first_name || "",
+            lastName: clinician.last_name || "",
+          }))
+        }
+
+        // Fetch procedures
+        const { data: procedureData, error: procedureError } = await supabase
+          .from("procedure")
+          .select("procedure_id, name")
+
+        if (procedureError) {
+          console.error("Error fetching procedures:", procedureError)
+          toast("Error", { description: "Failed to load procedures." })
+        } else {
+          setProcedures(procedureData || [])
+        }
+      } catch (error) {
+        console.error("Error in fetchData:", error)
+        toast("Error", { description: "Failed to load form data." })
+      }
     }
-    if (!userError && userData.user) {
-      setFormData((prev) => ({
-        ...prev,
-        clinicianUserId: userData.user.id,  // store the ID here
-      }))
-    }
 
-    const { data: clinician, error: clinicianError } = await supabase
-      .from("users")
-      .select("first_name, last_name")
-      .eq("auth_user_id", userData.user.id)
-      .single()
+    fetchData()
+  }, [])
 
-    if (clinicianError) {
-      console.error("Failed to fetch clinician data:", clinicianError)
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        firstName: clinician.first_name,
-        lastName: clinician.last_name,
-        // yearLevel: profile.year_level,
-        // section: profile.section,
-      }))
-    }
-
-    const { data: clin, error: clinError } = await supabase
-      .from("clinicians")
-      .select("year_level")
-      .eq("user_id", userData.user.id)
-      .single()
-
-    if (clinError) {
-      console.error("Failed to fetch student profile:", clinError)
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        yearLevel: clin.year_level,
-      }))
-    }
-
-    
-
-    const { data: procedureData, error: procedureError } = await supabase
-      .from("procedure")
-      .select("procedure_id, name")
-
-    if (procedureError) {
-      console.error("Error fetching procedures:", procedureError)
-    } else {
-      const procedureNames = procedureData.map((p) => p.name)
-      setProcedures(procedureData)
-    }
+  const handleShiftChange = (value: string) => {
+    setFormData((prev) => ({ ...prev, shift: value }))
+    if (errors.shift) setErrors((prev) => ({ ...prev, shift: "" }))
   }
-
-  fetchData()
-}, [])
-
 
   const handlePatientNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({ ...prev, patientName: e.target.value }))
@@ -107,7 +103,10 @@ export default function ClinicianForm() {
       let newProcedures = [...prev.selectedProcedures]
 
       if (checked) {
-        if (newProcedures.length >= 2) return prev
+        if (newProcedures.length >= 2) {
+          toast("Limit Reached", { description: "You can only select up to 2 procedures." })
+          return prev
+        }
         newProcedures.push(procedure)
       } else {
         newProcedures = newProcedures.filter((p) => p !== procedure)
@@ -122,6 +121,10 @@ export default function ClinicianForm() {
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
 
+    if (!formData.shift) {
+      newErrors.shift = "Please select a shift"
+    }
+
     if (!formData.patientName.trim()) {
       newErrors.patientName = "Patient name is required"
     }
@@ -134,14 +137,17 @@ export default function ClinicianForm() {
     return Object.keys(newErrors).length === 0
   }
 
-  const simulateSubmission = async () => {
-    setSubmitProgress(0)
-    const steps = [25, 50, 75, 100]
-
-    for (const step of steps) {
-      await new Promise((resolve) => setTimeout(resolve, 400))
-      setSubmitProgress(step)
-    }
+  const simulateProgress = () => {
+    const interval = setInterval(() => {
+      setSubmitProgress((prev) => {
+        if (prev >= 90) {
+          clearInterval(interval)
+          return prev
+        }
+        return prev + 10
+      })
+    }, 200)
+    return interval
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -150,84 +156,61 @@ export default function ClinicianForm() {
     if (!validateForm()) return
 
     setIsSubmitting(true)
+    setSubmitProgress(0)
+    
+    const progressInterval = simulateProgress()
 
     try {
-      await simulateSubmission()
-
-      const { data: latest, error: fetchError } = await supabase
-        .from("request")
-        .select("request_id")
-        .order("createdAt", { ascending: false })
-        .limit(1)
-
-      let newReqId;
-      const year = new Date().getFullYear();
-
-      if (fetchError || !latest || latest.length === 0) {
-        console.error("Error fetching latest request ID:", fetchError);
-        // If no previous request or fetch failed, start with 0001
-        newReqId = `RQST${year}-0001`;
-      } else {
-        const lastId = latest[0].request_id; // e.g., "RQST2025-0007"
-        const lastNumber = parseInt(lastId.split("-")[1], 10); // Extract "0007" and convert to number
-        const nextNumber = lastNumber + 1;
-        newReqId = `RQST${year}-${nextNumber.toString().padStart(4, "0")}`;
-      }
-
-      const { error: insertError } = await supabase.from("request").insert({
-        request_id: newReqId,
-        patient_name: formData.patientName,
-        clinician_id: formData.clinicianUserId,
+      const response = await fetch('/api/form/clinician', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          patientName: formData.patientName,
+          selectedProcedures: formData.selectedProcedures,
+          shift: formData.shift,
+          clinicianUserId: formData.clinicianUserId,
+        }),
       })
 
-      if (insertError) {
-        console.error("Failed to insert request:", insertError)
-        throw new Error("Failed to submit attendance")
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to submit attendance')
       }
 
-      const procedureRows = formData.selectedProcedures.map((procedureId) => ({
-        rp_id: `${newReqId}-${procedureId}`,
-        request_id: newReqId,
-        procedure_id: procedureId,
-      }))
+      // Complete progress
+      clearInterval(progressInterval)
+      setSubmitProgress(100)
 
-    console.log(procedureRows)
-
-      const { data: insertData, error: joinError } = await supabase
-        .from("Requested_Procedures")
-        .insert(procedureRows)
-
-      console.log("Insert result:", insertData)
-      console.error("Insert error:", joinError)
-
-
-      // Then show success toast
-      toast(  
-        <div>
-          <span className="font-semibold">Attendance Submitted</span>
-          <div className="text-sm text-gray-700">Your attendance has been submitted and is pending approval.</div>
-        </div>
-      )
+      // Show success message
+      toast("Attendance Submitted", {
+        description: "Your attendance has been submitted and is pending approval.",
+      })
 
       setShowConfirmation(true)
 
+      // Reset form
       setFormData((prev) => ({
         ...prev,
+        shift: "",
         patientName: "",
         selectedProcedures: [],
       }))
-      setSubmitProgress(0)
 
       setTimeout(() => setShowConfirmation(false), 5000)
+
     } catch (error) {
-      toast(
-        <div className="text-red-700">
-          <span className="font-semibold">Submission Failed</span>
-          <div className="text-sm">Please try again later.</div>
-        </div>
-      )
+      clearInterval(progressInterval)
+      console.error("Submission error:", error)
+      
+      toast("Submission Failed", {
+        description: error instanceof Error ? error.message : "Please try again later.",
+      })
     } finally {
       setIsSubmitting(false)
+      setSubmitProgress(0)
     }
   }
 
@@ -277,15 +260,19 @@ export default function ClinicianForm() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="yearLevel">Year Level</Label>
-                <Input id="yearLevel" value={formData.yearLevel} disabled className="bg-gray-50 text-gray-500" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="section">Section</Label>
-                <Input id="section" value={formData.section} disabled className="bg-gray-50 text-gray-500" />
-              </div>
+            {/* Shift Dropdown */}
+            <div className="space-y-2">
+              <Label htmlFor="shift">Shift</Label>
+              <Select value={formData.shift} onValueChange={handleShiftChange}>
+                <SelectTrigger className={`${errors.shift ? "border-red-500" : "focus:border-[#5C8E77]"}`}>
+                  <SelectValue placeholder="Select shift" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1st">1st</SelectItem>
+                  <SelectItem value="2nd">2nd</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.shift && <p className="text-sm text-red-500">{errors.shift}</p>}
             </div>
 
             {/* Patient Name */}
@@ -323,12 +310,9 @@ export default function ClinicianForm() {
                   </div>
                 ))}
               </div>
-              {formData.selectedProcedures.length === 0 && (
-                <p className="text-sm text-red-500">Please select at least one procedure.</p>
-              )}
+              {errors.procedures && <p className="text-sm text-red-500">{errors.procedures}</p>}
               <p className="text-sm text-gray-500">You can select up to 2 procedures per activity.</p>
             </div>
-
 
             {/* Chair & Instructor */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

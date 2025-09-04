@@ -1,6 +1,7 @@
+// admin dashboard
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Calendar,
   ChevronDown,
@@ -23,6 +24,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { supabase } from "@/lib/supabase"
 
 // Font configuration
 const poppinsFont = {
@@ -418,12 +420,51 @@ export default function ChiefOfCliniciansPage() {
       return 0
     })
 
+  const [loggedAdmin, setLoggedAdmin] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: userData, error: userError } = await supabase.auth.getUser()
+
+      if (userError || !userData?.user) {
+        console.error("User not authenticated:", userError)
+        return
+      }
+
+      const authUser = userData.user
+
+      const { data: userRecord, error: userErr } = await supabase
+        .from("users")
+        .select("first_name") // pick the fields you need
+        .eq("auth_user_id", authUser.id) // match auth user id to your table
+        .single()
+
+        if (userRecord) {
+          setLoggedAdmin(`${userRecord.first_name}`
+          )
+        }
+
+
+      // const fullName =
+      //   firstName && lastName
+      //     ? `${firstName} ${lastName}`
+      //     : displayName || user.email
+
+      // setLoggedAdmin(userData.user_metadata?.full_name)
+
+      // console.log(userData)
+    }
+   
+
+    fetchUser()
+  }, [])
+
   return (
     <div className="flex h-full bg-[#f8f9fa]" style={poppinsFont}>
       <div className="w-full">
         {/* Greeting */}
         <div className="mb-6">
-          <h2 className="text-2xl font-semibold text-[#333]">Good morning, Admin!</h2>
+          <h2 className="text-2xl font-semibold text-[#333]">Good day, {loggedAdmin || "Admin"}!</h2>
           <p className="text-gray-500">{formattedDate}</p>
         </div>
 
