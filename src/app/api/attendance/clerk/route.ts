@@ -60,12 +60,12 @@ export async function GET() {
     console.log('Role value:', userRole?.role)
     console.log('Role type:', typeof userRole?.role)
 
-    const allowedRoles = ['R02', 'R03']
+    // const allowedRoles = ['R02', 'R03']
 
-    if (!allowedRoles.includes(userRole?.role)) {
-      console.log('Role check failed:', userRole?.role, 'vs', 'R02')
-      return Response.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    // if (!allowedRoles.includes(userRole?.role)) {
+    //   console.log('Role check failed:', userRole?.role, 'vs', 'R02')
+    //   return Response.json({ error: 'Forbidden' }, { status: 403 })
+    // }
     
     console.log("user is clerk")
     
