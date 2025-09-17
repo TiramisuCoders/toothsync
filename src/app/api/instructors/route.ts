@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
-import { v4 as uuidv4 } from "uuid"
 
 // Helper to parse gender string to match DB enum
 const parseSex = (gender: string): "Male" | "Female" | "Other" => {
@@ -13,6 +12,14 @@ const parseSex = (gender: string): "Male" | "Female" | "Other" => {
 // Helper to parse status for instructors
 const parseStatus = (status: string): string => {
   return status
+}
+
+// Helper function to generate password using the pattern: first letter of first name + first letter of last name + last 4 digits of contact number
+const generatePassword = (firstName: string, lastName: string, contactNumber: string): string => {
+  const firstInitial = firstName.charAt(0).toUpperCase()
+  const lastInitial = lastName.charAt(0).toUpperCase()
+  const lastFourDigits = contactNumber.replace(/\D/g, "").slice(-4) // Remove non-digits and get last 4
+  return `${firstInitial}${lastInitial}${lastFourDigits}`
 }
 
 // GET /api/instructors - Fetch all instructors with their specializations (OPTIMIZED)
@@ -158,16 +165,21 @@ export async function POST(req: Request) {
 
     const { firstName, lastName, gender, email, contactNumber, status, expertise } = await req.json()
 
-    if (!firstName || !lastName || !email || !gender || !status) {
-      return NextResponse.json({ message: "Missing required fields" }, { status: 400 })
+    if (!firstName || !lastName || !email || !gender || !status || !contactNumber) {
+      return NextResponse.json(
+        { message: "Missing required fields (including contact number for password generation)" },
+        { status: 400 },
+      )
     }
 
     let authUserId: string | null = null
 
-    const tempPassword = uuidv4()
+    const generatedPassword = generatePassword(firstName, lastName, contactNumber)
+    console.log(`[v0] Generated password for ${firstName} ${lastName}: ${generatedPassword}`)
+
     const { data: newAuthUserData, error: newAuthUserError } = await supabaseAdmin.auth.admin.createUser({
       email,
-      password: tempPassword,
+      password: generatedPassword, // Use generated password instead of tempPassword
       email_confirm: true,
     })
 
@@ -246,12 +258,7 @@ export async function POST(req: Request) {
     const instructorPayload = {
       user_id: authUserId,
       instructor_id: instructorId,
-      first_name: firstName,
-      last_name: lastName,
-      gender: parseSex(gender),
-      email: email,
-      status: status,
-      updated_at: new Date().toISOString(),
+      status: status || "Available",
     }
 
     const { error: insertInstructorError } = await supabaseAdmin.from("instructors").insert([instructorPayload])
@@ -314,12 +321,7 @@ export async function PUT(req: Request) {
     }
 
     const instructorPayload = {
-      first_name: firstName,
-      last_name: lastName,
-      gender: parseSex(gender),
-      email: email,
-      status: status,
-      updated_at: new Date().toISOString(),
+      status: status || "Available",
     }
 
     const { error: updateInstructorError } = await supabaseAdmin
