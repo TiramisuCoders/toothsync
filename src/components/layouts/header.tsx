@@ -19,10 +19,7 @@ export function Header() {
   const [showSignOutModal, setShowSignOutModal] = useState(false)
 
   const handleSignOut = () => {
-    // Clear any session or localStorage if needed
-    // Example: localStorage.removeItem("token")
-
-    // Redirect to the landing page
+    localStorage.removeItem("role")
     router.push("/")
   }
 
@@ -35,32 +32,24 @@ export function Header() {
   }
 
   const handleProfileClick = () => {
-  // Get role from localStorage (or context/session if you have one)
-  const role = localStorage.getItem("role")
+    const role = localStorage.getItem("role")
 
-  switch (role) {
-    case "clinician":
-      router.push("/profile/clinician")
-      break
-    case "chief":
-      router.push("/profile/chief")
-      break
-    case "admin":
-      router.push("/profile/admin")
-      break
-    case "clerk":
-      router.push("/profile/clerk")
-      break
-    default:
-      router.push("/profile") // fallback
+    if (!role) {
+      console.warn("No role found, redirecting to landing instead")
+      router.push("/")
+      return
+    }
+
+    router.push(`/profile/${role}`)
   }
-}
 
+  const handleSupportClick = () => {
+    router.push("/support/faq")
+  }
 
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-40 flex h-16 items-center justify-between border-b bg-background px-4 text-foreground shadow-sm">
-        {/* Page Title */}
         <div className="hidden sm:block"></div>
 
         {/* Search Input */}
@@ -73,7 +62,7 @@ export function Header() {
 
         {/* Right Icons */}
         <div className="flex items-center gap-4">
-          {/* Bell */}
+          {/* Notifications */}
           <Button variant="ghost" size="icon" className="relative">
             <Bell className="h-5 w-5" />
             <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-xs text-white flex items-center justify-center">
@@ -81,7 +70,7 @@ export function Header() {
             </span>
           </Button>
 
-          {/* User Menu */}
+          {/* User Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2 px-2">
@@ -97,7 +86,7 @@ export function Header() {
                 <User className="mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleSupportClick}>
                 <HelpCircle className="mr-2 h-4 w-4" />
                 Support
               </DropdownMenuItem>
@@ -115,3 +104,5 @@ export function Header() {
     </>
   )
 }
+
+export default Header
