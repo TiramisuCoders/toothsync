@@ -1,12 +1,16 @@
+// clerk log in
+
 "use client"
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
 import { supabase }from "@/lib/supabase"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { loginAction } from "@/app/login/actions"
 
 export default function ClerkLoginPage() {
   const router = useRouter()
@@ -18,6 +22,7 @@ export default function ClerkLoginPage() {
   const [errorMessage, setErrorMessage] = useState("")
   const [isShaking, setIsShaking] = useState(false)
   const [hasError, setHasError] = useState(false)
+  const [isPending, startTransition] = useTransition()
 
   const backgroundImages = ["/images/landing-page/school-1.png", "/images/landing-page/school-2.png"]
 
@@ -34,7 +39,7 @@ export default function ClerkLoginPage() {
     setTimeout(() => setIsShaking(false), 600)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
       e.preventDefault()
 
        const { data: userRecord, error: roleError, status} = await supabase
@@ -53,22 +58,33 @@ export default function ClerkLoginPage() {
             return
           }
   
-      const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-  
+      // const { data, error } = await supabase.auth.signInWithPassword({
+      // email,
+      // password,
+    // })
+
+      startTransition(async () => {
+      const { error } = await loginAction(email, password)
+
       if (error) {
-        setErrorMessage("Invalid email or password. Please check your credentials and try again.")
-        setHasError(true)
-        triggerShakeAnimation()
-        console.error("Supabase login error:", error)
+        setErrorMessage(error.message)
       } else {
-        console.log("Login success!", data)
-        setErrorMessage("")
-        setHasError(false)
-        router.push("/dashboard/clerk")
+        router.push("/dashboard/clerk") // ✅ redirect after login
       }
+    })
+
+          
+      // if (error) {
+      //   setErrorMessage("Invalid email or password. Please check your credentials and try again.")
+      //   setHasError(true)
+      //   triggerShakeAnimation()
+      //   console.error("Supabase login error:", error)
+      // } else {
+      //   console.log("Login success!", data)
+      //   setErrorMessage("")
+      //   setHasError(false)
+      //   router.push("/dashboard/clerk")
+      // }
         
     } 
 
