@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useMemo } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Edit, Plus, FileText, FileSpreadsheet, Search, AlertCircle, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -75,7 +75,7 @@ export default function ReportsPage() {
     startYear: new Date().getFullYear(),
     endYear: new Date().getFullYear() + 1,
     semester: "1st",
-    status: "Inactive",
+    status: "Inactive", // Changed default status to Inactive to match reference
   })
 
   const [formErrors, setFormErrors] = useState<{
@@ -84,43 +84,49 @@ export default function ReportsPage() {
     general?: string
   }>({})
 
-  const academicYears: AcademicYear[] = [
-    {
-      id: "AY2024-001",
-      academicYear: "2024-2025",
-      semester: "1st",
-      status: "Active",
-      createdAt: "2024-08-01",
-    },
-    {
-      id: "AY2023-002",
-      academicYear: "2023-2024",
-      semester: "2nd",
-      status: "Inactive",
-      createdAt: "2024-01-15",
-    },
-    {
-      id: "AY2023-001",
-      academicYear: "2023-2024",
-      semester: "1st",
-      status: "Inactive",
-      createdAt: "2023-08-01",
-    },
-    {
-      id: "AY2022-002",
-      academicYear: "2022-2023",
-      semester: "2nd",
-      status: "Inactive",
-      createdAt: "2023-01-15",
-    },
-    {
-      id: "AY2022-001",
-      academicYear: "2022-2023",
-      semester: "1st",
-      status: "Inactive",
-      createdAt: "2022-08-01",
-    },
-  ]
+  // Fetching data from API
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchAcademicYears()
+  }, [])
+
+  const fetchAcademicYears = async () => {
+    try {
+      setLoading(true)
+      console.log("[v0] Fetching academic years from /api/academic-years")
+      const response = await fetch("/api/academic-years")
+
+      console.log("[v0] Response status:", response.status)
+      console.log("[v0] Response ok:", response.ok)
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("[v0] Academic years data:", data)
+        setAcademicYears(data)
+      } else {
+        const errorText = await response.text()
+        console.error("[v0] API Error Response:", errorText)
+        console.error("Failed to fetch academic years")
+        toast({
+          title: "Error",
+          description: "Failed to load academic years. Please try again later.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Network/Parse Error:", error)
+      console.error("Error fetching academic years:", error)
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while fetching academic years.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const clinicianHistory: Clinician[] = [
     {
@@ -421,24 +427,62 @@ export default function ReportsPage() {
     }
   }
 
-  const handleConfirmUpdateAcademicYear = () => {
+  const handleConfirmUpdateAcademicYear = async () => {
     if (!selectedAcademicYear) return
 
-    // In a real application, this would make an API call
-    console.log("Updating academic year:", selectedAcademicYear.id, selectedAcademicYear)
+    try {
+      const response = await fetch("/api/academic-years", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: selectedAcademicYear.id,
+          academic_year: selectedAcademicYear.academicYear,
+          semester: selectedAcademicYear.semester.toLowerCase(),
+          status: selectedAcademicYear.status.toLowerCase(),
+        }),
+      })
 
-    toast({
-      title: "Academic Year Updated",
-      description: `${selectedAcademicYear.academicYear} (${selectedAcademicYear.semester} semester) has been updated successfully.`,
-    })
+      if (!response.ok) {
+        throw new Error("Failed to update academic year")
+      }
 
-    setShowEditConfirmModal(false)
-    setShowEditModal(false)
-    setSelectedAcademicYear(null)
+      await fetchAcademicYears()
+
+      toast({
+        title: "Academic Year Updated",
+        description: `${selectedAcademicYear.academicYear} (${selectedAcademicYear.semester} semester) has been updated successfully.`,
+      })
+
+      setShowEditConfirmModal(false)
+      setShowEditModal(false)
+      setSelectedAcademicYear(null)
+    } catch (error) {
+      console.error("Error updating academic year:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update academic year. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleAddAcademicYear = () => {
-    // Check for duplicate academic year and semester combination
+  const handleAddAcademicYear = async () => {
+    setFormErrors({})
+
+    // Validation
+    if (!newAcademicYear.startYear) {
+      setFormErrors({ startYear: "Start year is required" })
+      return
+    }
+
+    if (newAcademicYear.startYear < 2000 || newAcademicYear.startYear > 2100) {
+      setFormErrors({ startYear: "Please enter a valid year between 2000 and 2100" })
+      return
+    }
+
+    // Check for duplicate academic year and semester combination before API call
     const duplicate = academicYears.find(
       (year) =>
         year.academicYear === `${newAcademicYear.startYear}-${newAcademicYear.endYear}` &&
@@ -454,28 +498,50 @@ export default function ReportsPage() {
       return
     }
 
-    const newId = `AY${newAcademicYear.startYear}-${String(academicYears.length + 1).padStart(3, "0")}`
+    try {
+      const response = await fetch("/api/academic-years", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          academicYear: `${newAcademicYear.startYear}-${newAcademicYear.endYear}`,
+          semester: newAcademicYear.semester,
+          status: newAcademicYear.status,
+        }),
+      })
 
-    // In a real application, this would make an API call
-    console.log("Adding new academic year:", {
-      id: newId,
-      academicYear: `${newAcademicYear.startYear}-${newAcademicYear.endYear}`,
-      semester: newAcademicYear.semester,
-      status: newAcademicYear.status,
-    })
-
-    toast({
-      title: "Academic Year Added",
-      description: `AY ${newAcademicYear.startYear}-${newAcademicYear.endYear} (${newAcademicYear.semester} semester) has been added successfully.`,
-    })
-
-    setShowAddModal(false)
-    setNewAcademicYear({
-      startYear: new Date().getFullYear(),
-      endYear: new Date().getFullYear() + 1,
-      semester: "1st",
-      status: "Inactive",
-    })
+      if (response.ok) {
+        const newYear = await response.json()
+        setAcademicYears((prev) => [newYear, ...prev])
+        setShowAddModal(false)
+        setNewAcademicYear({
+          startYear: new Date().getFullYear(),
+          endYear: new Date().getFullYear() + 1,
+          semester: "1st",
+          status: "Active",
+        })
+        toast({
+          title: "Academic Year Added",
+          description: `AY ${newAcademicYear.startYear}-${newAcademicYear.endYear} (${newAcademicYear.semester} semester) has been added successfully.`,
+        })
+      } else {
+        const error = await response.json()
+        setFormErrors({ general: error.error || "Failed to create academic year" })
+        toast({
+          title: "Error",
+          description: error.error || "Failed to create academic year. Please try again.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      setFormErrors({ general: "Network error. Please try again." })
+      toast({
+        title: "Error",
+        description: "Network error. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleUpdateAcademicYear = () => {
@@ -492,6 +558,52 @@ export default function ReportsPage() {
     setShowEditModal(false)
     setSelectedAcademicYear(null)
   }
+
+  const handleStatusChange = async (id: string, newStatus: "Active" | "Inactive") => {
+    try {
+      const response = await fetch("/api/academic-years", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id, status: newStatus }),
+      })
+
+      if (response.ok) {
+        const updatedYear = await response.json()
+        setAcademicYears((prev) => prev.map((year) => (year.id === id ? updatedYear : year)))
+        toast({
+          title: "Status Updated",
+          description: `Academic year status updated to ${newStatus}.`,
+        })
+      } else {
+        console.error("Failed to update academic year status")
+        toast({
+          title: "Error",
+          description: "Failed to update academic year status. Please try again.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error updating academic year status:", error)
+      toast({
+        title: "Error",
+        description: "An error occurred while updating the status.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const filteredAcademicYears = useMemo(() => {
+    return academicYears.filter((year) => {
+      const matchesSearch =
+        searchTerm === "" ||
+        year.academicYear.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        year.semester.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        year.id.toLowerCase().includes(searchTerm.toLowerCase())
+      return matchesSearch
+    })
+  }, [academicYears, searchTerm])
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -616,151 +728,166 @@ export default function ReportsPage() {
                 </Dialog>
               </CardHeader>
               <CardContent className="p-0">
-                <Table>
-                  <TableHeader className="bg-white border-b border-gray-200">
-                    <TableRow className="hover:bg-white border-b-0">
-                      <TableHead className="font-medium text-gray-900">ID</TableHead>
-                      <TableHead className="font-medium text-gray-900">Academic Year</TableHead>
-                      <TableHead className="font-medium text-gray-900">Semester</TableHead>
-                      <TableHead className="font-medium text-gray-900">Status</TableHead>
-                      <TableHead className="font-medium text-gray-900">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {academicYears.map((year) => (
-                      <TableRow key={year.id} className="hover:bg-gray-50 border-b border-gray-200">
-                        <TableCell className="font-medium text-gray-900">{year.id}</TableCell>
-                        <TableCell className="text-gray-900">{year.academicYear}</TableCell>
-                        <TableCell className="text-gray-900">{year.semester} Semester</TableCell>
-                        <TableCell>
-                          <Badge
-                            className={
-                              year.status === "Active"
-                                ? "bg-green-100 text-green-800 hover:bg-green-100"
-                                : "bg-gray-100 text-gray-800 hover:bg-gray-100"
-                            }
-                          >
-                            {year.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Dialog
-                            open={showEditModal && selectedAcademicYear?.id === year.id}
-                            onOpenChange={(open) => {
-                              if (!open) {
-                                setShowEditModal(false)
-                                setSelectedAcademicYear(null)
+                {loading ? (
+                  <div className="flex justify-center items-center py-12">Loading...</div>
+                ) : (
+                  <Table>
+                    <TableHeader className="bg-white border-b border-gray-200">
+                      <TableRow className="hover:bg-white border-b-0">
+                        <TableHead className="font-medium text-gray-900">ID</TableHead>
+                        <TableHead className="font-medium text-gray-900">Academic Year</TableHead>
+                        <TableHead className="font-medium text-gray-900">Semester</TableHead>
+                        <TableHead className="font-medium text-gray-900">Status</TableHead>
+                        <TableHead className="font-medium text-gray-900">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {academicYears.map((year) => (
+                        <TableRow key={year.id} className="hover:bg-gray-50 border-b border-gray-200">
+                          <TableCell className="font-medium text-gray-900">{year.id}</TableCell>
+                          <TableCell className="text-gray-900">{year.academicYear}</TableCell>
+                          <TableCell className="text-gray-900">{year.semester} Semester</TableCell>
+                          <TableCell>
+                            <Badge
+                              className={
+                                year.status === "Active"
+                                  ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                  : "bg-gray-100 text-gray-800 hover:bg-gray-100"
                               }
-                            }}
-                          >
-                            <DialogTrigger asChild>
-                              <Button
-                                size="icon"
-                                className="h-8 w-8 text-white bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center"
-                                onClick={() => {
-                                  setSelectedAcademicYear(year)
-                                  setShowEditModal(true)
-                                }}
-                                aria-label={`Edit ${year.academicYear}`}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-md">
-                              <DialogHeader>
-                                <DialogTitle className="text-xl font-semibold text-emerald-600">
-                                  Edit Academic Year
-                                </DialogTitle>
-                              </DialogHeader>
-                              {selectedAcademicYear && (
-                                <div className="space-y-6">
-                                  <div className="space-y-2">
-                                    <Label htmlFor="edit-academic-year" className="text-sm font-medium text-gray-900">
-                                      Academic Year Start
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                      <Input
-                                        id="edit-academic-year"
-                                        type="number"
-                                        min="2000"
-                                        max="2100"
-                                        defaultValue={Number.parseInt(selectedAcademicYear.academicYear.split("-")[0])}
-                                        onChange={handleEditStartYearChange}
-                                        className="border-gray-300"
-                                      />
-                                      <span className="text-gray-500">-</span>
-                                      <Input
-                                        type="number"
-                                        value={Number.parseInt(selectedAcademicYear.academicYear.split("-")[0]) + 1}
-                                        readOnly
-                                        className="border-gray-300 bg-gray-50"
-                                        tabIndex={-1}
-                                      />
+                            >
+                              {year.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Dialog
+                              open={showEditModal && selectedAcademicYear?.id === year.id}
+                              onOpenChange={(open) => {
+                                if (!open) {
+                                  setShowEditModal(false)
+                                  setSelectedAcademicYear(null)
+                                }
+                              }}
+                            >
+                              <DialogTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  className="h-8 w-8 text-white bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center"
+                                  onClick={() => {
+                                    setSelectedAcademicYear(year)
+                                    setShowEditModal(true)
+                                  }}
+                                  aria-label={`Edit ${year.academicYear}`}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle className="text-xl font-semibold text-emerald-600">
+                                    Edit Academic Year
+                                  </DialogTitle>
+                                </DialogHeader>
+                                {selectedAcademicYear && (
+                                  <div className="space-y-6">
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-academic-year" className="text-sm font-medium text-gray-900">
+                                        Academic Year Start
+                                      </Label>
+                                      <div className="flex items-center gap-2">
+                                        <Input
+                                          id="edit-academic-year"
+                                          type="number"
+                                          min="2000"
+                                          max="2100"
+                                          defaultValue={Number.parseInt(
+                                            selectedAcademicYear.academicYear.split("-")[0],
+                                          )}
+                                          onChange={handleEditStartYearChange}
+                                          className="border-gray-300"
+                                        />
+                                        <span className="text-gray-500">-</span>
+                                        <Input
+                                          type="number"
+                                          value={Number.parseInt(selectedAcademicYear.academicYear.split("-")[0]) + 1}
+                                          readOnly
+                                          className="border-gray-300 bg-gray-50"
+                                          tabIndex={-1}
+                                        />
+                                      </div>
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        The academic year will be {selectedAcademicYear.academicYear}
+                                      </p>
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                      The academic year will be {selectedAcademicYear.academicYear}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label htmlFor="edit-semester" className="text-sm font-medium text-gray-900">
-                                      Semester
-                                    </Label>
-                                    <Select defaultValue={selectedAcademicYear.semester}>
-                                      <SelectTrigger id="edit-semester" className="border-gray-300">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="1st">1st Semester</SelectItem>
-                                        <SelectItem value="2nd">2nd Semester</SelectItem>
-                                        <SelectItem value="summer">Summer</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label htmlFor="edit-status" className="text-sm font-medium text-gray-900">
-                                      Status
-                                    </Label>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-sm text-gray-500">
-                                        {selectedAcademicYear.status === "Active" ? "Active" : "Inactive"}
-                                      </span>
-                                      <Switch
-                                        id="edit-status"
-                                        checked={selectedAcademicYear.status === "Active"}
-                                        onCheckedChange={(checked) => {
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-semester" className="text-sm font-medium text-gray-900">
+                                        Semester
+                                      </Label>
+                                      {/* Fix semester selection to update the selectedAcademicYear state */}
+                                      <Select
+                                        defaultValue={selectedAcademicYear.semester}
+                                        onValueChange={(value) => {
                                           setSelectedAcademicYear({
                                             ...selectedAcademicYear,
-                                            status: checked ? "Active" : "Inactive",
+                                            semester: value,
                                           })
                                         }}
-                                        aria-label="Toggle academic year status"
-                                      />
+                                      >
+                                        <SelectTrigger id="edit-semester" className="border-gray-300">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="1st">1st Semester</SelectItem>
+                                          <SelectItem value="2nd">2nd Semester</SelectItem>
+                                          <SelectItem value="summer">Summer</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-status" className="text-sm font-medium text-gray-900">
+                                        Status
+                                      </Label>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-sm text-gray-500">
+                                          {selectedAcademicYear.status === "Active" ? "Active" : "Inactive"}
+                                        </span>
+                                        <Switch
+                                          id="edit-status"
+                                          checked={selectedAcademicYear.status === "Active"}
+                                          onCheckedChange={(checked) => {
+                                            setSelectedAcademicYear({
+                                              ...selectedAcademicYear,
+                                              status: checked ? "Active" : "Inactive",
+                                            })
+                                          }}
+                                          aria-label="Toggle academic year status"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="pt-4 flex justify-end gap-2">
+                                      <Button
+                                        variant="outline"
+                                        onClick={() => setShowEditModal(false)}
+                                        className="border-gray-300"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        onClick={handleUpdateAcademicYearClick}
+                                      >
+                                        Update
+                                      </Button>
                                     </div>
                                   </div>
-                                  <div className="pt-4 flex justify-end gap-2">
-                                    <Button
-                                      variant="outline"
-                                      onClick={() => setShowEditModal(false)}
-                                      className="border-gray-300"
-                                    >
-                                      Cancel
-                                    </Button>
-                                    <Button
-                                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                                      onClick={handleUpdateAcademicYearClick}
-                                    >
-                                      Update
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
-                            </DialogContent>
-                          </Dialog>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                                )}
+                              </DialogContent>
+                            </Dialog>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
 

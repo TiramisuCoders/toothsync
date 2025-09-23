@@ -28,10 +28,9 @@ interface Instructor {
   firstName: string
   lastName: string
   gender: string
-  status: "Available" | "Not Available" | "Archived"
+  status: "Available" | "Not Available"
   email: string
   contactNumber: string
-  address: string
   expertise: string[]
   archived?: boolean
 }
@@ -43,7 +42,6 @@ interface InstructorFormData {
   status: string
   email: string
   contactNumber: string
-  address: string
   expertise: string[]
 }
 
@@ -54,7 +52,6 @@ interface FormErrors {
   status?: string
   email?: string
   contactNumber?: string
-  address?: string
   expertise?: string
 }
 
@@ -64,7 +61,7 @@ interface NotificationState {
   message: string
 }
 
-type FilterType = "all" | "available" | "not-available" | "archived"
+type FilterType = "all" | "available" | "not-available"
 
 export default function InstructorPage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("all")
@@ -78,12 +75,12 @@ export default function InstructorPage() {
     status: "",
     email: "",
     contactNumber: "",
-    address: "",
     expertise: [],
   })
 
   const [formErrors, setFormErrors] = useState<FormErrors>({})
   const [notification, setNotification] = useState<NotificationState>({ show: false, type: "success", message: "" })
+  const [showArchived, setShowArchived] = useState(false)
   const { toast } = useToast()
 
   // Sample data for instructors
@@ -128,10 +125,6 @@ export default function InstructorPage() {
       errors.contactNumber = "Contact number is required"
     }
 
-    if (!formData.address.trim()) {
-      errors.address = "Address is required"
-    }
-
     if (formData.expertise.length === 0) {
       errors.expertise = "At least one expertise must be selected"
     }
@@ -149,7 +142,6 @@ export default function InstructorPage() {
       status: "",
       email: "",
       contactNumber: "",
-      address: "",
       expertise: [],
     })
     setFormErrors({})
@@ -157,9 +149,6 @@ export default function InstructorPage() {
 
   // Function to handle edit button click
   const handleEditClick = (instructor: Instructor) => {
-    console.log("[v0] Opening edit modal for instructor:", instructor.firstName, instructor.lastName)
-    console.log("[v0] Instructor expertise data:", instructor.expertise)
-
     setCurrentInstructor(instructor)
     setFormData({
       firstName: instructor.firstName,
@@ -168,13 +157,9 @@ export default function InstructorPage() {
       status: instructor.status,
       email: instructor.email,
       contactNumber: instructor.contactNumber,
-      address: instructor.address,
-      expertise: Array.isArray(instructor.expertise) ? instructor.expertise : [],
+      expertise: instructor.expertise,
     })
-    setFormErrors({}) // Clear any previous errors
     setIsEditModalOpen(true)
-
-    console.log("[v0] Form data set with expertise:", Array.isArray(instructor.expertise) ? instructor.expertise : [])
   }
 
   // Function to update instructor
@@ -293,52 +278,18 @@ export default function InstructorPage() {
   }
 
   // Function to archive/unarchive instructor
-  const handleArchiveInstructor = async (instructorId: string) => {
+  const handleArchiveInstructor = (instructorId: string) => {
+    setInstructors(
+      instructors.map((instructor: Instructor) =>
+        instructor.id === instructorId ? { ...instructor, archived: !instructor.archived } : instructor,
+      ),
+    )
+
     const instructor = instructors.find((i) => i.id === instructorId)
-    if (!instructor) return
-
-    const newStatus = instructor.archived || instructor.status === "Archived" ? "Available" : "Archived"
-    const isArchiving = newStatus === "Archived"
-
-    try {
-      const response = await fetch("/api/instructors", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: instructorId,
-          firstName: instructor.firstName,
-          lastName: instructor.lastName,
-          gender: instructor.gender,
-          status: newStatus,
-          email: instructor.email,
-          contactNumber: instructor.contactNumber,
-          address: instructor.address,
-          expertise: instructor.expertise,
-        }),
-      })
-
-      if (response.ok) {
-        await fetchInstructors() // Refresh the list from database
-        toast({
-          title: "Success",
-          description: `Instructor ${instructor.firstName} ${instructor.lastName} has been ${isArchiving ? "archived" : "unarchived"}.`,
-        })
-      } else {
-        const errorData = await response.json()
-        toast({
-          title: "Error",
-          description: errorData.message || `Failed to ${isArchiving ? "archive" : "unarchive"} instructor`,
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error(`Error ${isArchiving ? "archiving" : "unarchiving"} instructor:`, error)
+    if (instructor) {
       toast({
-        title: "Error",
-        description: `Failed to ${isArchiving ? "archive" : "unarchive"} instructor`,
-        variant: "destructive",
+        title: "Success",
+        description: `Instructor ${instructor.firstName} ${instructor.lastName} has been ${instructor.archived ? "unarchived" : "archived"}.`,
       })
     }
   }
@@ -346,8 +297,8 @@ export default function InstructorPage() {
   // Filter instructors based on active filter
   const filteredInstructors = instructors.filter((instructor) => {
     // First filter by archived status
-    if (activeFilter === "archived" && !instructor.archived) return false
-    if (activeFilter !== "archived" && instructor.archived) return false
+    if (showArchived && !instructor.archived) return false
+    if (!showArchived && instructor.archived) return false
 
     // Then filter by availability status
     if (activeFilter === "all") return true
@@ -375,35 +326,19 @@ export default function InstructorPage() {
   // API integration functions
   const fetchInstructors = async () => {
     try {
-      console.log("[v0] Fetching instructors from API...")
       const response = await fetch("/api/instructors")
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] Successfully fetched instructors with expertise:", data)
-        const validatedData = data.map((instructor: any) => ({
-          ...instructor,
-          expertise: Array.isArray(instructor.expertise) ? instructor.expertise : [],
-        }))
-        setInstructors(validatedData)
+        setInstructors(data)
       } else {
-        const errorText = await response.text()
-        console.error("[v0] Failed to fetch instructors:", response.status, errorText)
-        if (response.status === 500 && errorText.includes("Environment variables missing")) {
-          toast({
-            title: "Configuration Error",
-            description: "Supabase environment variables are not configured. Please add them in Project Settings.",
-            variant: "destructive",
-          })
-        } else {
-          toast({
-            title: "Error",
-            description: "Failed to fetch instructors",
-            variant: "destructive",
-          })
-        }
+        toast({
+          title: "Error",
+          description: "Failed to fetch instructors",
+          variant: "destructive",
+        })
       }
     } catch (error) {
-      console.error("[v0] Error fetching instructors:", error)
+      console.error("Error fetching instructors:", error)
       toast({
         title: "Error",
         description: "Failed to fetch instructors",
@@ -432,7 +367,7 @@ export default function InstructorPage() {
         <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
           <div className="flex items-center gap-4">
             <CardTitle className="text-xl font-semibold text-[#333]">
-              {activeFilter === "archived" ? "Archived Instructors" : "Active Instructors"}
+              {showArchived ? "Archived Instructors" : "Active Instructors"}
             </CardTitle>
             <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
               <Button
@@ -460,12 +395,12 @@ export default function InstructorPage() {
                 Not Available
               </Button>
               <Button
-                variant={activeFilter === "archived" ? "default" : "ghost"}
+                variant="ghost"
                 size="sm"
-                className={activeFilter === "archived" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
-                onClick={() => setActiveFilter("archived")}
+                onClick={() => setShowArchived(!showArchived)}
+                className="text-gray-600"
               >
-                Archived
+                {showArchived ? "Hide" : "Show"} Archived
               </Button>
             </div>
           </div>
@@ -503,13 +438,14 @@ export default function InstructorPage() {
                       <div className="flex items-center gap-2">
                         {instructor.status === "Available" ? (
                           <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{instructor.status}</Badge>
-                        ) : instructor.status === "Archived" || instructor.archived ? (
-                          <Badge variant="outline" className="text-orange-600 border-orange-600">
-                            Archived
-                          </Badge>
                         ) : (
                           <Badge variant="outline" className="text-red-600 border-red-600">
                             {instructor.status}
+                          </Badge>
+                        )}
+                        {instructor.archived && (
+                          <Badge variant="outline" className="text-orange-600 border-orange-600">
+                            Archived
                           </Badge>
                         )}
                       </div>
@@ -645,7 +581,6 @@ export default function InstructorPage() {
                       <SelectContent>
                         <SelectItem value="Available">Available</SelectItem>
                         <SelectItem value="Not Available">Not Available</SelectItem>
-                        <SelectItem value="Archived">Archived</SelectItem>
                       </SelectContent>
                     </Select>
                     {getFieldError("status")}
@@ -677,19 +612,6 @@ export default function InstructorPage() {
                     onChange={(e) => handleInputChange("contactNumber", e.target.value)}
                   />
                   {getFieldError("contactNumber")}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address" className="text-[#333]">
-                    Address <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="address"
-                    placeholder="Enter address"
-                    className={`border-gray-300 ${formErrors.address ? "border-red-500" : ""}`}
-                    value={formData.address}
-                    onChange={(e) => handleInputChange("address", e.target.value)}
-                  />
-                  {getFieldError("address")}
                 </div>
               </TabsContent>
               <TabsContent value="expertise" className="space-y-4">
@@ -809,7 +731,6 @@ export default function InstructorPage() {
                           <SelectContent>
                             <SelectItem value="Available">Available</SelectItem>
                             <SelectItem value="Not Available">Not Available</SelectItem>
-                            <SelectItem value="Archived">Archived</SelectItem>
                           </SelectContent>
                         </Select>
                         {getFieldError("status")}
@@ -839,18 +760,6 @@ export default function InstructorPage() {
                         className={`border-gray-300 ${formErrors.contactNumber ? "border-red-500" : ""}`}
                       />
                       {getFieldError("contactNumber")}
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-address" className="text-[#333]">
-                        Address <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="edit-address"
-                        value={formData.address}
-                        onChange={(e) => handleInputChange("address", e.target.value)}
-                        className={`border-gray-300 ${formErrors.address ? "border-red-500" : ""}`}
-                      />
-                      {getFieldError("address")}
                     </div>
                   </TabsContent>
                   <TabsContent value="expertise" className="space-y-4">
