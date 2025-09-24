@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
-import { v4 as uuidv4 } from "uuid" // For generating temporary passwords
 
 // Helper to parse gender string to match DB enum
 const parseSex = (gender: string): "Male" | "Female" | "Other" => {
@@ -26,20 +25,22 @@ const parseYearLevel = (yearLevel: string): string => {
   return yearLevel // Fallback for other values
 }
 
+const generatePassword = (firstName: string, lastName: string, contactNumber: string): string => {
+  const firstInitial = firstName.charAt(0).toUpperCase()
+  const lastInitial = lastName.charAt(0).toUpperCase()
+  const lastFourDigits = contactNumber.replace(/\D/g, "").slice(-4)
+  return `${firstInitial}${lastInitial}${lastFourDigits}`
+}
+
 // GET /api/clinicians - Fetch all clinicians
 export async function GET() {
   try {
     // Fetch clinician data directly from clinicians and users tables
     const { data: cliniciansData, error: cliniciansError } = await supabaseAdmin
       .from("clinicians")
-      .select(`
-          user_id,
-          student_id,
-          enrollment_status,
-          year_level,
-          section,
-          users(first_name, last_name, email, sex, contact_number)
-        `)
+      .select(
+        `user_id, student_id, enrollment_status, year_level, section, users(first_name, last_name, email, sex, contact_number)`,
+      )
       .order("user_id", { ascending: true })
 
     if (cliniciansError) {
@@ -94,15 +95,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Missing required fields" }, { status: 400 })
     }
 
+    if (!contactNumber || contactNumber.replace(/\D/g, "").length < 4) {
+      return NextResponse.json(
+        { message: "Contact number is required and must have at least 4 digits for password generation" },
+        { status: 400 },
+      )
+    }
+
     // 1. Get or Create Auth User
     let authUserId: string | null = null
     let createdNewAuthUser = false
 
-    // Try to create a new auth user
-    const tempPassword = uuidv4() // Generate a temporary password
+    const generatedPassword = generatePassword(firstName, lastName, contactNumber)
     const { data: newAuthUserData, error: newAuthUserError } = await supabaseAdmin.auth.admin.createUser({
       email,
-      password: tempPassword,
+      password: generatedPassword,
       email_confirm: true, // Set to true if you want to auto-confirm
     })
 
