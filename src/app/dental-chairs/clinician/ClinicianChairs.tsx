@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 interface Chair {
   id: string
   procedures: string[]
+  chair_name?: string
   status: "Available" | "Occupied" | "Under Maintenance"
   student: string | null
 }
@@ -86,6 +87,7 @@ export default function ClinicianChairs() {
         
         return {
           id: String(c?.id ?? c?.chair_id ?? `chair-${i + 1}`),
+          chair_name: c?.chair_name,
           procedures: Array.isArray(c?.procedures) ? c.procedures.filter(Boolean) : [],
           status: status,
           student: c?.student ?? null,
@@ -120,7 +122,7 @@ export default function ClinicianChairs() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-gray-800">Dental Chairs</h1>
+      <h1 className="text-2xl font-semibold text-gray-800">List of Chairs</h1>
 
       {/* Error Alert */}
       {error && (
@@ -159,7 +161,7 @@ export default function ClinicianChairs() {
           <Table>
             <TableHeader>
               <TableRow className="bg-gray-50">
-                <TableHead className="font-semibold py-3">Dental Chair ID</TableHead>
+                <TableHead className="font-semibold py-3">Chairs</TableHead>
                 <TableHead className="font-semibold py-3">Procedures</TableHead>
                 <TableHead className="font-semibold py-3">Status</TableHead>
               </TableRow>
@@ -168,7 +170,7 @@ export default function ClinicianChairs() {
               {filteredChairs.length > 0 ? (
                 filteredChairs.map((chair) => (
                   <TableRow key={chair.id} className="hover:bg-gray-50 border-b">
-                    <TableCell className="py-3">{chair.id}</TableCell>
+                    <TableCell className="py-3">{chair.chair_name}</TableCell>
                     <TableCell className="py-3">
                       <div className="flex flex-wrap gap-1">
                         {chair.procedures?.length ? (

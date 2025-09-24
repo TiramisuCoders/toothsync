@@ -41,6 +41,10 @@ export default function ClerkLoginPage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
       e.preventDefault()
+            
+          const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
        const { data: userRecord, error: roleError, status} = await supabase
             .from("users")
