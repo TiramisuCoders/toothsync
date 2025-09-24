@@ -76,8 +76,20 @@ export async function GET() {
     // Transform data to match your interface
     const rec = record?.map(r => ({
       id: r.record_id,
-      timeIn: r.time_in,
-      timeOut: r.time_out,
+      timeIn: new Date(r.time_in).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: "Asia/Manila"
+      }),
+      timeOut: r.time_out
+      ? new Date(r.time_out).toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "Asia/Manila"
+        })
+      : "-",
       chair: r.chair?.chair_name,
       procedures: r.activity_procedures?.map(ap => ap.procedure?.name).filter(Boolean) || [],
       status: r.request?.status,
