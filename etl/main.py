@@ -10,12 +10,13 @@ os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 os.environ['CURL_CA_BUNDLE'] = certifi.where()
 
 # Read Supabase URL and Key from command-line arguments
-if len(sys.argv) < 4:
-  print("Error: Missing command-line arguments for Supabase URL or Key.", file=sys.stderr)
+if len(sys.argv) < 5:  # Now expecting academic year ID as 4th argument
+  print("Error: Missing command-line arguments for Supabase URL, Key, or Academic Year ID.", file=sys.stderr)
   sys.exit(1)
 
 SUPABASE_URL = sys.argv[2]
 SUPABASE_KEY = sys.argv[3]
+ACADEMIC_YEAR_ID = sys.argv[4]  # Added academic year ID parameter
 
 # DEBUG: Print first 5 chars of SUPABASE_KEY
 if SUPABASE_KEY:
@@ -24,8 +25,8 @@ else:
   print("DEBUG: SUPABASE_KEY NOT SET (This should not happen if args are passed)")
 
 # Ensure environment variables are loaded (though now from args)
-if not SUPABASE_URL or not SUPABASE_KEY:
-  print("Error: Supabase URL or Key not found from command-line arguments.", file=sys.stderr)
+if not SUPABASE_URL or not SUPABASE_KEY or not ACADEMIC_YEAR_ID:
+  print("Error: Supabase URL, Key, or Academic Year ID not found from command-line arguments.", file=sys.stderr)
   sys.exit(1)
 
 try:
@@ -36,6 +37,22 @@ try:
 except Exception as e:
     print(f"Error creating Supabase client: {e}", file=sys.stderr)
     sys.exit(1)
+
+def get_academic_year_status(academic_year_id: str) -> str:
+    """
+    Get the status of an academic year by ID.
+    Returns 'Active' or 'Inactive'
+    """
+    try:
+        response = supabase.table('academic_years').select('status').eq('id', academic_year_id).single().execute()
+        if response.data:
+            return response.data.get('status', 'Inactive')
+        else:
+            print(f"WARNING: Academic year {academic_year_id} not found, defaulting to Inactive", file=sys.stderr)
+            return 'Inactive'
+    except Exception as e:
+        print(f"ERROR: Failed to get academic year status for {academic_year_id}: {e}", file=sys.stderr)
+        return 'Inactive'  # Default to inactive on error
 
 def parse_year_level(raw: str) -> str | None:
   """
@@ -68,7 +85,6 @@ def parse_enrollment_status(status: str) -> str:
       return 'Not Enrolled'
   else:
       return 'Not Enrolled'  # Default fallback
-
 
 def get_or_create_auth_user(email: str):
     """
@@ -130,7 +146,7 @@ def get_or_create_auth_user(email: str):
 
 def main():
   if len(sys.argv) < 2:
-      print("Usage: python main.py <path_to_csv_file> <supabase_url> <supabase_key>", file=sys.stderr)
+      print("Usage: python main.py <path_to_csv_file> <supabase_url> <supabase_key> <academic_year_id>", file=sys.stderr)
       sys.exit(1)
   
   csv_file_path = sys.argv[1]
@@ -139,6 +155,10 @@ def main():
       sys.exit(1)
   
   print(f"Processing CSV file: {csv_file_path}")
+  
+  academic_year_status = get_academic_year_status(ACADEMIC_YEAR_ID)
+  target_table = 'clinicians' if academic_year_status != 'Inactive' else 'clinicians_records'
+  print(f"Academic year status: {academic_year_status}, Target table: {target_table}")
   
   # Try different encodings
   encodings_to_try = ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']
@@ -243,7 +263,6 @@ def main():
                       print(f"  Database operation error for public.users (auth_user_id: {auth_user_id}): {db_error}", file=sys.stderr)
                       raise
 
-                  # 2. Handle public.clinicians table (Insert or Update)
                   clinician_payload = {
                       "user_id": auth_user_id,
                       "student_id": student_id,
@@ -253,28 +272,32 @@ def main():
                       "updated_at": datetime.now(timezone.utc).isoformat(),
                   }
 
-                  # Check if clinician exists in public.clinicians using .limit(1)
+                  # Add academic_year_id for clinicians_records table
+                  if target_table == 'clinicians_records':
+                      clinician_payload["academic_year_id"] = ACADEMIC_YEAR_ID
+
+                  # Check if clinician exists in target table using .limit(1)
                   try:
-                      clinician_response = supabase.table('clinicians').select('user_id').eq('user_id', auth_user_id).limit(1).execute()
+                      clinician_response = supabase.table(target_table).select('user_id').eq('user_id', auth_user_id).limit(1).execute()
 
                       if clinician_response.data:
                           # Clinician exists, update it
-                          print(f"  Clinician with user_id {auth_user_id} found in public.clinicians. Attempting update.")
-                          update_clinician_response = supabase.table('clinicians').update(clinician_payload).eq('user_id', auth_user_id).execute()
+                          print(f"  Clinician with user_id {auth_user_id} found in {target_table}. Attempting update.")
+                          update_clinician_response = supabase.table(target_table).update(clinician_payload).eq('user_id', auth_user_id).execute()
                           if update_clinician_response.data:
-                              print(f"  Successfully updated clinician {first_name} {last_name}.")
+                              print(f"  Successfully updated clinician {first_name} {last_name} in {target_table}.")
                           else:
-                              raise Exception(f"Failed to update clinician: {update_clinician_response.error.message}. Payload: {clinician_payload}")
+                              raise Exception(f"Failed to update clinician in {target_table}: {update_clinician_response.error.message}. Payload: {clinician_payload}")
                       else:
                           # Clinician does not exist, insert it
-                          print(f"  Clinician with user_id {auth_user_id} not found in public.clinicians. Attempting insert.")
-                          insert_clinician_response = supabase.table('clinicians').insert([clinician_payload]).execute()
+                          print(f"  Clinician with user_id {auth_user_id} not found in {target_table}. Attempting insert.")
+                          insert_clinician_response = supabase.table(target_table).insert([clinician_payload]).execute()
                           if insert_clinician_response.data:
-                              print(f"  Successfully inserted clinician {first_name} {last_name}.")
+                              print(f"  Successfully inserted clinician {first_name} {last_name} into {target_table}.")
                           else:
-                              raise Exception(f"Failed to insert clinician: {insert_clinician_response.error.message}. Payload: {clinician_payload}")
+                              raise Exception(f"Failed to insert clinician into {target_table}: {insert_clinician_response.error.message}. Payload: {clinician_payload}")
                   except Exception as db_error:
-                      print(f"  Database operation error for public.clinicians (user_id: {auth_user_id}): {db_error}", file=sys.stderr)
+                      print(f"  Database operation error for {target_table} (user_id: {auth_user_id}): {db_error}", file=sys.stderr)
                       raise
 
                   processed_count += 1
