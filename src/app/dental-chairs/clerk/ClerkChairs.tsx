@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 // Type definitions
 interface Chair {
   id: string
+  chair_name?: string
   procedures: string[]
   status: ChairStatus
   student: string | null
@@ -64,6 +65,7 @@ export default function ChairPage() {
         
         return {
           id: String(c?.id ?? c?.chair_id ?? `Chair ${i + 1}`),
+          chair_name: c?.chair_name,
           procedures: Array.isArray(c?.procedures) ? c.procedures.filter(Boolean) : [],
           status: status,
           student: c?.student ?? null,
@@ -197,7 +199,7 @@ export default function ChairPage() {
             <Table>
               <TableHeader className="bg-white border-b border-gray-200">
                 <TableRow className="hover:bg-white border-b-0">
-                  <TableHead className="font-medium text-[#333]">Dental Chair ID</TableHead>
+                  <TableHead className="font-medium text-[#333]">Chairs</TableHead>
                   <TableHead className="font-medium text-[#333]">Procedures</TableHead>
                   <TableHead className="font-medium text-[#333]">Status</TableHead>
                 </TableRow>
@@ -206,7 +208,7 @@ export default function ChairPage() {
                 {filteredChairs.length > 0 ? (
                   filteredChairs.map((chair) => (
                     <TableRow key={chair.id} className="hover:bg-gray-50 border-b border-gray-200">
-                      <TableCell className="font-medium text-[#333]">{chair.id}</TableCell>
+                      <TableCell className="font-medium text-[#333]">{chair.chair_name || "—"}</TableCell>
                       <TableCell className="text-[#333]">
                         <div className="flex flex-wrap gap-1">
                           {chair.procedures?.length ? (
