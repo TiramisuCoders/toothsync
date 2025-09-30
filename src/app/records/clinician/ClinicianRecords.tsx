@@ -10,16 +10,24 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Download, FileText, Star } from "lucide-react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+
+export interface ProcedureDetail {
+  name: string
+  grade?: string
+  remarks?: string
+  status?: string
+}
 
 export interface Activity {
   id: string
-  firstName: string
-  lastName: string
-  chair: string
+  firstName?: string
+  lastName?: string
+  chair?: string
   patientName: string
-  instructor: string
+  instructor?: string
   procedures: string[]
+  procedureDetails?: ProcedureDetail[]
   status: string
   date: string
   grade?: string
@@ -41,7 +49,7 @@ export interface Attendance {
 export default function ClinicianRecords() {
   const [activeTab, setActiveTab] = useState("activities")
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false)
-  const [selectedActivity, setSelectedActivity] = useState(null)
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null)
   const [activitiesData, setActivitiesRecords] = useState<Activity[]>([])
   const [attendanceData, setAttendanceRecords] = useState<Attendance[]>([])
 
@@ -89,24 +97,18 @@ export default function ClinicianRecords() {
         }
       } catch (err) {
         console.error("Error fetching attendance:", err)
-        // setError(err instanceof Error ? err.message : 'An error occurred')
       }
     }
 
     fetchRecords()
   }, [])
-  // Function to handle CSV export (mock)
+
   const handleExportCSV = () => {
     alert("Exporting CSV...")
   }
 
-  // Function to get grade status color
-  const getGradeStatusColor = (status) => {
-    return status === "Passed" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-  }
-
-  // Function to get grade color
-  const getGradeColor = (grade) => {
+  const getGradeColor = (grade?: string) => {
+    if (!grade) return "text-gray-400"
     const numGrade = Number.parseInt(grade)
     if (numGrade >= 90) return "text-green-600 font-semibold"
     if (numGrade >= 80) return "text-blue-600 font-semibold"
@@ -114,21 +116,21 @@ export default function ClinicianRecords() {
     return "text-red-600 font-semibold"
   }
 
-  // Function to safely format dates
-  const formatDate = (dateString: string, formatStr = "MMM d, yyyy h:mm a") => {
-    if (!dateString) return "—"
+  const getGradeStatus = (grade?: string) => {
+    if (!grade) return undefined
+    const numGrade = Number.parseInt(grade)
+    return numGrade >= 75 ? "Passed" : "Failed"
+  }
 
-    const date = new Date(dateString)
-    if (isNaN(date.getTime())) return "Invalid Date"
-
-    return format(date, formatStr)
+  const getGradeStatusColor = (grade?: string) => {
+    const status = getGradeStatus(grade)
+    return status === "Passed" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
   }
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-gray-800">Records</h1>
 
-      {/* Tabs for Activities and Attendance */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex justify-between items-center">
           <TabsList>
@@ -141,7 +143,6 @@ export default function ClinicianRecords() {
           </Button>
         </div>
 
-        {/* Activities Tab Content with Grades integrated */}
         <TabsContent value="activities" className="mt-4">
           <Card>
             <CardContent className="p-0">
@@ -162,7 +163,7 @@ export default function ClinicianRecords() {
                       <TableCell>{activity.id}</TableCell>
                       <TableCell>{activity.patientName}</TableCell>
                       <TableCell>
-                        {activity.procedures ? (
+                        {activity.procedures && activity.procedures.length > 0 ? (
                           <div className="space-y-1">
                             {activity.procedures.map((proc, index) => (
                               <div key={index} className="text-sm">
@@ -171,10 +172,9 @@ export default function ClinicianRecords() {
                             ))}
                           </div>
                         ) : (
-                          activity.procedure
+                          "—"
                         )}
                       </TableCell>
-                      {/* Simplified date display */}
                       <TableCell>—</TableCell>
                       <TableCell>
                         <Badge
@@ -196,6 +196,10 @@ export default function ClinicianRecords() {
                             size="sm"
                             className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 bg-transparent"
                             onClick={() => {
+                              console.log('Selected Activity:', activity)
+                              console.log('Procedure Details:', activity.procedureDetails)
+                              // console.log(`Procedure Details: ${activity.procedureDetails}`);
+
                               setSelectedActivity(activity)
                               setIsFeedbackModalOpen(true)
                             }}
@@ -213,7 +217,6 @@ export default function ClinicianRecords() {
           </Card>
         </TabsContent>
 
-        {/* Attendance Tab Content */}
         <TabsContent value="attendance" className="mt-4">
           <Card>
             <CardContent className="p-0">
@@ -233,10 +236,22 @@ export default function ClinicianRecords() {
                   {attendanceData.map((attendance) => (
                     <TableRow key={attendance.id}>
                       <TableCell>{attendance.id}</TableCell>
-                      <TableCell>—</TableCell>
-                      <TableCell>—</TableCell>
+                      <TableCell>{attendance.timeIn}</TableCell>
+                      <TableCell>{attendance.timeOut}</TableCell>
                       <TableCell>{attendance.chair}</TableCell>
-                      <TableCell>{attendance.procedures}</TableCell>
+                      <TableCell>
+                        {Array.isArray(attendance.procedures) ? (
+                          <div className="space-y-1">
+                            {attendance.procedures.map((proc, index) => (
+                              <div key={index} className="text-sm">
+                                {proc}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          attendance.procedures
+                        )}
+                      </TableCell>
                       <TableCell>{attendance.sanitize}</TableCell>
                       <TableCell>
                         <Badge className="bg-green-100 text-green-800 hover:bg-green-100">{attendance.status}</Badge>
@@ -256,6 +271,9 @@ export default function ClinicianRecords() {
             <>
               <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
                 <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Activity Details</DialogTitle>
+                <DialogDescription className="text-sm text-gray-600 mt-1">
+                  View detailed information about this activity including procedures, grades, and remarks.
+                </DialogDescription>
               </DialogHeader>
               <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
                 <div className="grid gap-4 mb-6">
@@ -270,146 +288,188 @@ export default function ClinicianRecords() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Date</p>
-                      <p className="font-medium">—</p>
+                      <p className="font-medium">{selectedActivity.date}</p>
                     </div>
                   </div>
                 </div>
 
-                {selectedActivity.procedures &&
-                Array.isArray(selectedActivity.procedures) &&
-                selectedActivity.procedures.length > 1 ? (
-                  <Tabs defaultValue="0" className="w-full">
-                    <TabsList
-                      className="grid w-full"
-                      style={{ gridTemplateColumns: `repeat(${selectedActivity.procedures.length}, 1fr)` }}
-                    >
-                      {selectedActivity.procedures.map((procedure, index) => (
-                        <TabsTrigger key={index} value={index.toString()}>
-                          Procedure {index + 1}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                    {selectedActivity.procedures.map((procedure, index) => (
-                      <TabsContent key={index} value={index.toString()} className="mt-4">
-                        <div className="grid gap-4 p-4 border rounded-lg">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <p className="text-sm text-gray-500">Procedure</p>
-                              <p className="font-medium">{procedure}</p>
+                {selectedActivity.procedureDetails && selectedActivity.procedureDetails.length > 0 ? (
+                  selectedActivity.procedureDetails.length > 1 ? (
+                    <Tabs defaultValue="0" className="w-full">
+                      <TabsList
+                        className="grid w-full"
+                        style={{ gridTemplateColumns: `repeat(${selectedActivity.procedureDetails.length}, 1fr)` }}
+                      >
+                        {selectedActivity.procedureDetails.map((procedure, index) => (
+                          <TabsTrigger key={index} value={index.toString()}>
+                            Procedure {index + 1}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                      {selectedActivity.procedureDetails.map((procedure, index) => (
+                        <TabsContent key={index} value={index.toString()} className="mt-4">
+                          <div className="grid gap-4 p-4 border rounded-lg">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-sm text-gray-500">Procedure</p>
+                                <p className="font-medium">{procedure.name}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-gray-500">Status</p>
+                                <Badge
+                                  className={
+                                    procedure.status === "Completed"
+                                      ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                      : procedure.status === "In Progress"
+                                        ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
+                                        : "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
+                                  }
+                                >
+                                  {procedure.status || selectedActivity.status}
+                                </Badge>
+                              </div>
                             </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-sm text-gray-500">Instructor</p>
+                                <p className="font-medium">{selectedActivity.instructor || "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-gray-500">Grade</p>
+                                {procedure.grade ? (
+                                  <div className="flex items-center gap-2">
+                                    <p className={`font-medium ${getGradeColor(procedure.grade)}`}>
+                                      {procedure.grade}
+                                    </p>
+                                    {Number.parseInt(procedure.grade) >= 90 && (
+                                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                                    )}
+                                    <Badge
+                                      className={`text-xs ${getGradeStatusColor(procedure.grade)}`}
+                                    >
+                                      {getGradeStatus(procedure.grade)}
+                                    </Badge>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">—</span>
+                                )}
+                              </div>
+                            </div>
+
                             <div>
-                              <p className="text-sm text-gray-500">Status</p>
+                              <p className="text-sm text-gray-500 mb-1">Remarks</p>
+                              <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
+                                <p className="text-gray-700">
+                                  {procedure.remarks || "No remarks available"}
+                                </p>
+                              </div>
+                            </div>
+
+                            {procedure.grade && getGradeStatus(procedure.grade) === "Failed" && (
+                              <div className="p-3 bg-red-50 rounded-md border border-red-200">
+                                <p className="text-sm font-medium text-red-700 mb-1">Remediation Required</p>
+                                <p className="text-sm text-red-600">
+                                  Please schedule a review session with your instructor to address the areas needing improvement.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </TabsContent>
+                      ))}
+                    </Tabs>
+                  ) : (
+                    // Single procedure display
+                    <div className="grid gap-4 p-4 border rounded-lg">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm text-gray-500">Procedure</p>
+                          <p className="font-medium">{selectedActivity.procedureDetails[0].name}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Status</p>
+                          <Badge
+                            className={
+                              selectedActivity.procedureDetails[0].status === "Completed"
+                                ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                : selectedActivity.procedureDetails[0].status === "In Progress"
+                                  ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
+                                  : "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
+                            }
+                          >
+                            {selectedActivity.procedureDetails[0].status || selectedActivity.status}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm text-gray-500">Instructor</p>
+                          <p className="font-medium">{selectedActivity.instructor || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Grade</p>
+                          {selectedActivity.procedureDetails[0].grade ? (
+                            <div className="flex items-center gap-2">
+                              <p className={`font-medium ${getGradeColor(selectedActivity.procedureDetails[0].grade)}`}>
+                                {selectedActivity.procedureDetails[0].grade}
+                              </p>
+                              {Number.parseInt(selectedActivity.procedureDetails[0].grade) >= 90 && (
+                                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                              )}
                               <Badge
-                                className={
-                                  selectedActivity.status === "Completed"
-                                    ? "bg-green-100 text-green-800 hover:bg-green-100"
-                                    : selectedActivity.status === "In Progress"
-                                      ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
-                                      : "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
-                                }
+                                className={`text-xs ${getGradeStatusColor(selectedActivity.procedureDetails[0].grade)}`}
                               >
-                                {selectedActivity.status}
+                                {getGradeStatus(selectedActivity.procedureDetails[0].grade)}
                               </Badge>
                             </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <p className="text-sm text-gray-500">Instructor</p>
-                              <p className="font-medium">{selectedActivity.instructor || "—"}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-gray-500">Grade</p>
-                              {selectedActivity.grade ? (
-                                <p className={`font-medium ${getGradeColor(selectedActivity.grade)}`}>
-                                  {selectedActivity.grade}
-                                  {Number.parseInt(selectedActivity.grade) >= 90 && (
-                                    <Star className="inline h-4 w-4 ml-1 text-yellow-500 fill-yellow-500" />
-                                  )}
-                                </p>
-                              ) : (
-                                <span className="text-gray-400">—</span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div>
-                            <p className="text-sm text-gray-500 mb-1">Remarks</p>
-                            <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
-                              <p className="text-gray-700">
-                                {selectedActivity.remarks || selectedActivity.feedback || "No remarks available"}
-                              </p>
-                            </div>
-                          </div>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
                         </div>
-                      </TabsContent>
-                    ))}
-                  </Tabs>
-                ) : (
-                  // Single procedure display
-                  <div className="grid gap-4 p-4 border rounded-lg">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm text-gray-500">Procedure</p>
-                        <p className="font-medium">
-                          {selectedActivity.procedures && Array.isArray(selectedActivity.procedures)
-                            ? selectedActivity.procedures[0]
-                            : selectedActivity.procedures || selectedActivity.procedure}
-                        </p>
                       </div>
-                      <div>
-                        <p className="text-sm text-gray-500">Status</p>
-                        <Badge
-                          className={
-                            selectedActivity.status === "Completed"
-                              ? "bg-green-100 text-green-800 hover:bg-green-100"
-                              : selectedActivity.status === "In Progress"
-                                ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
-                                : "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
-                          }
-                        >
-                          {selectedActivity.status}
-                        </Badge>
-                      </div>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <p className="text-sm text-gray-500">Instructor</p>
-                        <p className="font-medium">{selectedActivity.instructor || "—"}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500">Grade</p>
-                        {selectedActivity.grade ? (
-                          <p className={`font-medium ${getGradeColor(selectedActivity.grade)}`}>
-                            {selectedActivity.grade}
-                            {Number.parseInt(selectedActivity.grade) >= 90 && (
-                              <Star className="inline h-4 w-4 ml-1 text-yellow-500 fill-yellow-500" />
-                            )}
+                        <p className="text-sm text-gray-500 mb-1">Remarks</p>
+                        <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
+                          <p className="text-gray-700">
+                            {selectedActivity.procedureDetails[0].remarks || "No remarks available"}
                           </p>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
+                        </div>
                       </div>
-                    </div>
 
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Remarks</p>
-                      <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
-                        <p className="text-gray-700">
-                          {selectedActivity.remarks || selectedActivity.feedback || "No remarks available"}
-                        </p>
+                      {selectedActivity.procedureDetails[0].grade && 
+                       getGradeStatus(selectedActivity.procedureDetails[0].grade) === "Failed" && (
+                        <div className="p-3 bg-red-50 rounded-md border border-red-200">
+                          <p className="text-sm font-medium text-red-700 mb-1">Remediation Required</p>
+                          <p className="text-sm text-red-600">
+                            Please schedule a review session with your instructor to address the areas needing improvement.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )
+                ) : (
+                  // Fallback when no procedure details are available
+                  <div className="grid gap-4 p-4 border rounded-lg">
+                    <div className="text-center py-8">
+                      <p className="text-gray-500 mb-2">No detailed procedure information available</p>
+                      <p className="text-sm text-gray-400">
+                        This activity may not have detailed grading data yet.
+                      </p>
+                    </div>
+                    
+                    {/* Show basic activity info as fallback */}
+                    {selectedActivity.procedures && selectedActivity.procedures.length > 0 && (
+                      <div>
+                        <p className="text-sm text-gray-500 mb-2">Procedures:</p>
+                        <div className="space-y-1">
+                          {selectedActivity.procedures.map((proc, index) => (
+                            <p key={index} className="text-sm font-medium">{proc}</p>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                )}
-
-                {selectedActivity.gradeStatus === "Failed" && (
-                  <div className="p-3 bg-red-50 rounded-md border border-red-200 mt-4">
-                    <p className="text-sm font-medium text-red-700 mb-1">Remediation Required</p>
-                    <p className="text-sm text-red-600">
-                      Please schedule a review session with your instructor to address the areas needing improvement.
-                    </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -424,4 +484,4 @@ export default function ClinicianRecords() {
       </Dialog>
     </div>
   )
-}
+} 
