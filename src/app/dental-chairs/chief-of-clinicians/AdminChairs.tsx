@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Edit, Info } from "lucide-react"
+import { Edit, Info, CheckCircle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -19,30 +19,24 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabase } from "@/lib/supabase"
+import { getProcedures } from "@/app/api/form/clinician/route"
 
-// Update the Chair interface (back to original three states)
+// Update the Chair interface
 interface Chair {
   id: string
+  chair_name?: string
   procedures: string[]
   status: "Available" | "Occupied" | "Under Maintenance"
   student: string | null
 }
 
-// Update the FilterType back to original
-type FilterType = "all" | "available" | "occupied" | "maintenance"
+interface Procedure {
+  procedure_id: string
+  name: string
+  procedure_code?: string
+}
 
-// Available dental procedures
-const dentalProcedures = [
-  "Extraction",
-  "Root Canal",
-  "Dental Filling",
-  "Dental Crown",
-  "Teeth Cleaning",
-  "General Dentistry",
-  "Orthodontics",
-  "Periodontics",
-  "Prosthodontics",
-]
+type FilterType = "all" | "available" | "occupied" | "maintenance"
 
 // Narrow unknown strings to our three allowed values; fallback stays undefined
 function coerceStatus(val: unknown): Chair["status"] | undefined {
@@ -50,7 +44,7 @@ function coerceStatus(val: unknown): Chair["status"] | undefined {
   return undefined
 }
 
-// Update the getStatusBadge function (back to original) + safe fallback
+// Update the getStatusBadge function with safe fallback
 const getStatusBadge = (status: Chair["status"] | undefined) => {
   switch (status) {
     case "Available":
@@ -79,7 +73,10 @@ export default function ChairPage() {
   const [chairs, setChairs] = useState<Chair[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
-
+  const [updating, setUpdating] = useState<boolean>(false)
+  const [dentalProcedures, setProcedures] = useState<Procedure[]>([])
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  
   useEffect(() => {
     const checkSession = async () => {
       try {
@@ -87,13 +84,19 @@ export default function ChairPage() {
         console.log("🔍 Client session check:")
         console.log("- Session exists:", !!session)
         console.log("- User ID:", session?.user?.id)
-        console.log("- Access token exists:", !!session?.access_token)
-        console.log("- Session error:", error)
-        console.log("- Document cookies:", document.cookie)
+
+        const { error: procedureError, procedures: procedureData } = await getProcedures()
+        if (procedureError) {
+          console.error("Error fetching procedures:", procedureError)
+        } else {
+          setProcedures(procedureData)
+        }
+
       } catch (err) {
         console.error("❌ Session check failed:", err)
       }
     }
+    
     checkSession()
     fetchChairs()
   }, [])
@@ -102,7 +105,7 @@ export default function ChairPage() {
     try {
       setLoading(true)
       setError(null)
-      console.log("🔍 Fetching from client...")
+      console.log("🔍 Fetching chairs from client...")
 
       const response = await fetch("/api/dental-chairs", {
         method: "GET",
@@ -112,7 +115,6 @@ export default function ChairPage() {
       })
 
       console.log("- Response status:", response.status)
-      console.log("- Response ok:", response.ok)
 
       const raw = await response.json()
       console.log("- Response body:", raw)
@@ -122,18 +124,17 @@ export default function ChairPage() {
         throw new Error(msg)
       }
 
-      // Support both shapes:
-      // 1) API returns a plain array of chairs
-      // 2) API returns { data: Chair[] }
+      // Support both shapes: API returns a plain array of chairs or { data: Chair[] }
       const payload = Array.isArray(raw) ? raw : raw?.data || []
 
-      // Light runtime normalization to keep TS happy and UI robust
+      // Light runtime normalization
       const normalized: Chair[] = (payload as any[]).map((c, i) => {
-        const status = coerceStatus(c?.status) // undefined if unknown
+        const status = coerceStatus(c?.status)
         return {
           id: String(c?.id ?? c?.chair_id ?? `chair-${i + 1}`),
+          chair_name: c?.chair_name,
           procedures: Array.isArray(c?.procedures) ? c.procedures.filter(Boolean) : [],
-          status: status ?? "Available", // fallback to Available if API omits/uses null; adjust if needed
+          status: status ?? "Available",
           student: c?.student ?? null,
         }
       })
@@ -153,19 +154,48 @@ export default function ChairPage() {
     setIsEditModalOpen(true)
   }
 
-  // Function to update chair (local-only for now)
+  // Function to update chair (now with API call)
   const handleUpdateChair = async (updatedChair: Chair) => {
     try {
+      setUpdating(true)
+      setError(null)
+
+      console.log("🔄 Updating chair:", updatedChair)
+
+      const response = await fetch("/api/dental-chairs", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chairId: updatedChair.id,
+          status: updatedChair.status,
+          procedures: updatedChair.procedures,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to update chair")
+      }
+
+      // Update local state
       setChairs((prev) => prev.map((c) => (c.id === updatedChair.id ? updatedChair : c)))
       setIsEditModalOpen(false)
-      // TODO: PUT /api/dental-chairs/:id to persist
+      setSuccessMessage("Chair updated successfully!")
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccessMessage(null), 3000)
+
     } catch (err) {
       console.error("Error updating chair:", err)
-      setError("Failed to update chair")
+      setError(err instanceof Error ? err.message : "Failed to update chair")
+    } finally {
+      setUpdating(false)
     }
   }
 
-  // Update the filter logic (back to original)
+  // Filter logic
   const filteredChairs = chairs.filter((chair) => {
     if (activeFilter === "all") return true
     if (activeFilter === "available") return chair.status === "Available"
@@ -179,6 +209,7 @@ export default function ChairPage() {
       <div className="min-h-screen bg-[#f8f9fa] p-6 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#5C8E77] mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading chairs...</p>
         </div>
       </div>
     )
@@ -186,6 +217,16 @@ export default function ChairPage() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-6">
+      {/* Success Alert */}
+      {successMessage && (
+        <Alert className="mb-6 bg-green-50 border-green-200">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">
+            {successMessage}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Error Alert */}
       {error && (
         <Alert className="mb-6 bg-red-50 border-red-200">
@@ -207,7 +248,7 @@ export default function ChairPage() {
         <Info className="h-4 w-4 text-[#5C8E77]" />
         <AlertDescription className="text-[#333]">
           Chairs are automatically assigned to students upon confirmed attendance based on procedure needs and chair
-          availability.
+          availability. You can manage chair status and associated procedures here.
         </AlertDescription>
       </Alert>
 
@@ -217,7 +258,7 @@ export default function ChairPage() {
           <div className="flex items-center gap-4">
             <CardTitle className="text-xl font-semibold text-[#333]">List of Dental Chairs</CardTitle>
 
-            {/* Update the filter buttons section (back to original) */}
+            {/* Filter buttons */}
             <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
               <Button
                 variant={activeFilter === "all" ? "default" : "ghost"}
@@ -225,7 +266,7 @@ export default function ChairPage() {
                 className={activeFilter === "all" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
                 onClick={() => setActiveFilter("all")}
               >
-                All
+                All ({chairs.length})
               </Button>
               <Button
                 variant={activeFilter === "available" ? "default" : "ghost"}
@@ -233,7 +274,7 @@ export default function ChairPage() {
                 className={activeFilter === "available" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
                 onClick={() => setActiveFilter("available")}
               >
-                Available
+                Available ({chairs.filter(c => c.status === "Available").length})
               </Button>
               <Button
                 variant={activeFilter === "occupied" ? "default" : "ghost"}
@@ -241,7 +282,7 @@ export default function ChairPage() {
                 className={activeFilter === "occupied" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
                 onClick={() => setActiveFilter("occupied")}
               >
-                Occupied
+                Occupied ({chairs.filter(c => c.status === "Occupied").length})
               </Button>
               <Button
                 variant={activeFilter === "maintenance" ? "default" : "ghost"}
@@ -249,12 +290,12 @@ export default function ChairPage() {
                 className={activeFilter === "maintenance" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
                 onClick={() => setActiveFilter("maintenance")}
               >
-                Under Maintenance
+                Maintenance ({chairs.filter(c => c.status === "Under Maintenance").length})
               </Button>
             </div>
           </div>
 
-          {/* Update the legend section (back to original) */}
+          {/* Legend */}
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-[#5C8E77]"></div>
@@ -275,7 +316,8 @@ export default function ChairPage() {
           <Table>
             <TableHeader className="bg-white border-b border-gray-200">
               <TableRow className="hover:bg-white border-b-0">
-                <TableHead className="font-medium text-[#333]">Dental Chair ID</TableHead>
+                <TableHead className="font-medium text-[#333]">Chairs</TableHead>
+                {/* <TableHead className="font-medium text-[#333]">Chair Name</TableHead> */}
                 <TableHead className="font-medium text-[#333]">Procedures</TableHead>
                 <TableHead className="font-medium text-[#333]">Status</TableHead>
                 <TableHead className="font-medium text-[#333]">Action</TableHead>
@@ -285,7 +327,8 @@ export default function ChairPage() {
               {filteredChairs.length > 0 ? (
                 filteredChairs.map((chair) => (
                   <TableRow key={chair.id} className="hover:bg-gray-50 border-b border-gray-200">
-                    <TableCell className="font-medium text-[#333]">{chair.id}</TableCell>
+                    {/* <TableCell className="font-medium text-[#333]">{chair.id}</TableCell> */}
+                    <TableCell className="text-[#333]">{chair.chair_name || "—"}</TableCell>
                     <TableCell className="text-[#333]">
                       <div className="flex flex-wrap gap-1">
                         {chair.procedures?.length ? (
@@ -318,7 +361,7 @@ export default function ChairPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12 text-gray-500">
+                  <TableCell colSpan={5} className="text-center py-12 text-gray-500">
                     No chairs found matching the selected filter.
                   </TableCell>
                 </TableRow>
@@ -336,13 +379,14 @@ export default function ChairPage() {
               <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
                 <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Edit Dental Chair</DialogTitle>
                 <DialogDescription className="text-gray-500">
-                  Update information for {currentChair.id}
+                  Update status and procedures for Chair 
+                  {currentChair.chair_name && ` (${currentChair.chair_name})`}
                 </DialogDescription>
               </DialogHeader>
 
               <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
                 <div className="space-y-4">
-                  {/* Update the Select options in the edit modal (back to original) */}
+                  {/* Chair Status */}
                   <div className="space-y-2">
                     <Label htmlFor="edit-status" className="text-[#333]">
                       Chair Status
@@ -368,7 +412,7 @@ export default function ChairPage() {
                     </Select>
                   </div>
 
-                  {currentChair.status === "Occupied" && (
+                  {/* {currentChair.status === "Occupied" && (
                     <div className="space-y-2">
                       <Label htmlFor="edit-student" className="text-[#333]">
                         Assigned Student
@@ -391,7 +435,7 @@ export default function ChairPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                  )}
+                  )} */}
 
                   <div className="space-y-3">
                     <Label className="text-[#333]">Allowed Procedures</Label>
@@ -399,23 +443,23 @@ export default function ChairPage() {
                       Select the dental procedures that can be performed on this chair. The system will only assign
                       students to chairs that support their required procedure.
                     </p>
-                    <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div className="grid grid-cols-2 gap-2 mt-2 max-h-48 overflow-y-auto">
                       {dentalProcedures.map((procedure) => (
-                        <div key={procedure} className="flex items-center space-x-2">
+                        <div key={procedure.procedure_id} className="flex items-center space-x-2">
                           <Checkbox
-                            id={`edit-procedure-${procedure}`}
-                            checked={currentChair.procedures?.includes(procedure) || false}
+                            id={`edit-procedure-${procedure.procedure_id}`}
+                            checked={currentChair.procedures?.includes(procedure.name) || false}
                             onCheckedChange={(checked) => {
                               const currentProcedures = currentChair.procedures || []
                               const updatedProcedures =
                                 checked
-                                  ? [...currentProcedures, procedure]
-                                  : currentProcedures.filter((p) => p !== procedure)
+                                  ? [...currentProcedures, procedure.name]
+                                  : currentProcedures.filter((p) => p !== procedure.name)
                               setCurrentChair((prev) => prev ? { ...prev, procedures: updatedProcedures } : prev)
                             }}
                           />
-                          <Label htmlFor={`edit-procedure-${procedure}`} className="text-sm font-normal">
-                            {procedure}
+                          <Label htmlFor={`edit-procedure-${procedure.procedure_id}`} className="text-sm font-normal">
+                            {procedure.name}
                           </Label>
                         </div>
                       ))}
@@ -425,14 +469,20 @@ export default function ChairPage() {
               </div>
 
               <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-                <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="border-gray-300">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsEditModalOpen(false)} 
+                  className="border-gray-300"
+                  disabled={updating}
+                >
                   Cancel
                 </Button>
                 <Button
                   className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
                   onClick={() => currentChair && handleUpdateChair(currentChair)}
+                  disabled={updating}
                 >
-                  Update Chair
+                  {updating ? "Updating..." : "Update Chair"}
                 </Button>
               </DialogFooter>
             </>

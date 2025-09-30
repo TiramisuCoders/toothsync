@@ -48,6 +48,7 @@ export default function ClerkAttendance() {
     const checkSession = async () => {
     try {
       const { data: { session }, error } = await supabase.auth.getSession()
+      
       console.log('🔍 Client session check:')
       console.log('- Session exists:', !!session)
       console.log('- User ID:', session?.user?.id)
@@ -87,9 +88,13 @@ export default function ClerkAttendance() {
     console.log('- Response body:', result)
 
     if (!response.ok) {
-      throw new Error(result.error || 'Failed to fetch attendance records')
-    }
-
+    // Log more details about the error
+    console.error('Response status:', response.status)
+    console.error('Response headers:', [...response.headers.entries()])
+    console.error('Error result:', result)
+    
+    throw new Error(result.error || `Server error (${response.status}): Failed to update sanitization`)
+  }
     setAttendanceRecords(result.data || [])
   } catch (error) {
     console.error('❌ Client error:', error)
@@ -117,7 +122,6 @@ export default function ClerkAttendance() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'confirm',
           request_id: id
         })
       })
@@ -151,49 +155,14 @@ export default function ClerkAttendance() {
     }
   }
 
-  // Function to handle sanitization update
-  const handleSanitizeChange = async (id: string, value: string) => {
-    try {
-      // Optimistically update local state
-      const newSanitizeValue = value.charAt(0).toUpperCase() + value.slice(1)
-      setAttendanceRecords(prev =>
-        prev.map(record =>
-          record.id === id ? { ...record, sanitize: newSanitizeValue } : record
-        )
+  // Function to handle sanitization update -- no API Call
+  const handleSanitizeChange = (id: string, value: string) => {
+    const newSanitizeValue = value.charAt(0).toUpperCase() + value.slice(1)
+    setAttendanceRecords(prev =>
+      prev.map(record =>
+        record.id === id ? { ...record, sanitize: newSanitizeValue } : record
       )
-
-      const response = await fetch('/api/attendance/clerk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update_sanitize',
-          request_id: id,
-          sanitize: newSanitizeValue
-        })
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to update sanitization')
-      }
-
-    } catch (error) {
-      console.error("Failed to update sanitization:", error)
-      
-      // Rollback optimistic update
-      setAttendanceRecords(prev =>
-        prev.map(record =>
-          record.id === id ? { ...record, sanitize: record.sanitize } : record
-        )
-      )
-
-      toast({
-        title: "Update Failed",
-        description: "Could not update sanitization status.",
-        variant: "destructive",
-      })
-    }
+    )
   }
 
   // Function to handle delete click

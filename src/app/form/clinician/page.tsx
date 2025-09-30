@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Toaster } from "@/components/ui/toaster"
-import { supabase } from "@/lib/supabase"
+import { getUserData, getProcedures, submitAttendanceAction } from "@/app/api/form/clinician/route"
+
 
 interface Procedure {
   procedure_id: string
@@ -28,6 +29,7 @@ export default function ClinicianForm() {
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [submitProgress, setSubmitProgress] = useState(0)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showConfirmation, setShowConfirmation] = useState(false)
@@ -35,53 +37,53 @@ export default function ClinicianForm() {
 
   useEffect(() => {
     const fetchData = async () => {
+      setIsLoading(true)
       try {
-        // Get authenticated user
-        const { data: userData, error: userError } = await supabase.auth.getUser()
-        if (userError || !userData.user) {
+        // Fetch user data using server action
+        const { error: userError, user, clinician } = await getUserData()
+
+        
+        if (userError || !user) {
           console.error("User not authenticated:", userError)
           toast("Authentication Error", { description: "Please log in to continue." })
           return
         }
 
-        // Set user ID
-        setFormData((prev) => ({
-          ...prev,
-          clinicianUserId: userData.user.id,
-        }))
-
-        // Fetch user details
-        const { data: clinician, error: clinicianError } = await supabase
-          .from("users")
-          .select("first_name, last_name")
-          .eq("auth_user_id", userData.user.id)
-          .single()
-
-        if (clinicianError) {
-          console.error("Failed to fetch clinician data:", clinicianError)
+        if (!clinician) {
           toast("Error", { description: "Failed to load user data." })
-        } else {
-          setFormData((prev) => ({
-            ...prev,
-            firstName: clinician.first_name || "",
-            lastName: clinician.last_name || "",
-          }))
+          return
         }
 
-        // Fetch procedures
-        const { data: procedureData, error: procedureError } = await supabase
-          .from("procedure")
-          .select("procedure_id, name")
+        // Set user data
+        setFormData((prev) => ({
+          ...prev,
+          clinicianUserId: user.id,
+          firstName: clinician.first_name || "",
+          lastName: clinician.last_name || "",
+        }))
 
+        console.log("Loaded user:", { 
+          userId: user.id, 
+          email: user.email,
+          firstName: clinician.first_name, 
+          lastName: clinician.last_name 
+        })
+
+        // Fetch procedures using server action
+        const { error: procedureError, procedures: procedureData } = await getProcedures()
+        
         if (procedureError) {
           console.error("Error fetching procedures:", procedureError)
           toast("Error", { description: "Failed to load procedures." })
         } else {
-          setProcedures(procedureData || [])
+          setProcedures(procedureData)
         }
+
       } catch (error) {
         console.error("Error in fetchData:", error)
         toast("Error", { description: "Failed to load form data." })
+      } finally {
+        setIsLoading(false)
       }
     }
 
@@ -161,28 +163,21 @@ export default function ClinicianForm() {
     const progressInterval = simulateProgress()
 
     try {
-      const response = await fetch('/api/form/clinician', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          patientName: formData.patientName,
-          selectedProcedures: formData.selectedProcedures,
-          shift: formData.shift,
-          clinicianUserId: formData.clinicianUserId,
-        }),
+      // Use server action instead of API call
+      const result = await submitAttendanceAction({
+        patientName: formData.patientName,
+        selectedProcedures: formData.selectedProcedures,
+        shift: formData.shift,
+        clinicianUserId: formData.clinicianUserId,
       })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to submit attendance')
-      }
 
       // Complete progress
       clearInterval(progressInterval)
       setSubmitProgress(100)
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to submit attendance')
+      }
 
       // Show success message
       toast("Attendance Submitted", {
@@ -212,6 +207,21 @@ export default function ClinicianForm() {
       setIsSubmitting(false)
       setSubmitProgress(0)
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        <Card className="shadow-sm border border-gray-200">
+          <CardContent className="p-6 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-8 h-8 border-4 border-[#5C8E77] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+              <p className="text-gray-600">Loading form data...</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -258,6 +268,11 @@ export default function ClinicianForm() {
                 <Label htmlFor="lastName">Last Name</Label>
                 <Input id="lastName" value={formData.lastName} disabled className="bg-gray-50 text-gray-500" />
               </div>
+            </div>
+
+            {/* Debug info - remove in production */}
+            <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+              Debug: User ID = {formData.clinicianUserId}
             </div>
 
             {/* Shift Dropdown */}
