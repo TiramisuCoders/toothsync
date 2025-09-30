@@ -8,8 +8,6 @@ import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
-import { supabase }from "@/lib/supabase"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { loginAction } from "@/app/login/actions"
 
 export default function ClerkLoginPage() {
@@ -33,31 +31,29 @@ export default function ClerkLoginPage() {
     return () => clearInterval(interval)
   }, [])
 
-
   const triggerShakeAnimation = () => {
     setIsShaking(true)
     setTimeout(() => setIsShaking(false), 600)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
-      e.preventDefault()
-  
-      startTransition(async () => {
-        // Pass "R04" as the allowed role for chief of clinicians login
-        const { error } = await loginAction(email, password)
-  
-        if (error) {
-          setErrorMessage(error.message)
-          setHasError(true)
-          triggerShakeAnimation()
-        } else {
-          setErrorMessage("")
-          setHasError(false)
-          router.push("/dashboard/clinical-instructor")
-        }
-      })
-    }
-  
+    e.preventDefault()
+
+    startTransition(async () => {
+      // Pass "R04" as the allowed role for chief of clinicians login
+      const { error } = await loginAction(email, password)
+
+      if (error) {
+        setErrorMessage(error.message)
+        setHasError(true)
+        triggerShakeAnimation()
+      } else {
+        setErrorMessage("")
+        setHasError(false)
+        router.push("/dashboard/clinical-instructor")
+      }
+    })
+  }
 
   const handleBackToRoleSelection = () => {
     router.push("/landing")
@@ -195,6 +191,19 @@ export default function ClerkLoginPage() {
             >
               Sign in
             </button>
+
+            <div className="text-center">
+              <p className="text-sm text-gray-600">
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => router.push("/landing/signup/clerk")}
+                  className="text-emerald-600 hover:text-emerald-700 font-medium hover:underline"
+                >
+                  Sign up here
+                </button>
+              </p>
+            </div>
 
             <button
               type="button"

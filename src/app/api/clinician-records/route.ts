@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
+import { supabaseAdmin } from "@/lib/supabase/admin"
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,162 +11,80 @@ export async function GET(request: NextRequest) {
     const section = searchParams.get("section")
     const search = searchParams.get("search")
     const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "50")
+    const limit = Number.parseInt(searchParams.get("limit") || "10")
     const offset = (page - 1) * limit
 
     console.log("[v0] Clinician Records API - Params:", { academicYear, yearLevel, section, search, page, limit })
 
-    const mockClinicianRecords = [
-      {
-        id: "CR001",
-        clinicianId: "2021-00001",
-        firstName: "Maria",
-        lastName: "Santos",
-        year: "4th Year",
-        section: "A",
-        sex: "Female",
-        academicYearId: "AY2023-001",
-        createdAt: "2023-08-15T08:00:00Z",
-      },
-      {
-        id: "CR002",
-        clinicianId: "2021-00002",
-        firstName: "Juan",
-        lastName: "Dela Cruz",
-        year: "4th Year",
-        section: "A",
-        sex: "Male",
-        academicYearId: "AY2023-001",
-        createdAt: "2023-08-15T08:15:00Z",
-      },
-      {
-        id: "CR003",
-        clinicianId: "2021-00003",
-        firstName: "Ana",
-        lastName: "Rodriguez",
-        year: "3rd Year",
-        section: "B",
-        sex: "Female",
-        academicYearId: "AY2023-001",
-        createdAt: "2023-08-15T08:30:00Z",
-      },
-      {
-        id: "CR004",
-        clinicianId: "2021-00004",
-        firstName: "Carlos",
-        lastName: "Garcia",
-        year: "4th Year",
-        section: "B",
-        sex: "Male",
-        academicYearId: "AY2023-001",
-        createdAt: "2023-08-15T08:45:00Z",
-      },
-      {
-        id: "CR005",
-        clinicianId: "2021-00005",
-        firstName: "Isabella",
-        lastName: "Martinez",
-        year: "3rd Year",
-        section: "A",
-        sex: "Female",
-        academicYearId: "AY2022-001",
-        createdAt: "2022-08-15T09:00:00Z",
-      },
-      {
-        id: "CR006",
-        clinicianId: "2021-00006",
-        firstName: "Miguel",
-        lastName: "Lopez",
-        year: "4th Year",
-        section: "C",
-        sex: "Male",
-        academicYearId: "AY2023-001",
-        createdAt: "2023-08-15T09:15:00Z",
-      },
-      {
-        id: "CR007",
-        clinicianId: "2021-00007",
-        firstName: "Sofia",
-        lastName: "Hernandez",
-        year: "3rd Year",
-        section: "B",
-        sex: "Female",
-        academicYearId: "AY2023-001",
-        createdAt: "2023-08-15T09:30:00Z",
-      },
-      {
-        id: "CR008",
-        clinicianId: "2021-00008",
-        firstName: "Diego",
-        lastName: "Morales",
-        year: "4th Year",
-        section: "A",
-        sex: "Male",
-        academicYearId: "AY2022-001",
-        createdAt: "2022-08-15T09:45:00Z",
-      },
-      {
-        id: "CR009",
-        clinicianId: "2021-00009",
-        firstName: "Camila",
-        lastName: "Torres",
-        year: "3rd Year",
-        section: "C",
-        sex: "Female",
-        academicYearId: "AY2023-001",
-        createdAt: "2023-08-15T10:00:00Z",
-      },
-      {
-        id: "CR010",
-        clinicianId: "2021-00010",
-        firstName: "Ricardo",
-        lastName: "Vargas",
-        year: "4th Year",
-        section: "B",
-        sex: "Male",
-        academicYearId: "AY2023-001",
-        createdAt: "2023-08-15T10:15:00Z",
-      },
-    ]
+    let query = supabaseAdmin.from("clinician_records").select(
+      `
+        user_id,
+        student_id,
+        year_level,
+        section,
+        academic_year_id,
+        created_at,
+        clinicians!clinician_records_user_id_fkey(
+          student_id,
+          users!clinicians_user_id_fkey(
+            first_name,
+            last_name,
+            sex
+          )
+        )
+      `,
+      { count: "exact" },
+    )
 
-    let filteredData = mockClinicianRecords
-
-    // Filter by academic year
+    // Apply filters
     if (academicYear && academicYear !== "all") {
-      filteredData = filteredData.filter((record) => record.academicYearId === academicYear)
+      query = query.eq("academic_year_id", academicYear)
     }
 
-    // Filter by year level
     if (yearLevel && yearLevel !== "all") {
-      filteredData = filteredData.filter((record) => record.year === yearLevel)
+      query = query.eq("year_level", yearLevel)
     }
 
-    // Filter by section
     if (section && section !== "all") {
-      filteredData = filteredData.filter((record) => record.section === section)
+      query = query.eq("section", section)
     }
 
-    // Apply search filter
+    // Searching across joined tables requires a different approach
     if (search && search.trim()) {
-      const searchTerm = search.toLowerCase()
-      filteredData = filteredData.filter(
-        (record) =>
-          record.clinicianId.toLowerCase().includes(searchTerm) ||
-          record.firstName.toLowerCase().includes(searchTerm) ||
-          record.lastName.toLowerCase().includes(searchTerm),
-      )
+      query = query.ilike("student_id", `%${search}%`)
     }
 
-    const total = filteredData.length
+    query = query.order("created_at", { ascending: false }).range(offset, offset + limit - 1)
+
+    const { data: clinicianRecords, error, count } = await query
+
+    if (error) {
+      console.error("[v0] Clinician Records API Error:", error)
+      return NextResponse.json({ error: "Failed to fetch clinician records", details: error.message }, { status: 500 })
+    }
+
+    console.log("[v0] Clinician Records API - Raw data:", clinicianRecords)
+
+    const formattedData =
+      clinicianRecords?.map((record: any) => ({
+        id: `${record.user_id}-${record.academic_year_id}`,
+        clinicianId: record.student_id,
+        firstName: record.clinicians?.users?.first_name || "",
+        lastName: record.clinicians?.users?.last_name || "",
+        year: record.year_level,
+        section: record.section,
+        sex: record.clinicians?.users?.sex || "Other",
+        academicYearId: record.academic_year_id,
+        createdAt: record.created_at,
+      })) || []
+
+    const total = count || 0
     const totalPages = Math.ceil(total / limit)
 
-    // Apply pagination
-    const paginatedData = filteredData.slice(offset, offset + limit)
-
-    console.log("[v0] Clinician Records API - Found records:", paginatedData.length, "Total:", total)
+    console.log("[v0] Clinician Records API - Found records:", formattedData.length, "Total:", total)
 
     return NextResponse.json({
-      data: paginatedData,
+      data: formattedData,
       pagination: {
         page,
         limit,
@@ -175,6 +94,9 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error("[v0] Clinician Records API Exception:", error)
-    return NextResponse.json({ error: "Failed to fetch clinician records" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Failed to fetch clinician records", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 },
+    )
   }
 }

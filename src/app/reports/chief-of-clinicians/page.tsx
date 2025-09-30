@@ -133,15 +133,10 @@ export default function ReportsPage() {
         page: academicYearPage.toString(),
         limit: "10",
       })
-      console.log("[v0] Fetching academic years from /api/academic-years")
       const response = await fetch(`/api/academic-years?${params}`)
-
-      console.log("[v0] Response status:", response.status)
-      console.log("[v0] Response ok:", response.ok)
 
       if (response.ok) {
         const result = await response.json()
-        console.log("[v0] Academic years result:", result)
 
         if (result.data) {
           setAcademicYears(result.data)
@@ -198,7 +193,6 @@ export default function ReportsPage() {
       params.append("page", clinicianPage.toString())
       params.append("limit", "10")
 
-      console.log("[v0] Fetching clinicians from /api/clinician-records")
       const response = await fetch(`/api/clinician-records?${params}`)
 
       if (!response.ok) {
@@ -206,7 +200,6 @@ export default function ReportsPage() {
       }
 
       const result = await response.json()
-      console.log("[v0] Clinician records result:", result)
 
       setClinicianHistory(result.data || [])
       if (result.pagination) {
