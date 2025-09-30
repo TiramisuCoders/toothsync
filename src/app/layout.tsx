@@ -5,6 +5,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/ui/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import ClientLayoutWrapper from "@/components/layouts/ClientLayoutWrapper"
+import SyncUserRole from "@/components/SyncUserRole"  // 👈 import it
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -33,6 +34,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          {/* 👇 Ensure role is always synced */}
+          <SyncUserRole />
+
           <ClientLayoutWrapper>{children}</ClientLayoutWrapper>
         </ThemeProvider>
         <Toaster />

@@ -37,52 +37,23 @@ export default function InstructorLoginPage() {
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
-      e.preventDefault()
-  
-       const { data: userRecord, error: roleError, status} = await supabase
-            .from("users")
-            .select("role")
-            .eq("email", email)
-            .single();
-            
-          if (roleError || !userRecord) {
-            setErrorMessage("Email not registered as an instructor.")            
-            return
-          }
-      
-          if (userRecord.role !== "R03") {
-            setErrorMessage("Only clinical instructors are allowed to log in.")
-            return
-          }
+    e.preventDefault()
 
-          startTransition(async () => {
-                const { error } = await loginAction(email, password)
-          
-                if (error) {
-                  setErrorMessage(error.message)
-                } else {
-                  router.push("/dashboard/clinical-instructor") // ✅ redirect after login
-                }
-              })
+    startTransition(async () => {
+      // Pass "R04" as the allowed role for chief of clinicians login
+      const { error } = await loginAction(email, password, "R03")
 
-    //   const { data, error } = await supabase.auth.signInWithPassword({
-    //   email,
-    //   password,
-    // })
-  
-    //   if (error) {
-    //     setErrorMessage("Invalid email or password. Please check your credentials and try again.")
-    //     setHasError(true)
-    //     triggerShakeAnimation()
-    //     console.error("Supabase login error:", error)
-    //   } else {
-    //     console.log("Login success!", data)
-    //     setErrorMessage("")
-    //     setHasError(false)
-    //     router.push("/dashboard/clinical-instructor")
-    //   }
-        
-    }
+      if (error) {
+        setErrorMessage(error.message)
+        setHasError(true)
+        triggerShakeAnimation()
+      } else {
+        setErrorMessage("")
+        setHasError(false)
+        router.push("/dashboard/clinical-instructor")
+      }
+    })
+  }
 
   const handleBackToRoleSelection = () => {
     router.push("/landing")

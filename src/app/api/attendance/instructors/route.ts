@@ -71,16 +71,22 @@ export async function GET() {
     console.log('🔍 Fetching attendance records...')
 
     // Fetch attendance records
-    const { data: attendance, error: err } = await supabase.from("request").select(`
-        request_id,
-        created_at,
-        is_sanitized,
+    const { data: attendance, error: err } = await supabase.from("activity_records").select(`
+        record_id,
+        time_in,
+        time_out,
         status,
-        clinician:clinician_id(
-          first_name,
-          last_name
+        request:request_id(
+          is_sanitized,
+            clinician:clinician_id(
+            first_name,
+            last_name
+            )
         )
-      `).eq("status", "Confirmed");
+      `)
+
+
+  
     
     console.log('- Attendance query result:', attendance)
     console.log('- Attendance query error:', err)
@@ -90,18 +96,28 @@ export async function GET() {
       return Response.json({ error: 'Database error', details: err.message }, { status: 500 })
     }
 
-    // Transform data to match your interface
-    const transformedData = attendance?.map(record => ({
-      id: record.request_id,
-      firstName: record.clinician?.first_name || '',
-      lastName: record.clinician?.last_name || '',
-      // timeIn: record.time_in || '',
-      // timeOut: record.time_out || '',
-      date: new Date(record.created_at).toISOString().split('T')[0],
-      time: new Date(record.created_at).toISOString().split('T')[1].split('.')[0],
-      sanitize: record.is_sanitized ? "Yes" : "No",
+   const transformedData = attendance?.map(record => ({
+      id: record.record_id,
+      firstName: record.request?.clinician?.first_name || '',
+      lastName: record.request?.clinician?.last_name || '',
+      date: new Date(record.time_in).toISOString().split('T')[0],
+      timeIn: new Date(record.time_in).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }),
+      timeOut: record.time_out
+      ? new Date(record.time_out).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        })
+      : "-",
+
+      sanitize: record.request?.is_sanitized ? "Yes" : "No",
       status: record.status || "Pending"
     })) || []
+
 
     console.log(transformedData);
     
