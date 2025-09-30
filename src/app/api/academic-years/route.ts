@@ -1,9 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     console.log("[v0] Starting GET /api/academic-years")
+
+    const { searchParams } = new URL(request.url)
+    const page = Number.parseInt(searchParams.get("page") || "1")
+    const limit = Number.parseInt(searchParams.get("limit") || "10")
+    const offset = (page - 1) * limit
+
+    console.log("[v0] Pagination params:", { page, limit, offset })
     console.log("[v0] Using admin client for consistent access")
 
     console.log("[v0] Admin client config check:", {
@@ -12,10 +19,41 @@ export async function GET() {
       urlValue: process.env.SUPABASE_URL?.substring(0, 30) + "...",
     })
 
+    console.log("[v0] Testing admin client connection...")
+    const { data: testData, error: testError } = await supabaseAdmin
+      .from("academic_year")
+      .select("count", { count: "exact", head: true })
+
+    if (testError) {
+      console.log("[v0] Connection test failed:", testError)
+
+      console.log("[v0] Attempting raw SQL query...")
+      const { data: sqlData, error: sqlError } = await supabaseAdmin.rpc("get_academic_years")
+
+      if (sqlError) {
+        console.log("[v0] Raw SQL also failed:", sqlError)
+        return NextResponse.json({ error: testError.message }, { status: 500 })
+      }
+
+      return NextResponse.json(sqlData || [])
+    }
+
+    console.log("[v0] Connection test successful, proceeding with query...")
+
+    const { count, error: countError } = await supabaseAdmin
+      .from("academic_year")
+      .select("*", { count: "exact", head: true })
+
+    if (countError) {
+      console.log("[v0] Error counting academic years:", countError)
+      return NextResponse.json({ error: countError.message }, { status: 500 })
+    }
+
     const { data: academicYears, error } = await supabaseAdmin
       .from("academic_year")
       .select("*")
       .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1)
 
     if (error) {
       console.log("[v0] Error fetching academic years:", error)
@@ -37,7 +75,15 @@ export async function GET() {
       createdAt: year.created_at,
     }))
 
-    return NextResponse.json(transformedData)
+    return NextResponse.json({
+      data: transformedData,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit),
+      },
+    })
   } catch (error) {
     console.log("[v0] Unexpected error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

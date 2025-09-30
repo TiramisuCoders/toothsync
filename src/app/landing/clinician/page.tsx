@@ -6,7 +6,6 @@ import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
-import { supabase }from "@/lib/supabase"
 import { loginAction } from "@/app/login/actions"
 
 export default function ClinicianLoginPage() {
@@ -35,70 +34,23 @@ export default function ClinicianLoginPage() {
     setTimeout(() => setIsShaking(false), 600)
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-       e.preventDefault()
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
 
-    const {
-  data: { session },
-} = await supabase.auth.getSession();
+    startTransition(async () => {
+      // Pass "R04" as the allowed role for chief of clinicians login
+      const { error } = await loginAction(email, password)
 
-// console.log("Session:", session);
-
-
-// const test = await supabase.from("users").select("id").limit(1);
-// console.log(test);
-
-      const { data: userRecord, error: roleError, status} = await supabase
-      .from("users")
-      .select("role")
-      .eq("email", email)
-      .single();
-
-      // console.log(userRecord)
-      // console.log(roleError)
-      // console.log(status)
-
-
-    if (roleError || !userRecord) {
-      setErrorMessage("Email not registered as a clinician.")
-      // console.log(userRecord)
-      // console.log(roleError)
-      
-      return
-    }
-
-    if (userRecord.role !== "R01") {
-      setErrorMessage("Only clinicians are allowed to log in.")
-      return
-    }
-
-  //   const { data, error } = await supabase.auth.signInWithPassword({
-  //   email,
-  //   password,
-  // })
-
-  //   if (error) {
-  //     setErrorMessage("Invalid email or password. Please check your credentials and try again.")
-  //     setHasError(true)
-  //     triggerShakeAnimation()
-  //     console.error("Supabase login error:", error)
-  //   } else {
-  //     // console.log("Login success!", data)
-  //     setErrorMessage("")
-  //     setHasError(false)
-  //     router.push("/dashboard/clinician")
-  //   }
-
-  startTransition(async () => {
-        const { error } = await loginAction(email, password)
-  
-        if (error) {
-          setErrorMessage(error.message)
-        } else {
-          router.push("/dashboard/clinician") // ✅ redirect after login
-        }
-      })
-      
+      if (error) {
+        setErrorMessage(error.message)
+        setHasError(true)
+        triggerShakeAnimation()
+      } else {
+        setErrorMessage("")
+        setHasError(false)
+        router.push("/dashboard/clinical-instructor")
+      }
+    })
   }
 
   const handleBackToRoleSelection = () => {
@@ -237,6 +189,19 @@ export default function ClinicianLoginPage() {
             >
               Sign in
             </button>
+
+            <div className="text-center">
+              <p className="text-sm text-gray-600">
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => router.push("/landing/signup/clinician")}
+                  className="text-emerald-600 hover:text-emerald-700 font-medium hover:underline"
+                >
+                  Sign up here
+                </button>
+              </p>
+            </div>
 
             <button
               type="button"

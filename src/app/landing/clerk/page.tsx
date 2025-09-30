@@ -8,8 +8,6 @@ import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
-import { supabase }from "@/lib/supabase"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { loginAction } from "@/app/login/actions"
 
 export default function ClerkLoginPage() {
@@ -33,64 +31,29 @@ export default function ClerkLoginPage() {
     return () => clearInterval(interval)
   }, [])
 
-
   const triggerShakeAnimation = () => {
     setIsShaking(true)
     setTimeout(() => setIsShaking(false), 600)
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-      e.preventDefault()
-            
-          const {
-        data: { session },
-      } = await supabase.auth.getSession();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
 
-       const { data: userRecord, error: roleError, status} = await supabase
-            .from("users")
-            .select("role")
-            .eq("email", email)
-            .single();
-      
-          if (roleError || !userRecord) {
-            setErrorMessage("Email not registered as a clerk.")
-            return
-          }
-      
-          if (userRecord.role !== "R02") {
-            setErrorMessage("Only clerks are allowed to log in.")
-            return
-          }
-  
-      // const { data, error } = await supabase.auth.signInWithPassword({
-      // email,
-      // password,
-    // })
-
-      startTransition(async () => {
+    startTransition(async () => {
+      // Pass "R04" as the allowed role for chief of clinicians login
       const { error } = await loginAction(email, password)
 
       if (error) {
         setErrorMessage(error.message)
+        setHasError(true)
+        triggerShakeAnimation()
       } else {
-        router.push("/dashboard/clerk") // ✅ redirect after login
+        setErrorMessage("")
+        setHasError(false)
+        router.push("/dashboard/clinical-instructor")
       }
     })
-
-          
-      // if (error) {
-      //   setErrorMessage("Invalid email or password. Please check your credentials and try again.")
-      //   setHasError(true)
-      //   triggerShakeAnimation()
-      //   console.error("Supabase login error:", error)
-      // } else {
-      //   console.log("Login success!", data)
-      //   setErrorMessage("")
-      //   setHasError(false)
-      //   router.push("/dashboard/clerk")
-      // }
-        
-    } 
+  }
 
   const handleBackToRoleSelection = () => {
     router.push("/landing")
@@ -228,6 +191,19 @@ export default function ClerkLoginPage() {
             >
               Sign in
             </button>
+
+            <div className="text-center">
+              <p className="text-sm text-gray-600">
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => router.push("/landing/signup/clerk")}
+                  className="text-emerald-600 hover:text-emerald-700 font-medium hover:underline"
+                >
+                  Sign up here
+                </button>
+              </p>
+            </div>
 
             <button
               type="button"
