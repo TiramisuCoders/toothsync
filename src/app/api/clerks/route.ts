@@ -36,7 +36,7 @@ export async function GET() {
 
     console.log("✅ User authorized, fetching clerks...")
 
-    // Get clerk records
+    // Get clerk records (include ALL clerks - both archived and active)
     const { data: clerksData, error: clerksError } = await supabase
       .from("clerks")
       .select(`
@@ -47,6 +47,10 @@ export async function GET() {
         updatedat,
         archived
       `);
+
+    console.log('📊 All clerks from database:', clerksData)
+    console.log('📊 Archived clerks:', clerksData?.filter(c => c.archived).length)
+    console.log('📊 Active clerks:', clerksData?.filter(c => !c.archived).length)
 
     if (clerksError) {
       console.log('❌ Clerks query failed:', clerksError.message)
@@ -85,6 +89,8 @@ export async function GET() {
     }
 
     // Combine and filter data
+    // IMPORTANT: Include ALL clerks from clerks table, regardless of current role
+    // Archived clerks will have R01 role, active clerks will have R02 role
     const combinedData = clerksData.map(clerk => {
       const userInfo = usersData?.find(u => u.auth_user_id === clerk.user_id)
       return {
@@ -92,9 +98,19 @@ export async function GET() {
         users: userInfo
       }
     }).filter(clerk => {
-      // Only include R02 (clerk role) users
-      return clerk.users && clerk.users.role === 'R02'
+      // Only filter out if user data is missing entirely
+      if (!clerk.users) {
+        console.log(`⚠️ Skipping clerk with user_id ${clerk.user_id} - no user data found`)
+        return false
+      }
+      
+      // Include ALL clerks regardless of role (R01 or R02)
+      // Archived clerks have R01, active clerks have R02
+      console.log(`✅ Including clerk: ${clerk.users.first_name} ${clerk.users.last_name} (Role: ${clerk.users.role}, Archived: ${clerk.archived})`)
+      return true
     })
+
+    console.log('🔍 Combined clerk data:', combinedData)
 
     // Transform data
     const transformedData = combinedData.map((clerk: any, index: number) => ({
@@ -141,9 +157,9 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { user_id, academic_year, section, status } = body
+    const { user_id, academic_year, status } = body
 
-    // Validate required fields
+    // Validate required fields (removed section - not stored in database)
     if (!user_id || !academic_year) {
       return Response.json({ 
         error: 'Missing required fields',
@@ -383,7 +399,7 @@ export async function DELETE(request: Request) {
 
     const newArchivedStatus = action === 'archive'
 
-    // Update archived status
+    // Update archived status in clerks table
     const { data: updatedClerk, error: updateError } = await supabase
       .from('clerks')
       .update({ 
@@ -401,11 +417,37 @@ export async function DELETE(request: Request) {
       }, { status: 500 })
     }
 
-    console.log(`✅ Successfully ${action}d clerk:`, updatedClerk)
+    // Update user role: archive = R01 (Clinician), unarchive = R02 (Clerk)
+    const newRole = newArchivedStatus ? 'R01' : 'R02'
+    console.log(`Updating user role to ${newRole} (${newArchivedStatus ? 'archived' : 'active'})`)
+
+    const { error: roleUpdateError } = await supabase
+      .from('users')
+      .update({ role: newRole })
+      .eq('auth_user_id', clerk_id)
+
+    if (roleUpdateError) {
+      console.log('Failed to update user role:', roleUpdateError.message)
+      // Rollback clerk update if role update fails
+      await supabase
+        .from('clerks')
+        .update({ 
+          archived: existingClerk.archived,
+          status: existingClerk.archived ? 'Inactive' : 'Active'
+        })
+        .eq('user_id', clerk_id)
+      
+      return Response.json({ 
+        error: 'Failed to update user role',
+        details: roleUpdateError.message
+      }, { status: 500 })
+    }
+
+    console.log(`✅ Successfully ${action}d clerk and updated role to ${newRole}:`, updatedClerk)
 
     return Response.json({ 
       success: true, 
-      message: `Clerk ${action}d successfully`,
+      message: `Clerk ${action}d successfully. Role changed to ${newRole} (${newRole === 'R01' ? 'Clinician' : 'Clerk'})`,
       data: updatedClerk
     })
 

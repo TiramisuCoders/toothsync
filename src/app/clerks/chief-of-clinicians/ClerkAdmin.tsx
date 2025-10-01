@@ -57,7 +57,6 @@ export default function ClerksPage() {
   })
   const [clerkFormData, setClerkFormData] = useState({
     academic_year: "",
-    section: "",
     status: "Not On Duty" as "On Duty" | "Not On Duty",
   })
   const [formErrors, setFormErrors] = useState<FormErrors>({})
@@ -168,6 +167,8 @@ export default function ClerksPage() {
 
       console.log("✅ Normalized clerks data:", normalized)
       console.log("📝 Sample clerk object:", normalized[0])
+      console.log("📊 Archived clerks count:", normalized.filter(c => c.archived).length)
+      console.log("📊 Active clerks count:", normalized.filter(c => !c.archived).length)
       setClerks(normalized)
       setDebugInfo(`Successfully loaded ${normalized.length} clerks`)
       
@@ -238,9 +239,14 @@ export default function ClerksPage() {
 
   // Filter clerks based on search term, archived status, and duty status
   const filteredClerks = clerks.filter((clerk) => {
-    // First filter by archived status
-    if (showArchived && !clerk.archived) return false
-    if (!showArchived && clerk.archived) return false
+    // Filter by archived status - show archived when showArchived is true
+    if (showArchived) {
+      // When showing archived, only show archived clerks
+      if (!clerk.archived) return false
+    } else {
+      // When not showing archived, only show non-archived clerks
+      if (clerk.archived) return false
+    }
     
     // Then filter by duty status
     if (activeFilter === "on-duty" && clerk.status !== "On Duty") return false
@@ -255,14 +261,23 @@ export default function ClerksPage() {
     )
   })
 
+  // Debug logging for filtered results
+  console.log("🔍 Filter Debug:", {
+    showArchived,
+    activeFilter,
+    totalClerks: clerks.length,
+    filteredClerks: filteredClerks.length,
+    archivedInData: clerks.filter(c => c.archived).length
+  })
+
   const handleAddClerk = async () => {
     if (!selectedUser) {
       setError("Please select a user to promote to clerk")
       return
     }
 
-    if (!clerkFormData.academic_year || !clerkFormData.section) {
-      setError("Please fill in academic year and section")
+    if (!clerkFormData.academic_year) {
+      setError("Please fill in academic year")
       return
     }
 
@@ -277,7 +292,6 @@ export default function ClerksPage() {
         body: JSON.stringify({
           user_id: selectedUser.auth_user_id,
           academic_year: clerkFormData.academic_year,
-          section: clerkFormData.section,
           status: clerkFormData.status
         })
       })
@@ -296,7 +310,6 @@ export default function ClerksPage() {
       setSelectedUser(null)
       setClerkFormData({
         academic_year: "",
-        section: "",
         status: "Not On Duty",
       })
       setIsAddModalOpen(false)
@@ -432,7 +445,6 @@ export default function ClerksPage() {
     })
     setClerkFormData({
       academic_year: "",
-      section: "",
       status: "Not On Duty",
     })
     setSelectedUser(null)
@@ -557,7 +569,7 @@ export default function ClerksPage() {
                   onClick={() => setShowArchived(!showArchived)}
                   className="text-gray-600"
                 >
-                  {showArchived ? "Hide" : "Show"} Archived
+                  {showArchived ? "Show Active" : "Show Archived"}
                 </Button>
               </div>
             </div>
@@ -574,14 +586,14 @@ export default function ClerksPage() {
                     Add Clerk
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[600px]">
+                <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Promote User to Clerk</DialogTitle>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
                     {/* User Selection */}
                     <div className="space-y-2">
-                      <Label>Select User</Label>
+                      <Label>Select User (R01 - Clinicians)</Label>
                       <Select 
                         value={selectedUser?.auth_user_id || ""} 
                         onValueChange={(value) => {
@@ -590,7 +602,7 @@ export default function ClerksPage() {
                         }}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Choose a user to promote to clerk" />
+                          <SelectValue placeholder="Choose a clinician to promote to clerk" />
                         </SelectTrigger>
                         <SelectContent>
                           {availableUsers.map((user) => (
@@ -600,7 +612,7 @@ export default function ClerksPage() {
                                   {user.first_name} {user.last_name}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                  {user.email} • Role: {user.role || 'No role'} • {user.sex}
+                                  {user.email} • {user.sex}
                                 </span>
                               </div>
                             </SelectItem>
@@ -609,7 +621,7 @@ export default function ClerksPage() {
                       </Select>
                       {availableUsers.length === 0 && (
                         <p className="text-sm text-gray-500">
-                          No users available for promotion. All users are either already clerks or have admin roles.
+                          No R01 (Clinician) users available for promotion. All clinicians are already assigned as clerks.
                         </p>
                       )}
                     </div>
@@ -617,24 +629,24 @@ export default function ClerksPage() {
                     {/* Selected User Display */}
                     {selectedUser && (
                       <div className="bg-gray-50 p-3 rounded-lg">
-                        <h4 className="font-medium text-sm text-gray-700 mb-2">Selected User:</h4>
+                        <h4 className="font-medium text-sm text-gray-700 mb-2">Selected Clinician:</h4>
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div><strong>Name:</strong> {selectedUser.first_name} {selectedUser.last_name}</div>
                           <div><strong>Email:</strong> {selectedUser.email}</div>
-                          <div><strong>Current Role:</strong> {selectedUser.role || 'No role assigned'}</div>
+                          <div><strong>Current Role:</strong> R01 (Clinician)</div>
                           <div><strong>Gender:</strong> {selectedUser.sex}</div>
                           {selectedUser.contact_number && (
                             <div><strong>Contact:</strong> {selectedUser.contact_number}</div>
                           )}
                         </div>
                         <div className="mt-2 text-xs text-blue-600">
-                          Note: This user's role will be changed to R02 (Clerk) when promoted.
+                          Note: This clinician's role will be changed to R02 (Clerk) when promoted. They can be demoted back to R01 later if needed.
                         </div>
                       </div>
                     )}
 
                     {/* Clerk Details */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="academicYear">Academic Year</Label>
                         <Select
@@ -653,46 +665,32 @@ export default function ClerksPage() {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="section">Section</Label>
+                        <Label htmlFor="status">Initial Status</Label>
                         <Select
-                          value={clerkFormData.section}
-                          onValueChange={(value) => setClerkFormData({ ...clerkFormData, section: value })}
+                          value={clerkFormData.status}
+                          onValueChange={(value: "On Duty" | "Not On Duty") =>
+                            setClerkFormData({ ...clerkFormData, status: value })
+                          }
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select section" />
+                            <SelectValue placeholder="Select initial status" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="A">Section A</SelectItem>
-                            <SelectItem value="B">Section B</SelectItem>
-                            <SelectItem value="C">Section C</SelectItem>
-                            <SelectItem value="D">Section D</SelectItem>
+                            <SelectItem value="On Duty">On Duty</SelectItem>
+                            <SelectItem value="Not On Duty">Not On Duty</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="status">Initial Status</Label>
-                      <Select
-                        value={clerkFormData.status}
-                        onValueChange={(value: "On Duty" | "Not On Duty") =>
-                          setClerkFormData({ ...clerkFormData, status: value })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select initial status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="On Duty">On Duty</SelectItem>
-                          <SelectItem value="Not On Duty">Not On Duty</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="text-xs text-gray-500 bg-blue-50 p-2 rounded">
+                        <strong>Note:</strong> Section assignment is not required. The system will automatically handle section management.
+                      </div>
                     </div>
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={() => {
                       setIsAddModalOpen(false)
                       setSelectedUser(null)
-                      setClerkFormData({ academic_year: "", section: "", status: "Not On Duty" })
+                      setClerkFormData({ academic_year: "", status: "Not On Duty" })
                     }}>
                       Cancel
                     </Button>
@@ -812,7 +810,7 @@ export default function ClerksPage() {
 
       {/* Edit Modal - Keeping for future functionality */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Clerk Information</DialogTitle>
           </DialogHeader>
@@ -820,7 +818,7 @@ export default function ClerksPage() {
             {/* Display current user info (read-only) */}
             <div className="bg-gray-50 p-3 rounded-lg">
               <h4 className="font-medium text-sm text-gray-700 mb-2">User Information (Read Only):</h4>
-              <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="grid gap-2 text-sm">
                 <div><strong>Name:</strong> {selectedClerk?.firstName} {selectedClerk?.lastName}</div>
                 <div><strong>Email:</strong> {selectedClerk?.email}</div>
                 <div><strong>Current Section:</strong> {selectedClerk?.section}</div>

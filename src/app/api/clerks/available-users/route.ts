@@ -34,7 +34,8 @@ export async function GET() {
       return Response.json({ error: authResult.error }, { status: authResult.status })
     }
 
-    // Get users who are NOT already clerks and exclude admin roles
+    // Get users who are R01 (Clinicians) and not yet clerks
+    // R01 clinicians can be promoted to R02 (clerk) when assigned
     const { data: availableUsers, error: usersError } = await supabase
       .from('users')
       .select(`
@@ -46,10 +47,10 @@ export async function GET() {
         sex,
         contact_number
       `)
-      .not('role', 'in', '("R01", "R04")') // Exclude only admin roles (keep R02, R03, null, etc.)
+      .eq('role', 'R01') // Only get R01 (Clinician) role users
       .order('first_name', { ascending: true })
 
-    console.log('Raw available users query result:', availableUsers)
+    console.log('Raw available users query result (R01 only):', availableUsers)
 
     if (usersError) {
       console.log('Failed to fetch users:', usersError.message)
