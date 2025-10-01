@@ -40,7 +40,7 @@ export default function ClinicianLoginPage() {
     
         startTransition(async () => {
           // Pass "R04" as the allowed role for chief of clinicians login
-          const { error } = await loginAction(email, password)
+          const { error } = await loginAction(email, password, "R01")
     
           if (error) {
             setErrorMessage(error.message)

@@ -44,7 +44,7 @@ export default function ClerkLoginPage() {
   
       startTransition(async () => {
         // Pass "R04" as the allowed role for chief of clinicians login
-        const { error } = await loginAction(email, password)
+        const { error } = await loginAction(email, password, "R03")
   
         if (error) {
           setErrorMessage(error.message)
