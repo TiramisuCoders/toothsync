@@ -1,50 +1,15 @@
-// api/attendance/clerk/route.ts
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { headers, cookies } from 'next/headers'
+// api/requests
+
 import { NextRequest } from 'next/server'
-import { createServerClient } from "@supabase/ssr";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { createAuthenticatedSupabaseClient } from '@/lib/supabase-route';
-// import { createSupabaseRouteClient } from '@/lib/supabase-route';
 
 
 export async function GET() {
 
   const supabase = await createAuthenticatedSupabaseClient();
-  // const supabase = await createRouteHandlerClient({
-  //   headers,
-  //   cookies,
-  // })
-
-  
-  // Debug what's in the supabase client
-  // console.log('Supabase client:', Object.keys(supabase))
-  // console.log('Has auth?:', 'auth' in supabase)
-  // console.log('Auth methods:', supabase.auth ? Object.keys(supabase.auth) : 'no auth')
-  
-  // // Try different approaches
-  // try {
-  //   const result1 = await supabase.auth.getUser()
-  //   console.log('Method 1 works:', result1)
-  // } catch (e) {
-  //   console.log('Method 1 failed:', e.message)
-  // }
  
-  
   try {
-    // In your GET method, add console logs:
-    // const { data: { user }, error } =  supabase.auth.getUser()
-    // console.log('🔍 Debug Info:')
-    // console.log('User ID:', user?.id)
-    // console.log('User email:', user?.email)
-    // console.log('Auth error:', error)
-
-    const { data, error: authError } = await supabase.auth.getUser()
-    
-    console.log('🔍 Auth Debug:')
-    console.log('User ID:', data)
-    console.log('Auth error:', authError)
-    
+    const { data, error: authError } = await supabase.auth.getUser()       
     
     const user = data?.user
     if (authError || !user) {
@@ -57,21 +22,14 @@ export async function GET() {
       .eq('auth_user_id', user.id)
       .single()
 
-    console.log('User role data:', userRole) // See what this returns
-    console.log('Role value:', userRole?.role)
-    console.log('Role type:', typeof userRole?.role)
+  
 
-    // const allowedRoles = ['R02', 'R03']
+    const allowedRoles = ['R02', 'R04']
 
-    // if (!allowedRoles.includes(userRole?.role)) {
-    //   console.log('Role check failed:', userRole?.role, 'vs', 'R02')
-    //   return Response.json({ error: 'Forbidden' }, { status: 403 })
-    // }
-    
-    console.log("user is clerk")
-    
-    console.log('🔍 Fetching attendance records...')
-
+    if (!allowedRoles.includes(userRole?.role)) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 })
+    }
+  
     // Fetch attendance records
     const { data: attendance, error: err } = await supabase
     .from("request")
@@ -86,6 +44,7 @@ export async function GET() {
         )
       `)
       .order("created_at", { ascending: false });
+
     console.log('- Attendance query result:', attendance)
     console.log('- Attendance query error:', err)
 
@@ -99,16 +58,6 @@ export async function GET() {
       id: record.request_id,
       firstName: record.clinician?.first_name || '',
       lastName: record.clinician?.last_name || '',
-      // timeIn: record.time_in || '',
-      // timeOut: record.time_out || '',
-      // timeIn: new Date(record.created_at).toLocaleTimeString("en-US", {
-      //   hour: "2-digit",
-      //   minute: "2-digit",
-      //   hour12: true,
-      //   timeZone: "Asia/Manila"
-      // }),
-
-
       date: new Date(record.created_at).toISOString().split('T')[0],
       sanitize: record.is_sanitized ? "Yes" : "No",
       status: record.status || "Pending"
@@ -129,7 +78,6 @@ export async function GET() {
   }
 }
 
-
 export async function POST(request: NextRequest) {
   const supabase = await createAuthenticatedSupabaseClient();
   
@@ -146,7 +94,9 @@ export async function POST(request: NextRequest) {
       .eq('auth_user_id', user.id)
       .single()
     
-    if (userRole?.role !== 'R02') {
+    const allowedRoles = ['R02', 'R04']
+
+    if (!allowedRoles.includes(userRole?.role)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -183,7 +133,6 @@ export async function POST(request: NextRequest) {
 
       console.error("Edge function error:", errorDetails);
       
-      // ✅ Add return statement
       return Response.json({ 
         error: 'Resource matching failed', 
         details: errorDetails, 
@@ -191,7 +140,6 @@ export async function POST(request: NextRequest) {
       }, { status: response.status || 400 });
     }
 
-    // ✅ Add success return for when everything works
     return Response.json({ 
       success: true, 
       result: result 

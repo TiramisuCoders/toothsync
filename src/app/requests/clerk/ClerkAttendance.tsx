@@ -76,7 +76,7 @@ export default function ClerkAttendance() {
       setLoading(true)
       console.log('🔍 Fetching from client...')
       
-      const response = await fetch('/api/attendance/clerk', {
+      const response = await fetch('/api/requests', {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -404,7 +404,7 @@ export default function ClerkAttendance() {
                 className={activeFilter === "present" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
                 onClick={() => setActiveFilter("present")}
               >
-                Present
+                Confirmed
               </Button>
             </div>
           </div>
