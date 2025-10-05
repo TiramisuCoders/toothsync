@@ -1,4 +1,4 @@
-// records > clinician
+// pagination and filters
 
 "use client"
 
@@ -25,7 +25,8 @@ export interface Activity {
   lastName?: string
   chair?: string
   patientName: string
-  instructor?: string
+  instructorId: string
+  instructorName: string
   procedures: string[]
   procedureDetails?: ProcedureDetail[]
   status: string
@@ -34,16 +35,8 @@ export interface Activity {
   gradeStatus?: string
   remarks?: string
   feedback?: string
-}
-
-export interface Attendance {
-  id: string
   timeIn: string
   timeOut: string
-  chair: string
-  procedures: string
-  status: string
-  sanitize: string
 }
 
 export default function ClinicianRecords() {
@@ -51,7 +44,6 @@ export default function ClinicianRecords() {
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false)
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null)
   const [activitiesData, setActivitiesRecords] = useState<Activity[]>([])
-  const [attendanceData, setAttendanceRecords] = useState<Attendance[]>([])
 
   useEffect(() => {
     const fetchRecords = async () => {
@@ -76,25 +68,6 @@ export default function ClinicianRecords() {
           throw new Error(records.error || "Failed to fetch records")
         }
 
-        const fecthAttendance = await fetch("/api/attendance/clinicians", {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        })
-
-        if (!fecthAttendance.ok) {
-          throw new Error(`HTTP error! status: ${fecthAttendance.status}`)
-        }
-
-        const attendance = await fecthAttendance.json()
-
-        if (attendance.success) {
-          setAttendanceRecords(attendance.data)
-        } else {
-          throw new Error(attendance.error || "Failed to fetch records")
-        }
       } catch (err) {
         console.error("Error fetching attendance:", err)
       }
@@ -137,10 +110,10 @@ export default function ClinicianRecords() {
             <TabsTrigger value="activities">Activities</TabsTrigger>
             <TabsTrigger value="attendance">Attendance</TabsTrigger>
           </TabsList>
-          <Button variant="outline" size="sm" onClick={handleExportCSV}>
+          {/* <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <Download className="h-4 w-4 mr-2" />
             Export CSV
-          </Button>
+          </Button> */}
         </div>
 
         <TabsContent value="activities" className="mt-4">
@@ -149,7 +122,7 @@ export default function ClinicianRecords() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="font-semibold">Act ID</TableHead>
+                    <TableHead className="font-semibold">Activity ID</TableHead>
                     <TableHead className="font-semibold">Patient Name</TableHead>
                     <TableHead className="font-semibold">Procedure</TableHead>
                     <TableHead className="font-semibold">Date</TableHead>
@@ -175,7 +148,7 @@ export default function ClinicianRecords() {
                           "—"
                         )}
                       </TableCell>
-                      <TableCell>—</TableCell>
+                      <TableCell>{activity.date}</TableCell>
                       <TableCell>
                         <Badge
                           className={
@@ -183,6 +156,8 @@ export default function ClinicianRecords() {
                               ? "bg-green-100 text-green-800 hover:bg-green-100"
                               : activity.status === "In Progress"
                                 ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
+                              : activity.status === "Cancelled"
+                                ? "bg-red-100 text-red-800 hover:bg-red-100"
                                 : "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
                           }
                         >
@@ -223,22 +198,24 @@ export default function ClinicianRecords() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="font-semibold">Attendance ID</TableHead>
+                    {/* <TableHead className="font-semibold">Attendance ID</TableHead> */}
+                    <TableHead className="font-semibold">Date</TableHead>
                     <TableHead className="font-semibold">Time In</TableHead>
                     <TableHead className="font-semibold">Time Out</TableHead>
-                    <TableHead className="font-semibold">Chair</TableHead>
+                    {/* <TableHead className="font-semibold">Chair</TableHead>
                     <TableHead className="font-semibold">Procedure</TableHead>
                     <TableHead className="font-semibold">Sanitized</TableHead>
-                    <TableHead className="font-semibold">Status</TableHead>
+                    <TableHead className="font-semibold">Status</TableHead> */}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {attendanceData.map((attendance) => (
+                  {activitiesData.map((attendance) => (
                     <TableRow key={attendance.id}>
-                      <TableCell>{attendance.id}</TableCell>
+                      {/* <TableCell>{attendance.id}</TableCell> */}
+                      <TableCell>{attendance.date}</TableCell>
                       <TableCell>{attendance.timeIn}</TableCell>
                       <TableCell>{attendance.timeOut}</TableCell>
-                      <TableCell>{attendance.chair}</TableCell>
+                      {/* <TableCell>{attendance.chair}</TableCell>
                       <TableCell>
                         {Array.isArray(attendance.procedures) ? (
                           <div className="space-y-1">
@@ -255,7 +232,7 @@ export default function ClinicianRecords() {
                       <TableCell>{attendance.sanitize}</TableCell>
                       <TableCell>
                         <Badge className="bg-green-100 text-green-800 hover:bg-green-100">{attendance.status}</Badge>
-                      </TableCell>
+                      </TableCell> */}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -277,18 +254,26 @@ export default function ClinicianRecords() {
               </DialogHeader>
               <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
                 <div className="grid gap-4 mb-6">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-sm text-gray-500">Act ID</p>
+                      <p className="text-sm text-gray-500">Activity ID</p>
                       <p className="font-medium">{selectedActivity.id}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Patient Name</p>
-                      <p className="font-medium">{selectedActivity.patientName}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Date</p>
                       <p className="font-medium">{selectedActivity.date}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Instructor</p>
+                      <p className="font-medium">{selectedActivity.instructorName || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Chair</p>
+                      <p className="font-medium">{selectedActivity.chair || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Patient Name</p>
+                      <p className="font-medium">{selectedActivity.patientName}</p>
                     </div>
                   </div>
                 </div>
@@ -331,10 +316,7 @@ export default function ClinicianRecords() {
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <p className="text-sm text-gray-500">Instructor</p>
-                                <p className="font-medium">{selectedActivity.instructor || "—"}</p>
-                              </div>
+                              
                               <div>
                                 <p className="text-sm text-gray-500">Grade</p>
                                 {procedure.grade ? (
@@ -345,11 +327,11 @@ export default function ClinicianRecords() {
                                     {Number.parseInt(procedure.grade) >= 90 && (
                                       <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
                                     )}
-                                    <Badge
+                                    {/* <Badge
                                       className={`text-xs ${getGradeStatusColor(procedure.grade)}`}
                                     >
                                       {getGradeStatus(procedure.grade)}
-                                    </Badge>
+                                    </Badge> */}
                                   </div>
                                 ) : (
                                   <span className="text-gray-400">—</span>
@@ -405,7 +387,7 @@ export default function ClinicianRecords() {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm text-gray-500">Instructor</p>
-                          <p className="font-medium">{selectedActivity.instructor || "—"}</p>
+                          <p className="font-medium">{selectedActivity.instructorName || "—"}</p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-500">Grade</p>

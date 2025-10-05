@@ -1,21 +1,22 @@
 // api/attendance/clerk/route.ts
-// double with activities / clinical - instructor
+// double with attendance / clinical - instructor
 
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { headers, cookies } from 'next/headers'
 import { NextRequest } from 'next/server'
 import { createServerClient } from "@supabase/ssr";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-// import { createSupabaseRouteClient } from '@/lib/supabase-route';
 
 
 export async function GET() {
 
   const supabase = await createSupabaseServerClient()
-
+  
+  
   try {
 
     const { data, error: authError } = await supabase.auth.getUser()
+    
     
     const user = data?.user
     if (authError || !user) {
@@ -28,18 +29,12 @@ export async function GET() {
       .eq('auth_user_id', user.id)
       .single()
 
-    // console.log('User role data:', userRole) // See what this returns
-    // console.log('Role value:', userRole?.role)
-    // console.log('Role type:', typeof userRole?.role)
-
   
-    if (userRole?.role !== 'R03'|| userRole?.role !== 'R04') {
+    if (userRole?.role !== 'R04') {
+      console.log('Role check failed:', userRole?.role, 'vs', 'R02')
       return Response.json({ error: 'Forbidden' }, { status: 403 })
     }
     
-    // console.log("user is clerk")
-    
-    // console.log('🔍 Fetching attendance records...')
 
     // Fetch attendance records
     const { data: attendance, error: err } = await supabase.from("activity_records").select(`

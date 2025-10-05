@@ -65,6 +65,7 @@ export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
 
   const chiefMenu = [
     { title: "Dashboard", url: "/dashboard/chief-of-clinicians" },
+    { title: "Requests", url: "/requests/chief-of-clinicians" },
     { title: "Attendance", url: "/attendance/chief-of-clinicians" },
     { title: "Clinicians", url: "/clinicians/chief-of-clinicians" },
     { title: "Clerks", url: "/clerks/chief-of-clinicians" },
@@ -85,13 +86,13 @@ export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
 
   const clerkMenu = [
     { title: "Dashboard", url: "/dashboard/clerk" },
-    { title: "Attendance", url: "/attendance/clerk" },
+    { title: "Requests", url: "/requests/clerk" },
     { title: "Dental Chairs", url: "/dental-chairs/clerk" },
   ]
 
   const clinicianMenu = [
     { title: "Dashboard", url: "/dashboard/clinician" },
-    { title: "Activities", url: "/activities/clinician" },
+    // { title: "Activities", url: "/activities/clinician" },
     { title: "Dental Chairs", url: "/dental-chairs/clinician" },
     { title: "Records", url: "/records/clinician" },
     { title: "Form", url: "/form/clinician" },
