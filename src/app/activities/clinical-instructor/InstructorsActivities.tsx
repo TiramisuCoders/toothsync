@@ -472,8 +472,6 @@ export default function InstructorActivitiesContent() {
                 )}
               </div>
             </div>
-
-
             
             
             {/* Status Filter */}
