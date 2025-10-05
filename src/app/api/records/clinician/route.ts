@@ -50,6 +50,13 @@ export async function GET() {
         time_in,
         time_out,
         status,
+        instructor:instructor_id (
+          user_id(
+            auth_user_id,
+            first_name,
+            last_name
+          )
+        ),
         chair:chair_id (
           chair_name
         ),
@@ -75,49 +82,6 @@ export async function GET() {
       return Response.json({ error: 'Database error', details: recordsErr.message }, { status: 500 })
     }
 
-    // Transform data to show individual procedures with their grades and remarks
-    // const transformedRecords = record?.map(r => {
-    //   // Get all procedure data with individual grades, remarks, and status
-    //   const procedureDetails = r.activity_procedures?.map(ap => ({
-    //     name: ap.procedure?.name,
-    //     grade: ap.grade,
-    //     remarks: ap.remarks,
-    //     status: ap.status
-    //   })).filter(p => p.name) || []
-
-    //   console.log('proc details:', procedureDetails);
-
-    //   return {
-    //     id: r.record_id,
-    //     patientName: r.request?.patient_name,
-    //     procedures: procedureDetails.map(p => p.name), // Just names for table display
-    //     procedureDetails: procedureDetails, // Complete procedure info for modal
-    //     status: r.status,
-    //     date: `${new Date(r.time_in).toISOString().split("T")[0]} ${r.time_in ?? ""} - ${r.time_out ?? ""}`,
-        
-    //     // These will be handled individually per procedure in the modal
-    //     // grade: null,
-    //     // remarks: null,
-    //     // gradeStatus: null,
-    //     instructor_full_name: r.instructors?.users 
-    //       ? `${r.instructors.users.first_name} ${r.instructors.users.last_name}` 
-    //       : null,
-    //     chair: r.chair?.chair_name,
-    //     status: r.request?.status,
-    //     sanitize: r.is_sanitized ? "Yes" : "No",
-    //   }
-    // }) || []
-
-    // console.log('Transformed records:', transformedRecords);
-    
-    
-    // return Response.json({ 
-    //   success: true, 
-    //   data: transformedRecords,
-    //   user_id: user.id 
-    // })
-
-
      const transformedRecords = record?.map(r => {
       console.log('Processing record:', r.record_id, 'Activity procedures:', r.activity_procedures);
       
@@ -139,15 +103,30 @@ export async function GET() {
         status: r.status,
         // date: `${new Date(r.time_in).toISOString().split("T")[0]} ${r.time_in ?? ""} - ${r.time_out ?? ""}`,
         date: r.time_in
-        ? new Date(r.time_in).toISOString().split("T")[0]
+        ? (() => {
+            const d = new Date(r.time_in)
+            const month = String(d.getMonth() + 1).padStart(2, "0") // 01–12
+            const day = String(d.getDate()).padStart(2, "0")        // 01–31
+            const year = d.getFullYear()
+            return `${month}-${day}-${year}`
+          })()
         : null,
-
-        
-        // These will be handled individually per procedure in the modal
-        // grade: null,
-        // remarks: null,
-        // gradeStatus: null,
-        instructor: null,
+        timeIn: new Date(r.time_in).toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "Asia/Manila"
+        }),
+        timeOut: r.time_out
+        ? new Date(r.time_out).toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: "Asia/Manila"
+          })
+        : "-",
+        instructorId: r.instructor?.user_id?.auth_user_id || null,
+        instructorName: `${r.instructor?.user_id?.first_name || ""} ${r.instructor?.user_id?.last_name || ""}`.trim(),
         chair: r.chair?.chair_name,
         sanitize: r.is_sanitized ? "Yes" : "No",
       }

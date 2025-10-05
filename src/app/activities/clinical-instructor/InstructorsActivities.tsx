@@ -3,7 +3,7 @@
 "use client"
 
 import {useEffect, useState } from "react"
-import { Edit, Check, X, ChevronUp, ChevronDown, ArrowUpDown, Star, Plus } from "lucide-react"
+import { Edit, Check, X, ChevronUp, ChevronDown, ArrowUpDown, Star, Plus, Pencil, ChevronLeft, ChevronRight, ArchiveRestore } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -17,151 +17,66 @@ import { toast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import ArchiveConfirmationModal from "@/components/modals/archive-record-modal"
+import GradingModal from "@/components/modals/grading-modal"
+import UnarchiveConfirmationModal from "@/components/modals/unarchive-record-modal"
+
+interface ProcedureDetail {
+  name: string
+  grade?: string
+  remarks?: string
+  status?: string
+}
 
 interface Activity {
   id: string
-  firstName: string
-  lastName: string
+  firstName?: string
+  lastName?: string
   patientName: string
   chair: string
   date: string
   procedures: string[]
+  procedureDetails?: ProcedureDetail[]
   status: string
-  grade: string
-  assessmentStatus: string
-  remarks: string
+  grade?: string
+  assessmentStatus?: string
+  remarks?: string
   selectedProcedures?: string[]
+  clinicianName: string
+  timeIn?: string
+  timeOut?: string
 }
 
-// interface NewActivity {
-//   firstName: string
-//   lastName: string
-//   patientName: string
-//   chair: string
-//   procedures: string[]
-//   status: string
-//   grade: string
-//   assessmentStatus: string
-//   remarks: string
-// }
-
 export default function InstructorActivitiesContent() {
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  // const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [currentActivity, setCurrentActivity] = useState<Activity | null>(null)
-  const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false)
-  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false)
-  const [activityToAction, setActivityToAction] = useState<Activity | null>(null)
-  const [sortField, setSortField] = useState("id")
-  const [sortDirection, setSortDirection] = useState("asc")
-  const [activeTab, setActiveTab] = useState("details")
+  // const [activityToGrade, setActivityToGrade] = useState<Activity | null>(null)
   const [isGradeModalOpen, setIsGradeModalOpen] = useState(false)
-  const [activityToGrade, setActivityToGrade] = useState<Activity | null>(null)
   const [gradeValue, setGradeValue] = useState("")
   const [gradeRemarks, setGradeRemarks] = useState("")
-  const [isAddProcedureModalOpen, setIsAddProcedureModalOpen] = useState(false)
-  const [selectedProcedures, setSelectedProcedures] = useState<string[]>([])
-  const [isNewActivityModalOpen, setIsNewActivityModalOpen] = useState(false)
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false)
+  const [isUnarchiveModalOpen, setIsUnarchiveModalOpen] = useState(false)
+  // const [activityToAction, setActivityToAction] = useState<Activity | null>(null)
+  const [sortField, setSortField] = useState("id")
+  const [sortDirection, setSortDirection] = useState("asc")
+  // const [activeTab, setActiveTab] = useState("details")
+
+  // Filters
+  const [dateFilter, setDateFilter] = useState("all")
+  const [customDate, setCustomDate] = useState("")
+  const [activeFilter, setActiveFilter] = useState("all")
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+
+  
   const [activities, setActivitiesRecords] = useState<Activity[]>([])
-  // const [newActivity, setNewActivity] = useState<NewActivity>({
-  //   firstName: "",
-  //   lastName: "",
-  //   patientName: "",
-  //   chair: "",
-  //   procedures: [] as string[],
-  //   status: "Not started",
-  //   grade: "",
-  //   assessmentStatus: "Not Started",
-  //   remarks: "",
-  // })
-
-  // Available procedures
-  // const availableProcedures = [
-  //   "Root Canal Treatment",
-  //   "Dental Filling",
-  //   "Dental Crown",
-  //   "Teeth Cleaning",
-  //   "Dental Extraction",
-  //   "Dental Implant",
-  //   "Dental Bridge",
-  //   "Teeth Whitening",
-  //   "Dental X-Ray",
-  //   "Orthodontic Adjustment",
-  // ]
-
-  // Sample data for activities assigned to this instructor
-  // const [activities, setActivities] = useState<Activity[]>([
-  //   {
-  //     id: "1",
-  //     firstName: "Maria",
-  //     lastName: "Santos",
-  //     patientName: "Juan Dela Cruz",
-  //     chair: "Chair 05",
-  //     date: "2025-05-09",
-  //     procedures: ["Root Canal Treatment", "Dental Filling"],
-  //     status: "Started",
-  //     grade: "",
-  //     assessmentStatus: "In Progress",
-  //     remarks: "",
-  //   },
-  //   {
-  //     id: "2",
-  //     firstName: "John",
-  //     lastName: "Dela Cruz",
-  //     patientName: "Ana Reyes",
-  //     chair: "Chair 12",
-  //     date: "2025-05-09",
-  //     procedures: ["Dental Filling"],
-  //     status: "Not started",
-  //     grade: "",
-  //     assessmentStatus: "Not Started",
-  //     remarks: "",
-  //   },
-  //   {
-  //     id: "3",
-  //     firstName: "Anna",
-  //     lastName: "Lim",
-  //     patientName: "Miguel Santos",
-  //     chair: "Chair 03",
-  //     date: "2025-05-09",
-  //     procedures: ["Dental Crown", "Teeth Cleaning", "Dental X-Ray"],
-  //     status: "Started",
-  //     grade: "",
-  //     assessmentStatus: "In Progress",
-  //     remarks: "",
-  //   },
-  //   {
-  //     id: "4",
-  //     firstName: "Mark",
-  //     lastName: "Aquino",
-  //     patientName: "Sofia Reyes",
-  //     chair: "Chair 08",
-  //     date: "2025-05-09",
-  //     procedures: ["Teeth Cleaning"],
-  //     status: "Completed",
-  //     grade: "85",
-  //     assessmentStatus: "Completed",
-  //     remarks: "Good work, clean execution.",
-  //   },
-  //   {
-  //     id: "5",
-  //     firstName: "Sarah",
-  //     lastName: "Garcia",
-  //     patientName: "Luis Tan",
-  //     chair: "Chair 10",
-  //     date: "2025-05-09",
-  //     procedures: ["Dental Extraction", "Dental X-Ray"],
-  //     status: "Incomplete",
-  //     grade: "60",
-  //     assessmentStatus: "Needs Improvement",
-  //     remarks: "Procedure was not completed properly.",
-  //   },
-  // ])
-
 
   useEffect(() => {
     const fetchRecords = async () => {
       try {
-        const fetchRecords = await fetch('/api/activities/clinical-instructors', {
+        const fetchRecords = await fetch('/api/dashboard', {
           method: 'GET',
           credentials: 'include',
           headers: {
@@ -174,107 +89,180 @@ export default function InstructorActivitiesContent() {
         }
 
         const records = await fetchRecords.json()
+        console.log('Fetched records:', records)
         
         if (records.success) {
+          console.log('Setting activities:', records.data)
           setActivitiesRecords(records.data)
         } else {
           throw new Error(records.error || 'Failed to fetch records')
         }
       } catch (err) {
         console.error('Error fetching attendance:', err)
-        // setError(err instanceof Error ? err.message : 'An error occurred')
       } 
     }
     fetchRecords()
   }, []) 
 
+  
   // Function to get status color
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "Started":
-        return "bg-[#5C8E77]/10 text-[#5C8E77]"
       case "Completed":
+        return "bg-[#5C8E77]/10 text-[#5C8E77]"
+      case "In Progress":
         return "bg-blue-50 text-blue-700"
-      case "Not started":
-        return "bg-yellow-50 text-yellow-700"
-      case "Incomplete":
+      case "Cancelled":
         return "bg-red-50 text-red-700"
       default:
         return "bg-gray-50 text-gray-700"
     }
   }
 
-  // Function to handle edit button click
-  const handleEdit = (activity: Activity) => {
-    setCurrentActivity({
-      ...activity,
-      selectedProcedures: [...(activity.procedures || [])],
-    })
-    setIsEditModalOpen(true)
-    setActiveTab("details")
-  }
-
-  const handleCompleteClick = (activity: Activity) => {
-    setActivityToAction(activity)
-    setIsCompleteModalOpen(true)
-  }
-
-  const handleComplete = () => {
-    if (activityToAction) {
-      // Update the activity status to Completed
-      const updatedActivities = activities.map((activity) =>
-        activity.id === activityToAction.id ? { ...activity, status: "Completed" } : activity,
-      )
-      setActivities(updatedActivities)
-      setIsCompleteModalOpen(false)
-      // Open the grade modal immediately after marking as completed
-      setActivityToGrade(activityToAction)
-      setGradeValue(activityToAction.grade || "")
-      setGradeRemarks(activityToAction.remarks || "")
-      setIsGradeModalOpen(true)
-      toast({
-        title: "Activity Completed",
-        description: `Activity ${activityToAction.id} has been marked as completed.`,
-      })
-    }
-  }
-
   const handleArchiveClick = (activity: Activity) => {
-    setActivityToAction(activity)
+    setCurrentActivity(activity)
     setIsArchiveModalOpen(true)
   }
 
-  const handleArchive = () => {
-    if (activityToAction) {
-      setActivities(
+  const handleArchive = async () => {
+    if (!currentActivity) return
+
+    try {
+      const res = await fetch("/api/activities/archive-activity", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activityId: currentActivity.id,
+          status: "Cancelled", // or "Incomplete" if that's the exact enum in DB
+        }),
+      })
+
+      const result = await res.json()
+      if (!res.ok) {
+        console.error("❌ Archive failed:", result)
+        toast({
+          title: "Error",
+          description: "Failed to update activity status.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setActivitiesRecords(
         activities.map((activity) =>
-          activity.id === activityToAction.id ? { ...activity, status: "Incomplete" } : activity,
-        ),
+          activity.id === currentActivity.id
+            ? { ...activity, status: "Cancelled" } // match DB status
+            : activity
+        )
       )
+
       setIsArchiveModalOpen(false)
       toast({
-        title: "Activity Marked Incomplete",
-        description: `Activity ${activityToAction.id} has been marked as incomplete.`,
+        title: "Activity Marked Cancelled",
+        description: `Activity ${currentActivity.id} has been marked as cancelled.`,
+        variant: "destructive",
+      })
+    } catch (error) {
+      console.error("❌ Network error:", error)
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
         variant: "destructive",
       })
     }
   }
 
+  const handleUnarchiveClick = (activity: Activity) => {
+    setCurrentActivity(activity)
+    setIsUnarchiveModalOpen(true)
+  }
+
+  const handleUnarchive = async () => {
+    if (!currentActivity) return
+
+    try {
+      const res = await fetch("/api/activities/archive-activity", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activityId: currentActivity.id,
+          status: "In Progress", // or "Incomplete" if that's the exact enum in DB
+        }),
+      })
+
+      const result = await res.json()
+      if (!res.ok) {
+        console.error("❌ Restoring failed:", result)
+        toast({
+          title: "Error",
+          description: "Failed to update activity status.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setActivitiesRecords(
+        activities.map((activity) =>
+          activity.id === currentActivity.id
+            ? { ...activity, status: "In Progress" } // match DB status
+            : activity
+        )
+      )
+
+      setIsUnarchiveModalOpen(false)
+      toast({
+        title: "Activity Restored",
+        description: `Activity ${currentActivity.id} has been restored.`,
+      })
+    } catch (error) {
+      console.error("❌ Network error:", error)
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const sortedActivities = activities.filter((record) => {
+  let matchesDate = true
+  let matchesStatus = true
+
+  // Date filter
+  if (dateFilter === "today") {
+    const recordDate = new Date(record.date).toDateString()
+    const today = new Date().toDateString()
+    matchesDate = recordDate === today
+  } else if (dateFilter === "custom" && customDate) {
+    matchesDate = record.date === customDate
+  }
+
+  // Status filter
+  if (activeFilter === "in progress") {
+    matchesStatus = record.status.toLowerCase() === "in progress"
+  } else if (activeFilter === "completed") {
+    matchesStatus = record.status.toLowerCase() === "completed" || record.status.toLowerCase() === "completed"
+  }  else if (activeFilter === "cancelled") {
+    matchesStatus = record.status.toLowerCase() === "cancelled" || record.status.toLowerCase() === "cancelled"
+  }
+
+
+  return matchesDate && matchesStatus
+})
+
   // Function to update activity
   const handleUpdateActivity = (updatedActivity: Activity) => {
     if (!updatedActivity) return
 
-    // Ensure procedures are properly updated
     const proceduresToSave = updatedActivity.selectedProcedures || updatedActivity.procedures || []
     const finalUpdatedActivity = {
       ...updatedActivity,
       procedures: proceduresToSave,
     }
 
-    // Remove the temporary selectedProcedures field
     delete finalUpdatedActivity.selectedProcedures
 
-    setActivities(
+    setActivitiesRecords(
       activities.map((activity) => (activity.id === finalUpdatedActivity.id ? finalUpdatedActivity : activity)),
     )
     setIsEditModalOpen(false)
@@ -284,84 +272,114 @@ export default function InstructorActivitiesContent() {
     })
   }
 
-  // Function to handle grading
-  const handleGradeActivity = () => {
-    if (activityToGrade && gradeValue) {
-      const updatedActivities = activities.map((activity) =>
-        activity.id === activityToGrade.id
-          ? {
-              ...activity,
-              grade: gradeValue,
-              remarks: gradeRemarks,
-              assessmentStatus: "Completed",
-            }
-          : activity,
-      )
-      setActivities(updatedActivities)
-      setIsGradeModalOpen(false)
-      setGradeValue("")
-      setGradeRemarks("")
-      toast({
-        title: "Activity Graded",
-        description: `Grade of ${gradeValue} has been assigned to activity ${activityToGrade.id}.`,
-      })
-    }
-  }
+  // Function to handle procedure grade/remarks changes
+  const handleProcedureGradeChange = (index: number, field: 'grade' | 'remarks', value: string) => {
+    if (!currentActivity) return
 
-  // Function to handle adding a new procedure to an activity
-  const handleEditProcedureChange = (procedure: string, checked: boolean) => {
-    if (currentActivity) {
-      setCurrentActivity({
-        ...currentActivity,
-        selectedProcedures: checked
-          ? [...(currentActivity.selectedProcedures || []), procedure]
-          : currentActivity.selectedProcedures?.filter((p) => p !== procedure) || [],
-      })
-    }
-  }
-
-  const handleProcedureChange = (procedure: string, checked: boolean) => {
-    setSelectedProcedures((prev) => (checked ? [...prev, procedure] : prev.filter((p) => p !== procedure)))
-  }
-
-  const handleSaveAddedProcedures = () => {
-    if (currentActivity) {
-      const updatedActivity = {
-        ...currentActivity,
-        procedures: [...currentActivity.procedures, ...selectedProcedures],
+    const updatedProcedureDetails = [...(currentActivity.procedureDetails || [])]
+    if (!updatedProcedureDetails[index]) {
+      updatedProcedureDetails[index] = {
+        name: currentActivity.procedures[index],
+        grade: '',
+        remarks: '',
+        status: ''
       }
-      handleUpdateActivity(updatedActivity)
-      setSelectedProcedures([])
     }
+    
+    updatedProcedureDetails[index] = {
+      ...updatedProcedureDetails[index],
+      [field]: value
+    }
+
+    setCurrentActivity({
+      ...currentActivity,
+      procedureDetails: updatedProcedureDetails
+    })
   }
 
-  // Function to create a new activity
-  // const handleCreateActivity = () => {
-  //   const newId = (activities.length + 1).toString()
-  //   const activityToAdd = {
-  //     ...newActivity,
-  //     id: newId,
-  //     date: new Date().toISOString().split("T")[0],
-  //   }
-  //   setActivities([...activities, activityToAdd])
-  //   setIsNewActivityModalOpen(false)
-  //   toast({
-  //     title: "Activity Created",
-  //     description: `New activity created for ${newActivity.firstName} ${newActivity.lastName}.`,
-  //   })
-  //   // Reset the form
-  //   setNewActivity({
-  //     firstName: "",
-  //     lastName: "",
-  //     patientName: "",
-  //     chair: "",
-  //     procedures: [],
-  //     status: "Not started",
-  //     grade: "",
-  //     assessmentStatus: "Not Started",
-  //     remarks: "",
-  //   })
-  // }
+  const handleSaveGrades = async () => {
+    if (!currentActivity || !currentActivity.procedureDetails) return
+
+    try {
+      // Update each procedure's grade and status
+      const procedureUpdates = currentActivity.procedureDetails.map(async (procedure) => {
+        if (procedure.grade && String(procedure.grade || "").trim() !== "") {
+          // Update activity_procedures table
+          const response = await fetch('/api/activities/clinical-instructor', {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              record_id: currentActivity.id,
+              procedure_name: procedure.name,
+              grade: procedure.grade,
+              remarks: procedure.remarks || "",
+              status: "Completed"
+            })
+          })
+
+          if (!response.ok) {
+            throw new Error(`Failed to update procedure ${procedure.name}`)
+          }
+
+          return { ...procedure, status: "Completed" }
+        }
+        return procedure
+      })
+
+      const updatedProcedures = await Promise.all(procedureUpdates)
+
+      // Check if all procedures are now completed
+      const allCompleted = updatedProcedures.every(p => p.status === "Completed")
+
+      // If all procedures are completed, update activity_records status
+      if (allCompleted) {
+        const activityResponse = await fetch('/api/activities/clinical-instructor', {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            record_id: currentActivity.id,
+            update_activity_status: true,
+            status: "Completed"
+          })
+        })
+
+        if (!activityResponse.ok) {
+          throw new Error('Failed to update activity status')
+        }
+      }
+
+      // Update local state
+      setActivitiesRecords(activities.map(activity => 
+        activity.id === currentActivity.id 
+          ? { 
+              ...activity, 
+              procedureDetails: updatedProcedures,
+              status: allCompleted ? "Completed" : activity.status
+            }
+          : activity
+      ))
+
+      setIsGradeModalOpen(false)
+      toast({
+        title: "Grades Saved",
+        description: `Assessment has been saved successfully${allCompleted ? '. Activity marked as completed.' : '.'}`,
+      })
+
+    } catch (error) {
+      console.error('Error saving grades:', error)
+      toast({
+        title: "Error",
+        description: "Failed to save grades. Please try again.",
+        variant: "destructive"
+      })
+    }
+  }
 
   // Function to handle sorting
   const handleSort = (field: string) => {
@@ -374,36 +392,124 @@ export default function InstructorActivitiesContent() {
   }
 
   // Sort activities
-  const sortedActivities = [...activities].sort((a, b) => {
-    if (sortField === "id") {
-      return sortDirection === "asc"
-        ? Number.parseInt(a.id) - Number.parseInt(b.id)
-        : Number.parseInt(b.id) - Number.parseInt(a.id)
-    } else if (sortField === "lastName") {
-      return sortDirection === "asc" ? a.lastName.localeCompare(b.lastName) : b.lastName.localeCompare(a.lastName)
-    }
-    return 0
-  })
+  // const sortedActivities = [...activities].sort((a, b) => {
+  //   if (sortField === "id") {
+  //     return sortDirection === "asc"
+  //       ? Number.parseInt(a.id) - Number.parseInt(b.id)
+  //       : Number.parseInt(b.id) - Number.parseInt(a.id)
+  //   } else if (sortField === "lastName") {
+  //     return sortDirection === "asc" 
+  //       ? (a.lastName || "").localeCompare(b.lastName || "") 
+  //       : (b.lastName || "").localeCompare(a.lastName || "")
+  //   }
+  //   return 0
+  // })
 
-  // Function to check if a grade is excellent (85 or above)
-  const isExcellentGrade = (grade: string) => {
-    const numGrade = Number.parseInt(grade, 10)
-    return !isNaN(numGrade) && numGrade >= 85
+  // Function to check if activity has any graded procedures
+  const hasGradedProcedures = (activity: Activity) => {
+    return activity.procedureDetails?.some(p => p.grade && String(p.grade || "").trim() !== "") || false
   }
+
+  // Pagination calculations
+  const totalPages = Math.ceil(sortedActivities.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const currentRecords = sortedActivities.slice(startIndex, endIndex)
+  
 
   return (
     <>
       {/* Activities Table */}
       <Card className="bg-white border border-gray-200 shadow-sm mb-6">
-        <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
-          <CardTitle className="text-xl font-semibold text-[#333]">Activities & Grades</CardTitle>
-          {/* Remove New Activity Button
-          <Button
-            className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-            onClick={() => setIsNewActivityModalOpen(true)}
-          >
-            <Plus className="mr-2 h-4 w-4" /> New Activity
-          </Button> */}
+        <CardHeader className="pb-4 border-b border-gray-200">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xl font-semibold text-[#333]">Activities</CardTitle>
+              
+              {/* Instructor Filter */}
+              {/* <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Instructor:</span>
+                <Select value={instructorFilter} onValueChange={setDateFilter}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Instructors</SelectItem>
+                    <SelectItem value="today">Myself</SelectItem>
+                    <SelectItem value="custom">Other Instructors</SelectItem>
+                  </SelectContent>
+                </Select>
+                {instructorFilter === "custom" && (
+                  <input
+                    type="date"
+                    value={Other Instructors}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm"
+                  />
+                )}
+              </div> */}
+
+              {/* Date Filter */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Date:</span>
+                <Select value={dateFilter} onValueChange={setDateFilter}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Dates</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="custom">Custom Date</SelectItem>
+                  </SelectContent>
+                </Select>
+                {dateFilter === "custom" && (
+                  <input
+                    type="date"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm"
+                  />
+                )}
+              </div>
+            </div>
+            
+            
+            {/* Status Filter */}
+            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg w-fit">
+              <Button
+                variant={activeFilter === "all" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "all" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("all")}
+              >
+                All
+              </Button>
+              <Button
+                variant={activeFilter === "in progress" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "in progress" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("in progress")}
+              >
+                In Progress
+              </Button>
+              <Button
+                variant={activeFilter === "completed" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "completed" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("completed")}
+              >
+                Completed
+              </Button>
+              <Button
+                variant={activeFilter === "cancelled" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "cancelled" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("cancelled")}
+              >
+                Cancelled
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -421,13 +527,11 @@ export default function InstructorActivitiesContent() {
                       ))}
                   </div>
                 </TableHead>
-                <TableHead className="font-medium text-[#333]">First Name</TableHead>
-                <TableHead className="font-medium text-[#333]">Last Name</TableHead>
+                <TableHead className="font-medium text-[#333]">Clinician</TableHead>
                 <TableHead className="font-medium text-[#333]">Patient Name</TableHead>
                 <TableHead className="font-medium text-[#333]">Chair</TableHead>
                 <TableHead className="font-medium text-[#333]">Procedures</TableHead>
                 <TableHead className="font-medium text-[#333]">Status</TableHead>
-                <TableHead className="font-medium text-[#333]">Grade</TableHead>
                 <TableHead className="font-medium text-[#333]">Action</TableHead>
               </TableRow>
             </TableHeader>
@@ -436,19 +540,36 @@ export default function InstructorActivitiesContent() {
                 sortedActivities.map((activity) => (
                   <TableRow key={activity.id} className="hover:bg-gray-50 border-b border-gray-200">
                     <TableCell className="font-medium text-[#333]">{activity.id}</TableCell>
-                    <TableCell className="text-[#333]">{activity.firstName}</TableCell>
-                    <TableCell className="text-[#333]">{activity.lastName}</TableCell>
+                    <TableCell className="text-[#333]">{activity.clinicianName}</TableCell>
                     <TableCell className="text-[#333]">{activity.patientName}</TableCell>
                     <TableCell className="text-[#333]">{activity.chair}</TableCell>
                     <TableCell className="text-[#333]">
                       <div className="space-y-1">
-                        {activity.procedures &&
-                          activity.procedures.map((procedure, index) => (
-                            <div key={index} className="text-sm flex items-center">
-                              <span className="inline-block w-2 h-2 bg-[#5C8E77] rounded-full mr-2"></span>
+                        {activity.procedureDetails && activity.procedureDetails.length > 0 ? (
+                          activity.procedureDetails.map((procedure, index) => (
+                            <div key={index} className="text-sm">
+                              <div className="flex items-center justify-between">
+                                <span>{procedure.name}</span>
+                                {/* {procedure.grade && (
+                                  <Badge className="ml-2 bg-[#5C8E77]/10 text-[#5C8E77]">
+                                    {procedure.grade}
+                                  </Badge>
+                                )} */}
+                              </div>
+                              {/* {procedure.remarks && (
+                                <p className="text-xs text-gray-500 italic mt-0.5">
+                                  {procedure.remarks}
+                                </p>
+                              )} */}
+                            </div>
+                          ))
+                        ) : (
+                          activity.procedures?.map((procedure, index) => (
+                            <div key={index} className="text-sm">
                               {procedure}
                             </div>
-                          ))}
+                          ))
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -461,54 +582,25 @@ export default function InstructorActivitiesContent() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {activity.grade ? (
-                        <div className="flex items-center">
-                          <span className="font-medium">{activity.grade}</span>
-                          {isExcellentGrade(activity.grade) && (
-                            <Star className="h-4 w-4 text-yellow-500 ml-1 fill-yellow-500" />
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 text-[#5C8E77] hover:bg-[#e6f7eb]"
-                          onClick={() => handleEdit(activity)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        {activity.status !== "Completed" && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-blue-600 hover:bg-blue-50"
-                            onClick={() => handleCompleteClick(activity)}
-                            disabled={activity.status === "Incomplete"}
-                          >
-                            <Check className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {activity.status === "Completed" && !activity.grade && (
+                        {activity.status !== "Cancelled" && (
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="h-8 text-blue-600 border-blue-600 hover:bg-blue-50 bg-transparent"
+                            variant="ghost"
+                            className="h-8 text-blue-600 hover:bg-blue-50 bg-transparent"
                             onClick={() => {
-                              setActivityToGrade(activity)
+                              console.log('Opening grade modal for activity:', activity)
+                              // setActivityToGrade(activity)
+                              setCurrentActivity(activity)  
                               setGradeValue(activity.grade || "")
                               setGradeRemarks(activity.remarks || "")
-                              setIsGradeModalOpen(true)
+                              setIsGradeModalOpen(true)                              
                             }}
                           >
-                            Grade
+                            <Pencil className="h-4 w-4" />
                           </Button>
                         )}
-                        {activity.status !== "Incomplete" && (
+                        {activity.status === "In Progress" && (
                           <Button
                             size="icon"
                             variant="ghost"
@@ -518,6 +610,17 @@ export default function InstructorActivitiesContent() {
                             <X className="h-4 w-4" />
                           </Button>
                         )}
+                        {activity.status === "Cancelled" && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-red-600 hover:bg-red-50"
+                            onClick={() => handleUnarchiveClick(activity)}
+                          >
+                            <ArchiveRestore  className="h-4 w-4" />
+                          </Button>
+                        )}
+                        
                       </div>
                     </TableCell>
                   </TableRow>
@@ -531,569 +634,108 @@ export default function InstructorActivitiesContent() {
               )}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
 
-      {/* Edit Activity Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
-          {currentActivity && (
-            <>
-              <DialogHeader className="bg-white px-6 py-4 border-b border-gray-200">
-                <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Edit Activity</DialogTitle>
-              </DialogHeader>
-              <Tabs defaultValue="details" value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <div className="border-b border-gray-200">
-                  <TabsList className="bg-white h-auto p-0">
-                    <TabsTrigger
-                      value="details"
-                      className="py-3 px-6 data-[state=active]:border-b-2 data-[state=active]:border-[#5C8E77] data-[state=active]:text-[#5C8E77] data-[state=active]:shadow-none rounded-none"
-                    >
-                      Activity Details
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="assessment"
-                      className="py-3 px-6 data-[state=active]:border-b-2 data-[state=active]:border-[#5C8E77] data-[state=active]:text-[#5C8E77] data-[state=active]:shadow-none rounded-none"
-                    >
-                      Assessment
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-                <TabsContent value="details" className="p-6 m-0">
-                  <div className="grid gap-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-activityId" className="text-[#333]">
-                          Activity ID
-                        </Label>
-                        <Input
-                          id="edit-activityId"
-                          value={currentActivity.id}
-                          readOnly
-                          className="border-gray-300 bg-gray-50"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-chair" className="text-[#333]">
-                          Chair
-                        </Label>
-                        <Select
-                          value={currentActivity.chair}
-                          onValueChange={(value) => setCurrentActivity({ ...currentActivity, chair: value })}
-                        >
-                          <SelectTrigger id="edit-chair" className="border-gray-300">
-                            <SelectValue placeholder={currentActivity.chair} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Chair 03">Chair 03</SelectItem>
-                            <SelectItem value="Chair 05">Chair 05</SelectItem>
-                            <SelectItem value="Chair 08">Chair 08</SelectItem>
-                            <SelectItem value="Chair 10">Chair 10</SelectItem>
-                            <SelectItem value="Chair 12">Chair 12</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-firstName" className="text-[#333]">
-                          First Name
-                        </Label>
-                        <Input
-                          id="edit-firstName"
-                          value={currentActivity.firstName}
-                          onChange={(e) => setCurrentActivity({ ...currentActivity, firstName: e.target.value })}
-                          className="border-gray-300"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-lastName" className="text-[#333]">
-                          Last Name
-                        </Label>
-                        <Input
-                          id="edit-lastName"
-                          value={currentActivity.lastName}
-                          onChange={(e) => setCurrentActivity({ ...currentActivity, lastName: e.target.value })}
-                          className="border-gray-300"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-patientName" className="text-[#333]">
-                        Patient
-                      </Label>
-                      <Input
-                        id="edit-patientName"
-                        value={currentActivity.patientName}
-                        onChange={(e) => setCurrentActivity({ ...currentActivity, patientName: e.target.value })}
-                        className="border-gray-300"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-[#333]">Procedures</Label>
-                      <div className="border border-gray-200 rounded-md p-3 max-h-[200px] overflow-y-auto">
-                        <div className="grid grid-cols-2 gap-2">
-                          {availableProcedures.map((procedure) => (
-                            <div key={procedure} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`edit-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
-                                checked={currentActivity.selectedProcedures?.includes(procedure) || false}
-                                onCheckedChange={(checked) => handleEditProcedureChange(procedure, !!checked)}
-                              />
-                              <label
-                                htmlFor={`edit-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
-                                className="text-sm text-gray-700 cursor-pointer"
-                              >
-                                {procedure}
-                              </label>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-500">You can select multiple procedures per activity.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-status" className="text-[#333]">
-                        Status
-                      </Label>
-                      <Select
-                        value={currentActivity.status}
-                        onValueChange={(value) => setCurrentActivity({ ...currentActivity, status: value })}
-                      >
-                        <SelectTrigger id="edit-status" className="border-gray-300">
-                          <SelectValue placeholder={currentActivity.status} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Not started">Not started</SelectItem>
-                          <SelectItem value="Started">Started</SelectItem>
-                          <SelectItem value="Completed">Completed</SelectItem>
-                          <SelectItem value="Incomplete">Incomplete</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </TabsContent>
-                <TabsContent value="assessment" className="p-6 m-0">
-                  <div className="grid gap-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-grade" className="text-[#333]">
-                          Grade
-                        </Label>
-                        <Input
-                          id="edit-grade"
-                          type="number"
-                          min="0"
-                          max="100"
-                          placeholder="Enter grade (0-100)"
-                          value={currentActivity.grade}
-                          onChange={(e) => setCurrentActivity({ ...currentActivity, grade: e.target.value })}
-                          className="border-gray-300"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-assessmentStatus" className="text-[#333]">
-                          Assessment Status
-                        </Label>
-                        <Select
-                          value={currentActivity.assessmentStatus}
-                          onValueChange={(value) => setCurrentActivity({ ...currentActivity, assessmentStatus: value })}
-                        >
-                          <SelectTrigger id="edit-assessmentStatus" className="border-gray-300">
-                            <SelectValue placeholder={currentActivity.assessmentStatus || "In Progress"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Not Started">Not Started</SelectItem>
-                            <SelectItem value="In Progress">In Progress</SelectItem>
-                            <SelectItem value="Completed">Completed</SelectItem>
-                            <SelectItem value="Needs Improvement">Needs Improvement</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-remarks" className="text-[#333]">
-                        Remarks
-                      </Label>
-                      <Textarea
-                        id="edit-remarks"
-                        placeholder="Enter instructor feedback or clinical observations"
-                        value={currentActivity.remarks}
-                        onChange={(e) => setCurrentActivity({ ...currentActivity, remarks: e.target.value })}
-                        className="border-gray-300 min-h-[150px]"
-                      />
-                    </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-              <DialogFooter className="bg-white px-6 py-4 border-t border-gray-200">
-                <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="border-gray-300">
-                  Cancel
-                </Button>
-                <Button
-                  className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-                  onClick={() => handleUpdateActivity(currentActivity)}
+          {/* Pagination Controls */}
+          {sortedActivities.length > 0 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Show</span>
+                <Select
+                  value={itemsPerPage.toString()}
+                  onValueChange={(value) => setItemsPerPage(Number(value))}
                 >
-                  Update Activity
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Complete Confirmation Modal */}
-      <Dialog open={isCompleteModalOpen} onOpenChange={setIsCompleteModalOpen}>
-        <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-lg">
-          <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Confirm Action</DialogTitle>
-          </DialogHeader>
-          <div className="px-6 py-4">
-            <p className="text-[#333]">Are you sure you want to mark this activity as completed?</p>
-            {activityToAction && (
-              <div className="mt-3 p-3 bg-[#f8f9fa] rounded-md border border-gray-200">
-                <p className="font-medium text-[#333]">
-                  {activityToAction.procedures?.length > 0
-                    ? activityToAction.procedures.join(", ")
-                    : "No procedures specified"}
-                </p>
-                <p className="text-sm text-[#5C8E77]">
-                  {activityToAction.firstName} {activityToAction.lastName} • {activityToAction.chair}
-                </p>
-              </div>
-            )}
-            <p className="mt-3 text-sm text-gray-500">
-              After marking as completed, you will be prompted to grade this activity.
-            </p>
-          </div>
-          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-            <Button variant="outline" onClick={() => setIsCompleteModalOpen(false)} className="border-gray-300">
-              Cancel
-            </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleComplete}>
-              Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Archive Confirmation Modal */}
-      <Dialog open={isArchiveModalOpen} onOpenChange={setIsArchiveModalOpen}>
-        <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-lg">
-          <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Confirm Action</DialogTitle>
-          </DialogHeader>
-          <div className="px-6 py-4">
-            <p className="text-[#333]">Are you sure you want to mark this activity as incomplete?</p>
-            {activityToAction && (
-              <div className="mt-3 p-3 bg-[#f8f9fa] rounded-md border border-gray-200">
-                <p className="font-medium text-[#333]">
-                  {activityToAction.procedures?.length > 0
-                    ? activityToAction.procedures.join(", ")
-                    : "No procedures specified"}
-                </p>
-                <p className="text-sm text-[#5C8E77]">
-                  {activityToAction.firstName} {activityToAction.lastName} • {activityToAction.chair}
-                </p>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-            <Button variant="outline" onClick={() => setIsArchiveModalOpen(false)} className="border-gray-300">
-              Cancel
-            </Button>
-            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleArchive}>
-              Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Grade Activity Modal */}
-      <Dialog open={isGradeModalOpen} onOpenChange={setIsGradeModalOpen}>
-        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
-          <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Grade Activity</DialogTitle>
-          </DialogHeader>
-          <div className="px-6 py-4">
-            {activityToGrade && (
-              <>
-                <div className="mb-4 p-3 bg-[#f8f9fa] rounded-md border border-gray-200">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-[#333]">
-                        {activityToGrade.procedures?.length > 0
-                          ? activityToGrade.procedures.join(", ")
-                          : "No procedures specified"}
-                      </p>
-                      <p className="text-sm text-[#5C8E77]">
-                        {activityToGrade.firstName} {activityToGrade.lastName} • {activityToGrade.chair}
-                      </p>
-                      <p className="text-sm text-gray-500 mt-1">Patient: {activityToGrade.patientName}</p>
-                    </div>
-                    <Badge variant="outline" className={getStatusColor(activityToGrade.status)}>
-                      {activityToGrade.status}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="grade" className="text-[#333] font-medium">
-                      Grade (0-100)
-                    </Label>
-                    <Input
-                      id="grade"
-                      type="number"
-                      min="0"
-                      max="100"
-                      placeholder="Enter grade"
-                      value={gradeValue}
-                      onChange={(e) => setGradeValue(e.target.value)}
-                      className="border-gray-300"
-                    />
-                    <div className="flex items-center text-xs text-gray-500">
-                      <div className="flex items-center mr-3">
-                        <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 mr-1" />
-                        <span>Excellent (85-100)</span>
-                      </div>
-                      <span>Pass (75-84)</span>
-                      <span className="mx-3">|</span>
-                      <span className="text-red-500">Fail (Below 75)</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="remarks" className="text-[#333] font-medium">
-                      Feedback & Remarks
-                    </Label>
-                    <Textarea
-                      id="remarks"
-                      placeholder="Enter feedback for the clinician"
-                      value={gradeRemarks}
-                      onChange={(e) => setGradeRemarks(e.target.value)}
-                      className="border-gray-300 min-h-[120px]"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-            <Button variant="outline" onClick={() => setIsGradeModalOpen(false)} className="border-gray-300">
-              Cancel
-            </Button>
-            <Button
-              className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-              onClick={handleGradeActivity}
-              disabled={!gradeValue}
-            >
-              Submit Grade
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Procedure Modal */}
-      <Dialog open={isAddProcedureModalOpen} onOpenChange={setIsAddProcedureModalOpen}>
-        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
-          <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Add Procedures</DialogTitle>
-          </DialogHeader>
-          <div className="px-6 py-4">
-            {currentActivity && (
-              <>
-                <div className="mb-4 p-3 bg-[#f8f9fa] rounded-md border border-gray-200">
-                  <p className="font-medium text-[#333]">
-                    Adding procedures to activity for {currentActivity.firstName} {currentActivity.lastName}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Current procedures:{" "}
-                    {currentActivity.procedures?.length > 0 ? currentActivity.procedures.join(", ") : "None"}
-                  </p>
-                </div>
-                <div className="space-y-4">
-                  <Label className="text-[#333] font-medium">Select Additional Procedures</Label>
-                  <div className="border border-gray-200 rounded-md p-3 max-h-[200px] overflow-y-auto">
-                    <div className="grid grid-cols-2 gap-2">
-                      {availableProcedures
-                        .filter((procedure) => !currentActivity.procedures?.includes(procedure))
-                        .map((procedure) => (
-                          <div key={procedure} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`add-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
-                              checked={selectedProcedures.includes(procedure)}
-                              onCheckedChange={(checked) => handleProcedureChange(procedure, !!checked)}
-                            />
-                            <label
-                              htmlFor={`add-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
-                              className="text-sm text-gray-700 cursor-pointer"
-                            >
-                              {procedure}
-                            </label>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    Select the additional procedures you want to add to this activity.
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-            <Button variant="outline" onClick={() => setIsAddProcedureModalOpen(false)} className="border-gray-300">
-              Cancel
-            </Button>
-            <Button
-              className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-              onClick={handleSaveAddedProcedures}
-              disabled={selectedProcedures.length === 0}
-            >
-              Add Procedures
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* New Activity Modal */}
-      {/* <Dialog open={isNewActivityModalOpen} onOpenChange={setIsNewActivityModalOpen}>
-        <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
-          <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Create New Activity</DialogTitle>
-          </DialogHeader>
-          <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
-            <div className="grid gap-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new-firstName" className="text-[#333]">
-                    First Name
-                  </Label>
-                  <Input
-                    id="new-firstName"
-                    value={newActivity.firstName}
-                    onChange={(e) => setNewActivity({ ...newActivity, firstName: e.target.value })}
-                    placeholder="Enter first name"
-                    className="border-gray-300"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-lastName" className="text-[#333]">
-                    Last Name
-                  </Label>
-                  <Input
-                    id="new-lastName"
-                    value={newActivity.lastName}
-                    onChange={(e) => setNewActivity({ ...newActivity, lastName: e.target.value })}
-                    placeholder="Enter last name"
-                    className="border-gray-300"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-patientName" className="text-[#333]">
-                  Patient Name
-                </Label>
-                <Input
-                  id="new-patientName"
-                  value={newActivity.patientName}
-                  onChange={(e) => setNewActivity({ ...newActivity, patientName: e.target.value })}
-                  placeholder="Enter patient name"
-                  className="border-gray-300"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-chair" className="text-[#333]">
-                  Chair
-                </Label>
-                <Select onValueChange={(value) => setNewActivity({ ...newActivity, chair: value })}>
-                  <SelectTrigger id="new-chair" className="border-gray-300">
-                    <SelectValue placeholder="Select chair" />
+                  <SelectTrigger className="w-[70px]">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Chair 03">Chair 03</SelectItem>
-                    <SelectItem value="Chair 05">Chair 05</SelectItem>
-                    <SelectItem value="Chair 08">Chair 08</SelectItem>
-                    <SelectItem value="Chair 10">Chair 10</SelectItem>
-                    <SelectItem value="Chair 12">Chair 12</SelectItem>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
                   </SelectContent>
                 </Select>
+                <span className="text-sm text-gray-600">entries</span>
               </div>
-              <div className="space-y-2">
-                <Label className="text-[#333]">Procedures</Label>
-                <div className="border border-gray-200 rounded-md p-3 max-h-[200px] overflow-y-auto">
-                  <div className="grid grid-cols-2 gap-2">
-                    {availableProcedures.map((procedure) => (
-                      <div key={procedure} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`new-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
-                          checked={newActivity.procedures?.includes(procedure)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setNewActivity({
-                                ...newActivity,
-                                procedures: [...(newActivity.procedures || []), procedure],
-                              })
-                            } else {
-                              setNewActivity({
-                                ...newActivity,
-                                procedures: newActivity.procedures?.filter((p) => p !== procedure) || [],
-                              })
-                            }
-                          }}
-                        />
-                        <label
-                          htmlFor={`new-${procedure.toLowerCase().replace(/\s+/g, "-")}`}
-                          className="text-sm text-gray-700 cursor-pointer"
+              
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">
+                  Showing {startIndex + 1} to {Math.min(endIndex, sortedActivities.length)} of {sortedActivities.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="h-8 w-8 p-0"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(page => {
+                      if (totalPages <= 7) return true
+                      if (page === 1 || page === totalPages) return true
+                      if (Math.abs(page - currentPage) <= 1) return true
+                      return false
+                    })
+                    .map((page, index, array) => (
+                      <div key={page} className="flex items-center">
+                        {index > 0 && array[index - 1] !== page - 1 && (
+                          <span className="px-2 text-gray-400">...</span>
+                        )}
+                        <Button
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(page)}
+                          className={`h-8 w-8 p-0 ${
+                            currentPage === page ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""
+                          }`}
                         >
-                          {procedure}
-                        </label>
+                          {page}
+                        </Button>
                       </div>
                     ))}
-                  </div>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="h-8 w-8 p-0"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
                 </div>
-                <p className="text-xs text-gray-500">You can select multiple procedures per activity.</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-status" className="text-[#333]">
-                  Status
-                </Label>
-                <Select
-                  defaultValue="Not started"
-                  onValueChange={(value) => setNewActivity({ ...newActivity, status: value })}
-                >
-                  <SelectTrigger id="new-status" className="border-gray-300">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Not started">Not started</SelectItem>
-                    <SelectItem value="Started">Started</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </div>
-          </div>
-          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-            <Button variant="outline" onClick={() => setIsNewActivityModalOpen(false)} className="border-gray-300">
-              Cancel
-            </Button>
-            <Button
-              className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-              onClick={handleCreateActivity}
-              disabled={
-                !newActivity.firstName ||
-                !newActivity.lastName ||
-                !newActivity.patientName ||
-                !newActivity.chair ||
-                !newActivity.procedures?.length
-              }
-            >
-              Create Activity
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog> */}
+          )}
+        </CardContent>
+      </Card>  
 
-      <Toaster />
+      <ArchiveConfirmationModal
+        isOpen={isArchiveModalOpen}
+        onClose={() => setIsArchiveModalOpen(false)}
+        onConfirm={handleArchive}
+        activity={currentActivity}
+      />
+
+      <GradingModal
+        isOpen={isGradeModalOpen}
+        onClose={() => setIsGradeModalOpen(false)}
+        currentActivity={currentActivity}
+        onProcedureChange={handleProcedureGradeChange}
+        onSave={handleSaveGrades} // but maybe here you only update local state
+      />
+
+      <UnarchiveConfirmationModal
+        isOpen={isUnarchiveModalOpen}
+        onClose={() => setIsUnarchiveModalOpen(false)}
+        onConfirm={handleUnarchive}
+        activity={currentActivity}
+      />
+      
+     <Toaster />
     </>
   )
 }

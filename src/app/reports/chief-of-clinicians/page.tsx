@@ -3,7 +3,17 @@
 import type React from "react"
 
 import { useState, useEffect, useMemo } from "react"
-import { Edit, Plus, FileText, FileSpreadsheet, Search, AlertCircle, AlertTriangle } from "lucide-react"
+import {
+  Edit,
+  Plus,
+  FileText,
+  FileSpreadsheet,
+  Search,
+  AlertCircle,
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -29,14 +39,14 @@ interface AcademicYear {
 
 interface Clinician {
   id: string
+  clinicianId: string // student_id from clinician_records
   firstName: string
   lastName: string
-  yearLevel: string
+  year: string // year_level from clinician_records
   section: string
-  gender: string
-  status: "Enrolled" | "Not Enrolled"
-  academicYear: string
-  semester: string
+  sex: string // sex from users table
+  academicYearId: string
+  createdAt: string
 }
 
 interface Activity {
@@ -49,6 +59,7 @@ interface Activity {
   date: string
   academicYear: string
   semester: string
+  grade?: string // Added grade property
 }
 
 interface NewAcademicYear {
@@ -58,12 +69,35 @@ interface NewAcademicYear {
   status: "Active" | "Inactive"
 }
 
+// Pagination state and types
+interface Pagination {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
 export default function ReportsPage() {
   const { toast } = useToast()
-  const [selectedYear, setSelectedYear] = useState("2024-2025")
-  const [selectedSemester, setSelectedSemester] = useState("1st")
+  const [selectedYear, setSelectedYear] = useState("all")
+  const [selectedSemester, setSelectedSemester] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+
+  const [academicYearPage, setAcademicYearPage] = useState(1)
+  const [activityHistoryPage, setActivityHistoryPage] = useState(1)
+  const [academicYearPagination, setAcademicYearPagination] = useState<Pagination>({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0,
+  })
+  const [activityHistoryPagination, setActivityHistoryPagination] = useState<Pagination>({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0,
+  })
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false)
@@ -90,21 +124,27 @@ export default function ReportsPage() {
 
   useEffect(() => {
     fetchAcademicYears()
-  }, [])
+  }, [academicYearPage]) // Added page dependency
 
   const fetchAcademicYears = async () => {
     try {
       setLoading(true)
-      console.log("[v0] Fetching academic years from /api/academic-years")
-      const response = await fetch("/api/academic-years")
-
-      console.log("[v0] Response status:", response.status)
-      console.log("[v0] Response ok:", response.ok)
+      const params = new URLSearchParams({
+        page: academicYearPage.toString(),
+        limit: "10",
+      })
+      const response = await fetch(`/api/academic-years?${params}`)
 
       if (response.ok) {
-        const data = await response.json()
-        console.log("[v0] Academic years data:", data)
-        setAcademicYears(data)
+        const result = await response.json()
+
+        if (result.data) {
+          setAcademicYears(result.data)
+          setAcademicYearPagination(result.pagination)
+        } else {
+          // Fallback for non-paginated response
+          setAcademicYears(result)
+        }
       } else {
         const errorText = await response.text()
         console.error("[v0] API Error Response:", errorText)
@@ -128,139 +168,109 @@ export default function ReportsPage() {
     }
   }
 
-  const clinicianHistory: Clinician[] = [
-    {
-      id: "C2024-001",
-      firstName: "Maria",
-      lastName: "Santos",
-      yearLevel: "3rd Year",
-      section: "A",
-      gender: "Female",
-      status: "Enrolled",
-      academicYear: "2024-2025",
-      semester: "1st",
-    },
-    {
-      id: "C2024-002",
-      firstName: "John",
-      lastName: "Dela Cruz",
-      yearLevel: "4th Year",
-      section: "B",
-      gender: "Male",
-      status: "Enrolled",
-      academicYear: "2024-2025",
-      semester: "1st",
-    },
-    {
-      id: "C2024-003",
-      firstName: "Anna",
-      lastName: "Lim",
-      yearLevel: "3rd Year",
-      section: "A",
-      gender: "Female",
-      status: "Not Enrolled",
-      academicYear: "2023-2024",
-      semester: "2nd",
-    },
-    {
-      id: "C2024-004",
-      firstName: "Mark",
-      lastName: "Aquino",
-      yearLevel: "4th Year",
-      section: "C",
-      gender: "Male",
-      status: "Enrolled",
-      academicYear: "2024-2025",
-      semester: "1st",
-    },
-  ]
+  const [clinicianHistory, setClinicianHistory] = useState<Clinician[]>([])
+  const [isLoadingClinicians, setIsLoadingClinicians] = useState(false)
+  const [clinicianPagination, setClinicianPagination] = useState<Pagination>({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0,
+  })
+  const [clinicianPage, setClinicianPage] = useState(1)
 
-  const activityHistory: Activity[] = [
-    {
-      id: "A2024-001",
-      firstName: "Maria",
-      lastName: "Santos",
-      chair: "Chair 1",
-      instructor: "Dr. Reyes",
-      procedure: "Dental Cleaning",
-      date: "2024-05-15",
-      academicYear: "2024-2025",
-      semester: "1st",
-    },
-    {
-      id: "A2024-002",
-      firstName: "John",
-      lastName: "Dela Cruz",
-      chair: "Chair 3",
-      instructor: "Dr. Santos",
-      procedure: "Tooth Extraction",
-      date: "2024-05-16",
-      academicYear: "2024-2025",
-      semester: "1st",
-    },
-    {
-      id: "A2024-003",
-      firstName: "Anna",
-      lastName: "Lim",
-      chair: "Chair 2",
-      instructor: "Dr. Reyes",
-      procedure: "Dental Filling",
-      date: "2024-05-17",
-      academicYear: "2023-2024",
-      semester: "2nd",
-    },
-    {
-      id: "A2024-004",
-      firstName: "Mark",
-      lastName: "Aquino",
-      chair: "Chair 5",
-      instructor: "Dr. Garcia",
-      procedure: "Root Canal",
-      date: "2024-05-18",
-      academicYear: "2024-2025",
-      semester: "1st",
-    },
-    {
-      id: "A2024-005",
-      firstName: "Sarah",
-      lastName: "Garcia",
-      chair: "Chair 4",
-      instructor: "Dr. Santos",
-      procedure: "Dental Cleaning",
-      date: "2024-05-19",
-      academicYear: "2024-2025",
-      semester: "1st",
-    },
-  ]
+  const fetchClinicianHistory = async () => {
+    setIsLoadingClinicians(true)
+    try {
+      const params = new URLSearchParams()
+      if (selectedYear !== "all") {
+        // Find the academic year ID from the selected year
+        const selectedAcademicYear = academicYears.find((ay) => ay.academicYear === selectedYear)
+        if (selectedAcademicYear) {
+          params.append("academicYear", selectedAcademicYear.id)
+        }
+      }
+      if (searchTerm.trim()) params.append("search", searchTerm.trim())
+      params.append("page", clinicianPage.toString())
+      params.append("limit", "10")
+
+      const response = await fetch(`/api/clinician-records?${params}`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch clinician records")
+      }
+
+      const result = await response.json()
+
+      setClinicianHistory(result.data || [])
+      if (result.pagination) {
+        setClinicianPagination(result.pagination)
+      }
+    } catch (error) {
+      console.error("Error fetching clinician records:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch clinician history. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingClinicians(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchClinicianHistory()
+  }, [selectedYear, searchTerm, clinicianPage]) // Removed selectedSemester dependency
+
+  const [activityHistory, setActivityHistory] = useState<Activity[]>([])
+  const [isLoadingActivity, setIsLoadingActivity] = useState(false)
+
+  const fetchActivityHistory = async () => {
+    setIsLoadingActivity(true)
+    try {
+      const params = new URLSearchParams()
+      if (selectedYear !== "all") params.append("academicYear", selectedYear)
+      if (selectedSemester !== "all") params.append("semester", selectedSemester)
+      if (searchTerm.trim()) params.append("search", searchTerm.trim())
+      params.append("page", activityHistoryPage.toString())
+      params.append("limit", "10")
+
+      const response = await fetch(`/api/activity-history?${params}`)
+      if (!response.ok) {
+        throw new Error("Failed to fetch activity history")
+      }
+      const result = await response.json()
+      setActivityHistory(result.data || [])
+      if (result.pagination) {
+        setActivityHistoryPagination(result.pagination)
+      }
+    } catch (error) {
+      console.error("Error fetching activity history:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch activity history. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingActivity(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchActivityHistory()
+  }, [selectedYear, selectedSemester, searchTerm, activityHistoryPage]) // Added page dependency
 
   const filteredClinicianHistory = useMemo(() => {
-    return clinicianHistory.filter((clinician) => {
-      const matchesYear = clinician.academicYear === selectedYear
-      const matchesSemester = clinician.semester === selectedSemester
-      const matchesSearch =
-        searchTerm === "" ||
-        clinician.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        clinician.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        clinician.id.toLowerCase().includes(searchTerm.toLowerCase())
-
-      return matchesYear && matchesSemester && matchesSearch
-    })
-  }, [selectedYear, selectedSemester, searchTerm])
+    return clinicianHistory
+  }, [clinicianHistory])
 
   const filteredActivityHistory = useMemo(() => {
-    return activityHistory.filter((activity) => {
-      const matchesYear = activity.academicYear === selectedYear
-      const matchesSemester = activity.semester === selectedSemester
-      const matchesSearch =
-        searchTerm === "" ||
-        activity.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        activity.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        activity.procedure.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        activity.instructor.toLowerCase().includes(searchTerm.toLowerCase())
+    return activityHistory
+  }, [activityHistory])
 
-      return matchesYear && matchesSemester && matchesSearch
-    })
-  }, [selectedYear, selectedSemester, searchTerm])
+  const academicYearOptions = useMemo(() => {
+    const years = academicYears.map((ay) => ay.academicYear)
+    return [...new Set(years)].sort().reverse()
+  }, [academicYears])
 
   const handleExport = async (format: "csv" | "pdf", data: any[], filename: string) => {
     if (data.length === 0) {
@@ -282,11 +292,17 @@ export default function ReportsPage() {
           description: `${filename}.csv has been downloaded successfully.`,
         })
       } else if (format === "pdf") {
-        // Enhanced PDF export placeholder with better user feedback
-        toast({
-          title: "PDF Export Coming Soon",
-          description: "PDF export functionality will be available in the next update.",
-        })
+        const printWindow = window.open("", "_blank")
+        if (printWindow) {
+          const htmlContent = generatePDFContent(data, filename)
+          printWindow.document.write(htmlContent)
+          printWindow.document.close()
+          printWindow.print()
+          toast({
+            title: "PDF Export",
+            description: "PDF print dialog opened. Please save or print the document.",
+          })
+        }
       }
     } catch (error) {
       console.error("Export error:", error)
@@ -332,6 +348,41 @@ export default function ReportsPage() {
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
+  }
+
+  const generatePDFContent = (data: any[], title: string): string => {
+    const headers = Object.keys(data[0] || {})
+    const rows = data.map((row) => headers.map((header) => String(row[header] || "")).join("</td><td>"))
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            h1 { color: #059669; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f3f4f6; font-weight: bold; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            @media print { body { margin: 0; } }
+          </style>
+        </head>
+        <body>
+          <h1>${title.replace(/-/g, " ").toUpperCase()}</h1>
+          <p>Generated on: ${new Date().toLocaleDateString()}</p>
+          <table>
+            <thead>
+              <tr><th>${headers.join("</th><th>")}</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>${rows.join("</td></tr><tr><td>")}</td></tr>
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `
   }
 
   const validateNewAcademicYear = (): boolean => {
@@ -605,6 +656,61 @@ export default function ReportsPage() {
     })
   }, [academicYears, searchTerm])
 
+  const PaginationControls = ({
+    pagination,
+    onPageChange,
+  }: {
+    pagination: Pagination
+    onPageChange: (page: number) => void
+  }) => {
+    if (pagination.totalPages <= 1) return null
+
+    const pages = []
+    // Display up to 5 pages, centered around the current page if possible
+    const startPage = Math.max(1, pagination.page - 2)
+    const endPage = Math.min(pagination.totalPages, pagination.page + 2)
+
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i)
+    }
+
+    return (
+      <div className="flex items-center justify-center gap-2 py-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(pagination.page - 1)}
+          disabled={pagination.page <= 1}
+          className="flex items-center gap-1"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        {pages.map((page) => (
+          <Button
+            key={page}
+            variant={page === pagination.page ? "default" : "outline"}
+            size="sm"
+            onClick={() => onPageChange(page)}
+            className={page === pagination.page ? "bg-emerald-600 hover:bg-emerald-700" : ""}
+          >
+            {page}
+          </Button>
+        ))}
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(pagination.page + 1)}
+          disabled={pagination.page >= pagination.totalPages}
+          className="flex items-center gap-1"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -731,162 +837,171 @@ export default function ReportsPage() {
                 {loading ? (
                   <div className="flex justify-center items-center py-12">Loading...</div>
                 ) : (
-                  <Table>
-                    <TableHeader className="bg-white border-b border-gray-200">
-                      <TableRow className="hover:bg-white border-b-0">
-                        <TableHead className="font-medium text-gray-900">ID</TableHead>
-                        <TableHead className="font-medium text-gray-900">Academic Year</TableHead>
-                        <TableHead className="font-medium text-gray-900">Semester</TableHead>
-                        <TableHead className="font-medium text-gray-900">Status</TableHead>
-                        <TableHead className="font-medium text-gray-900">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {academicYears.map((year) => (
-                        <TableRow key={year.id} className="hover:bg-gray-50 border-b border-gray-200">
-                          <TableCell className="font-medium text-gray-900">{year.id}</TableCell>
-                          <TableCell className="text-gray-900">{year.academicYear}</TableCell>
-                          <TableCell className="text-gray-900">{year.semester} Semester</TableCell>
-                          <TableCell>
-                            <Badge
-                              className={
-                                year.status === "Active"
-                                  ? "bg-green-100 text-green-800 hover:bg-green-100"
-                                  : "bg-gray-100 text-gray-800 hover:bg-gray-100"
-                              }
-                            >
-                              {year.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Dialog
-                              open={showEditModal && selectedAcademicYear?.id === year.id}
-                              onOpenChange={(open) => {
-                                if (!open) {
-                                  setShowEditModal(false)
-                                  setSelectedAcademicYear(null)
+                  <>
+                    <Table>
+                      <TableHeader className="bg-white border-b border-gray-200">
+                        <TableRow className="hover:bg-white border-b-0">
+                          <TableHead className="font-medium text-gray-900">ID</TableHead>
+                          <TableHead className="font-medium text-gray-900">Academic Year</TableHead>
+                          <TableHead className="font-medium text-gray-900">Semester</TableHead>
+                          <TableHead className="font-medium text-gray-900">Status</TableHead>
+                          <TableHead className="font-medium text-gray-900">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {academicYears.map((year) => (
+                          <TableRow key={year.id} className="hover:bg-gray-50 border-b border-gray-200">
+                            <TableCell className="font-medium text-gray-900">{year.id}</TableCell>
+                            <TableCell className="text-gray-900">{year.academicYear}</TableCell>
+                            <TableCell className="text-gray-900">{year.semester} Semester</TableCell>
+                            <TableCell>
+                              <Badge
+                                className={
+                                  year.status === "Active"
+                                    ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                    : "bg-gray-100 text-gray-800 hover:bg-gray-100"
                                 }
-                              }}
-                            >
-                              <DialogTrigger asChild>
-                                <Button
-                                  size="icon"
-                                  className="h-8 w-8 text-white bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center"
-                                  onClick={() => {
-                                    setSelectedAcademicYear(year)
-                                    setShowEditModal(true)
-                                  }}
-                                  aria-label={`Edit ${year.academicYear}`}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="sm:max-w-md">
-                                <DialogHeader>
-                                  <DialogTitle className="text-xl font-semibold text-emerald-600">
-                                    Edit Academic Year
-                                  </DialogTitle>
-                                </DialogHeader>
-                                {selectedAcademicYear && (
-                                  <div className="space-y-6">
-                                    <div className="space-y-2">
-                                      <Label htmlFor="edit-academic-year" className="text-sm font-medium text-gray-900">
-                                        Academic Year Start
-                                      </Label>
-                                      <div className="flex items-center gap-2">
-                                        <Input
-                                          id="edit-academic-year"
-                                          type="number"
-                                          min="2000"
-                                          max="2100"
-                                          defaultValue={Number.parseInt(
-                                            selectedAcademicYear.academicYear.split("-")[0],
-                                          )}
-                                          onChange={handleEditStartYearChange}
-                                          className="border-gray-300"
-                                        />
-                                        <span className="text-gray-500">-</span>
-                                        <Input
-                                          type="number"
-                                          value={Number.parseInt(selectedAcademicYear.academicYear.split("-")[0]) + 1}
-                                          readOnly
-                                          className="border-gray-300 bg-gray-50"
-                                          tabIndex={-1}
-                                        />
+                              >
+                                {year.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Dialog
+                                open={showEditModal && selectedAcademicYear?.id === year.id}
+                                onOpenChange={(open) => {
+                                  if (!open) {
+                                    setShowEditModal(false)
+                                    setSelectedAcademicYear(null)
+                                  }
+                                }}
+                              >
+                                <DialogTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    className="h-8 w-8 text-white bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center"
+                                    onClick={() => {
+                                      setSelectedAcademicYear(year)
+                                      setShowEditModal(true)
+                                    }}
+                                    aria-label={`Edit ${year.academicYear}`}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-md">
+                                  <DialogHeader>
+                                    <DialogTitle className="text-xl font-semibold text-emerald-600">
+                                      Edit Academic Year
+                                    </DialogTitle>
+                                  </DialogHeader>
+                                  {selectedAcademicYear && (
+                                    <div className="space-y-6">
+                                      <div className="space-y-2">
+                                        <Label
+                                          htmlFor="edit-academic-year"
+                                          className="text-sm font-medium text-gray-900"
+                                        >
+                                          Academic Year Start
+                                        </Label>
+                                        <div className="flex items-center gap-2">
+                                          <Input
+                                            id="edit-academic-year"
+                                            type="number"
+                                            min="2000"
+                                            max="2100"
+                                            defaultValue={Number.parseInt(
+                                              selectedAcademicYear.academicYear.split("-")[0],
+                                            )}
+                                            onChange={handleEditStartYearChange}
+                                            className="border-gray-300"
+                                          />
+                                          <span className="text-gray-500">-</span>
+                                          <Input
+                                            type="number"
+                                            value={Number.parseInt(selectedAcademicYear.academicYear.split("-")[0]) + 1}
+                                            readOnly
+                                            className="border-gray-300 bg-gray-50"
+                                            tabIndex={-1}
+                                          />
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                          The academic year will be {selectedAcademicYear.academicYear}
+                                        </p>
                                       </div>
-                                      <p className="text-xs text-gray-500 mt-1">
-                                        The academic year will be {selectedAcademicYear.academicYear}
-                                      </p>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label htmlFor="edit-semester" className="text-sm font-medium text-gray-900">
-                                        Semester
-                                      </Label>
-                                      {/* Fix semester selection to update the selectedAcademicYear state */}
-                                      <Select
-                                        defaultValue={selectedAcademicYear.semester}
-                                        onValueChange={(value) => {
-                                          setSelectedAcademicYear({
-                                            ...selectedAcademicYear,
-                                            semester: value,
-                                          })
-                                        }}
-                                      >
-                                        <SelectTrigger id="edit-semester" className="border-gray-300">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="1st">1st Semester</SelectItem>
-                                          <SelectItem value="2nd">2nd Semester</SelectItem>
-                                          <SelectItem value="summer">Summer</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label htmlFor="edit-status" className="text-sm font-medium text-gray-900">
-                                        Status
-                                      </Label>
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-sm text-gray-500">
-                                          {selectedAcademicYear.status === "Active" ? "Active" : "Inactive"}
-                                        </span>
-                                        <Switch
-                                          id="edit-status"
-                                          checked={selectedAcademicYear.status === "Active"}
-                                          onCheckedChange={(checked) => {
+                                      <div className="space-y-2">
+                                        <Label htmlFor="edit-semester" className="text-sm font-medium text-gray-900">
+                                          Semester
+                                        </Label>
+                                        {/* Fix semester selection to update the selectedAcademicYear state */}
+                                        <Select
+                                          defaultValue={selectedAcademicYear.semester}
+                                          onValueChange={(value) => {
                                             setSelectedAcademicYear({
                                               ...selectedAcademicYear,
-                                              status: checked ? "Active" : "Inactive",
+                                              semester: value,
                                             })
                                           }}
-                                          aria-label="Toggle academic year status"
-                                        />
+                                        >
+                                          <SelectTrigger id="edit-semester" className="border-gray-300">
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="1st">1st Semester</SelectItem>
+                                            <SelectItem value="2nd">2nd Semester</SelectItem>
+                                            <SelectItem value="summer">Summer</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                      <div className="space-y-2">
+                                        <Label htmlFor="edit-status" className="text-sm font-medium text-gray-900">
+                                          Status
+                                        </Label>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-sm text-gray-500">
+                                            {selectedAcademicYear.status === "Active" ? "Active" : "Inactive"}
+                                          </span>
+                                          <Switch
+                                            id="edit-status"
+                                            checked={selectedAcademicYear.status === "Active"}
+                                            onCheckedChange={(checked) => {
+                                              setSelectedAcademicYear({
+                                                ...selectedAcademicYear,
+                                                status: checked ? "Active" : "Inactive",
+                                              })
+                                            }}
+                                            aria-label="Toggle academic year status"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="pt-4 flex justify-end gap-2">
+                                        <Button
+                                          variant="outline"
+                                          onClick={() => setShowEditModal(false)}
+                                          className="border-gray-300"
+                                        >
+                                          Cancel
+                                        </Button>
+                                        <Button
+                                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                          onClick={handleUpdateAcademicYearClick}
+                                        >
+                                          Update
+                                        </Button>
                                       </div>
                                     </div>
-                                    <div className="pt-4 flex justify-end gap-2">
-                                      <Button
-                                        variant="outline"
-                                        onClick={() => setShowEditModal(false)}
-                                        className="border-gray-300"
-                                      >
-                                        Cancel
-                                      </Button>
-                                      <Button
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                                        onClick={handleUpdateAcademicYearClick}
-                                      >
-                                        Update
-                                      </Button>
-                                    </div>
-                                  </div>
-                                )}
-                              </DialogContent>
-                            </Dialog>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                                  )}
+                                </DialogContent>
+                              </Dialog>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    <PaginationControls
+                      pagination={academicYearPagination}
+                      onPageChange={(page) => setAcademicYearPage(page)}
+                    />
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -978,7 +1093,7 @@ export default function ReportsPage() {
                   <CardTitle className="text-xl font-semibold text-gray-900">Report Filters</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="academic-year" className="text-sm font-medium text-gray-900">
                         Academic Year
@@ -988,24 +1103,12 @@ export default function ReportsPage() {
                           <SelectValue placeholder="Select academic year" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="2024-2025">AY 2024-2025</SelectItem>
-                          <SelectItem value="2023-2024">AY 2023-2024</SelectItem>
-                          <SelectItem value="2022-2023">AY 2022-2023</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="semester" className="text-sm font-medium text-gray-900">
-                        Semester
-                      </Label>
-                      <Select value={selectedSemester} onValueChange={setSelectedSemester}>
-                        <SelectTrigger id="semester" className="border-gray-300">
-                          <SelectValue placeholder="Select semester" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1st">1st Semester</SelectItem>
-                          <SelectItem value="2nd">2nd Semester</SelectItem>
-                          <SelectItem value="summer">Summer</SelectItem>
+                          <SelectItem value="all">All Academic Years</SelectItem>
+                          {academicYearOptions.map((year) => (
+                            <SelectItem key={year} value={year}>
+                              AY {year}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1035,10 +1138,15 @@ export default function ReportsPage() {
               <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
                 <div>
                   <CardTitle className="text-xl font-semibold text-gray-900">
-                    Clinician History - AY {selectedYear}, {selectedSemester} Semester
+                    Clinician History
+                    {selectedYear !== "all" ? (
+                      <span className="text-sm font-normal text-gray-600 ml-2">
+                        - {selectedYear !== "all" ? `AY ${selectedYear}` : "All Years"}
+                      </span>
+                    ) : null}
                   </CardTitle>
                   <p className="text-sm text-gray-600 mt-1">
-                    Showing {filteredClinicianHistory.length} of {clinicianHistory.length} records
+                    {isLoadingClinicians ? "Loading..." : `Showing ${filteredClinicianHistory.length} records`}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -1047,8 +1155,15 @@ export default function ReportsPage() {
                     onClick={() =>
                       handleExport(
                         "csv",
-                        filteredClinicianHistory,
-                        `clinician-history-${selectedYear}-${selectedSemester}`,
+                        filteredClinicianHistory.map((c) => ({
+                          "Clinician ID": c.clinicianId,
+                          "First Name": c.firstName,
+                          "Last Name": c.lastName,
+                          Year: c.year,
+                          Section: c.section,
+                          Sex: c.sex,
+                        })),
+                        `clinician-history-${selectedYear}`,
                       )
                     }
                     disabled={isLoading || filteredClinicianHistory.length === 0}
@@ -1061,8 +1176,15 @@ export default function ReportsPage() {
                     onClick={() =>
                       handleExport(
                         "pdf",
-                        filteredClinicianHistory,
-                        `clinician-history-${selectedYear}-${selectedSemester}`,
+                        filteredClinicianHistory.map((c) => ({
+                          "Clinician ID": c.clinicianId,
+                          "First Name": c.firstName,
+                          "Last Name": c.lastName,
+                          Year: c.year,
+                          Section: c.section,
+                          Sex: c.sex,
+                        })),
+                        `clinician-history-${selectedYear}`,
                       )
                     }
                     disabled={isLoading || filteredClinicianHistory.length === 0}
@@ -1072,49 +1194,48 @@ export default function ReportsPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                {filteredClinicianHistory.length === 0 ? (
+                {isLoadingClinicians ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mb-4"></div>
+                    <p className="text-lg font-medium">Loading clinician history...</p>
+                  </div>
+                ) : filteredClinicianHistory.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-gray-500">
                     <AlertCircle className="h-12 w-12 mb-4" />
                     <p className="text-lg font-medium">No records found</p>
                     <p className="text-sm">Try adjusting your filters or search terms</p>
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader className="bg-white border-b border-gray-200">
-                      <TableRow className="hover:bg-white border-b-0">
-                        <TableHead className="font-medium text-gray-900">Clinician ID</TableHead>
-                        <TableHead className="font-medium text-gray-900">First Name</TableHead>
-                        <TableHead className="font-medium text-gray-900">Last Name</TableHead>
-                        <TableHead className="font-medium text-gray-900">Year</TableHead>
-                        <TableHead className="font-medium text-gray-900">Section</TableHead>
-                        <TableHead className="font-medium text-gray-900">Sex</TableHead>
-                        <TableHead className="font-medium text-gray-900">Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredClinicianHistory.map((clinician) => (
-                        <TableRow key={clinician.id} className="hover:bg-gray-50 border-b border-gray-200">
-                          <TableCell className="font-medium text-gray-900">{clinician.id}</TableCell>
-                          <TableCell className="text-gray-900">{clinician.firstName}</TableCell>
-                          <TableCell className="text-gray-900">{clinician.lastName}</TableCell>
-                          <TableCell className="text-gray-900">{clinician.yearLevel}</TableCell>
-                          <TableCell className="text-gray-900">{clinician.section}</TableCell>
-                          <TableCell className="text-gray-900">{clinician.gender}</TableCell>
-                          <TableCell>
-                            <Badge
-                              className={
-                                clinician.status === "Enrolled"
-                                  ? "bg-green-100 text-green-800 hover:bg-green-100"
-                                  : "bg-gray-100 text-gray-800 hover:bg-gray-100"
-                              }
-                            >
-                              {clinician.status}
-                            </Badge>
-                          </TableCell>
+                  <>
+                    <Table>
+                      <TableHeader className="bg-white border-b border-gray-200">
+                        <TableRow className="hover:bg-white border-b-0">
+                          <TableHead className="font-medium text-gray-900">Clinician ID</TableHead>
+                          <TableHead className="font-medium text-gray-900">First Name</TableHead>
+                          <TableHead className="font-medium text-gray-900">Last Name</TableHead>
+                          <TableHead className="font-medium text-gray-900">Year</TableHead>
+                          <TableHead className="font-medium text-gray-900">Section</TableHead>
+                          <TableHead className="font-medium text-gray-900">Sex</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredClinicianHistory.map((clinician) => (
+                          <TableRow key={clinician.id} className="hover:bg-gray-50 border-b border-gray-200">
+                            <TableCell className="font-medium text-gray-900">{clinician.clinicianId}</TableCell>
+                            <TableCell className="text-gray-900">{clinician.firstName}</TableCell>
+                            <TableCell className="text-gray-900">{clinician.lastName}</TableCell>
+                            <TableCell className="text-gray-900">{clinician.year}</TableCell>
+                            <TableCell className="text-gray-900">{clinician.section}</TableCell>
+                            <TableCell className="text-gray-900">{clinician.sex}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    <PaginationControls
+                      pagination={clinicianPagination}
+                      onPageChange={(page) => setClinicianPage(page)}
+                    />
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -1139,9 +1260,12 @@ export default function ReportsPage() {
                           <SelectValue placeholder="Select academic year" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="2024-2025">AY 2024-2025</SelectItem>
-                          <SelectItem value="2023-2024">AY 2023-2024</SelectItem>
-                          <SelectItem value="2022-2023">AY 2022-2023</SelectItem>
+                          <SelectItem value="all">All Academic Years</SelectItem>
+                          {academicYearOptions.map((year) => (
+                            <SelectItem key={year} value={year}>
+                              AY {year}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1154,6 +1278,7 @@ export default function ReportsPage() {
                           <SelectValue placeholder="Select semester" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="all">All Semesters</SelectItem>
                           <SelectItem value="1st">1st Semester</SelectItem>
                           <SelectItem value="2nd">2nd Semester</SelectItem>
                           <SelectItem value="summer">Summer</SelectItem>
@@ -1186,10 +1311,16 @@ export default function ReportsPage() {
               <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
                 <div>
                   <CardTitle className="text-xl font-semibold text-gray-900">
-                    Activity History - AY {selectedYear}, {selectedSemester} Semester
+                    Activity History
+                    {selectedYear !== "all" || selectedSemester !== "all" ? (
+                      <span className="text-sm font-normal text-gray-600 ml-2">
+                        - {selectedYear !== "all" ? `AY ${selectedYear}` : "All Years"}
+                        {selectedSemester !== "all" ? `, ${selectedSemester} Semester` : ", All Semesters"}
+                      </span>
+                    ) : null}
                   </CardTitle>
                   <p className="text-sm text-gray-600 mt-1">
-                    Showing {filteredActivityHistory.length} of {activityHistory.length} records
+                    {isLoadingActivity ? "Loading..." : `Showing ${filteredActivityHistory.length} records`}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -1223,41 +1354,54 @@ export default function ReportsPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                {filteredActivityHistory.length === 0 ? (
+                {isLoadingActivity ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mb-4"></div>
+                    <p className="text-lg font-medium">Loading activity history...</p>
+                  </div>
+                ) : activityHistory.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-gray-500">
                     <AlertCircle className="h-12 w-12 mb-4" />
                     <p className="text-lg font-medium">No records found</p>
                     <p className="text-sm">Try adjusting your filters or search terms</p>
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader className="bg-white border-b border-gray-200">
-                      <TableRow className="hover:bg-white border-b-0">
-                        <TableHead className="font-medium text-gray-900">Activity ID</TableHead>
-                        <TableHead className="font-medium text-gray-900">First Name</TableHead>
-                        <TableHead className="font-medium text-gray-900">Last Name</TableHead>
-                        <TableHead className="font-medium text-gray-900">Chair</TableHead>
-                        <TableHead className="font-medium text-gray-900">Instructor</TableHead>
-                        <TableHead className="font-medium text-gray-900">Procedure</TableHead>
-                        <TableHead className="font-medium text-gray-900">Date</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredActivityHistory.map((activity) => (
-                        <TableRow key={activity.id} className="hover:bg-gray-50 border-b border-gray-200">
-                          <TableCell className="font-medium text-gray-900">{activity.id}</TableCell>
-                          <TableCell className="text-gray-900">{activity.firstName}</TableCell>
-                          <TableCell className="text-gray-900">{activity.lastName}</TableCell>
-                          <TableCell className="text-gray-900">{activity.chair}</TableCell>
-                          <TableCell className="text-gray-900">{activity.instructor}</TableCell>
-                          <TableCell className="text-gray-900">{activity.procedure}</TableCell>
-                          <TableCell className="text-gray-900">
-                            {new Date(activity.date).toLocaleDateString()}
-                          </TableCell>
+                  <>
+                    <Table>
+                      <TableHeader className="bg-white border-b border-gray-200">
+                        <TableRow className="hover:bg-white border-b-0">
+                          <TableHead className="font-medium text-gray-900">Activity ID</TableHead>
+                          <TableHead className="font-medium text-gray-900">First Name</TableHead>
+                          <TableHead className="font-medium text-gray-900">Last Name</TableHead>
+                          <TableHead className="font-medium text-gray-900">Chair</TableHead>
+                          <TableHead className="font-medium text-gray-900">Instructor</TableHead>
+                          <TableHead className="font-medium text-gray-900">Procedure</TableHead>
+                          <TableHead className="font-medium text-gray-900">Grade</TableHead>
+                          <TableHead className="font-medium text-gray-900">Date</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {activityHistory.map((activity) => (
+                          <TableRow key={activity.id} className="hover:bg-gray-50 border-b border-gray-200">
+                            <TableCell className="font-medium text-gray-900">{activity.id}</TableCell>
+                            <TableCell className="text-gray-900">{activity.firstName}</TableCell>
+                            <TableCell className="text-gray-900">{activity.lastName}</TableCell>
+                            <TableCell className="text-gray-900">{activity.chair}</TableCell>
+                            <TableCell className="text-gray-900">{activity.instructor}</TableCell>
+                            <TableCell className="text-gray-900">{activity.procedure}</TableCell>
+                            <TableCell className="text-gray-900">{activity.grade}</TableCell>
+                            <TableCell className="text-gray-900">
+                              {new Date(activity.date).toLocaleDateString()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    <PaginationControls
+                      pagination={activityHistoryPagination}
+                      onPageChange={(page) => setActivityHistoryPage(page)}
+                    />
+                  </>
                 )}
               </CardContent>
             </Card>
