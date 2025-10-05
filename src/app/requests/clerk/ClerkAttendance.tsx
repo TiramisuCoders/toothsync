@@ -119,7 +119,7 @@ export default function ClerkAttendance() {
         )
       )
 
-      const response = await fetch('/api/attendance/clerk', {
+      const response = await fetch('/api/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -182,7 +182,7 @@ export default function ClerkAttendance() {
     if (!attendanceToDelete) return
 
     try {
-      const response = await fetch('/api/attendance/clerk', {
+      const response = await fetch('/api/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -225,7 +225,7 @@ export default function ClerkAttendance() {
     if (!clinicianToTimeout) return
 
     try {
-      const response = await fetch('/api/attendance/clerk', {
+      const response = await fetch('/api/attendance/timeOut', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -354,7 +354,7 @@ export default function ClerkAttendance() {
         <CardHeader className="pb-4 border-b border-gray-200">
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-xl font-semibold text-[#333]">Attendance</CardTitle>
+              <CardTitle className="text-xl font-semibold text-[#333]">Requests</CardTitle>
               
               {/* Date Filter */}
               <div className="flex items-center gap-2">
