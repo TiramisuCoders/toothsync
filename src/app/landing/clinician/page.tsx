@@ -6,7 +6,6 @@ import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
-import { supabase }from "@/lib/supabase"
 import { loginAction } from "@/app/login/actions"
 
 export default function ClinicianLoginPage() {
@@ -191,6 +190,19 @@ export default function ClinicianLoginPage() {
             >
               Sign in
             </button>
+
+            <div className="text-center">
+              <p className="text-sm text-gray-600">
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => router.push("/landing/signup/clinician")}
+                  className="text-emerald-600 hover:text-emerald-700 font-medium hover:underline"
+                >
+                  Sign up here
+                </button>
+              </p>
+            </div>
 
             <button
               type="button"

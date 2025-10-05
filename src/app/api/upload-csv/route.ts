@@ -38,10 +38,10 @@ export async function POST(req: NextRequest) {
     const file = formData.get("file") as File | null
     const userId = formData.get("userId") as string | null
     const role = formData.get("role") as string | null
+    const academicYearId = formData.get("academicYearId") as string | null
 
-    console.log("[v0] CSV upload parameters:", { fileName: file?.name, userId, role })
+    console.log("[v0] CSV upload parameters:", { fileName: file?.name, userId, role, academicYearId })
 
-    // ✅ Ensure correct values
     const safeUserId = userId && userId !== "Admin" ? userId : null
     const safeRole = role || "Admin"
 
@@ -49,11 +49,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "error", message: "No file uploaded." }, { status: 400 })
     }
 
+    if (!academicYearId) {
+      return NextResponse.json({ status: "error", message: "Academic year ID is required." }, { status: 400 })
+    }
+
     if (!supabaseAdmin) {
-      return NextResponse.json(
-        { status: "error", message: "Server configuration error: Supabase admin client not available." },
-        { status: 500 },
-      )
+      console.warn("Warning: Supabase admin client not available. Check environment variables.")
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
@@ -67,38 +68,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "error", message: "Python ETL script not found on server." }, { status: 500 })
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    if (!supabaseUrl || !supabaseKey) {
-      fs.unlinkSync(tempPath)
-      return NextResponse.json(
-        { status: "error", message: "Server configuration error: Supabase keys missing." },
-        { status: 500 },
-      )
+    const supabaseUrl = process.env.SUPABASE_URL || "https://your-project.supabase.co"
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "your-service-role-key"
+
+    if (supabaseUrl === "https://your-project.supabase.co" || supabaseKey === "your-service-role-key") {
+      console.warn("Warning: Using default Supabase configuration. Set environment variables for production.")
     }
 
     const pythonExecutable = process.env.PYTHON_EXECUTABLE || "python3"
     console.log("[v0] Using Python executable:", pythonExecutable)
 
-    if (!fs.existsSync(pythonExecutable)) {
-      fs.unlinkSync(tempPath)
-      return NextResponse.json(
-        {
-          status: "error",
-          message: `Python executable not found at: ${pythonExecutable}. Please check your PYTHON_EXECUTABLE environment variable.`,
-        },
-        { status: 500 },
-      )
-    }
+    // Instead, let the spawn process handle the executable resolution
 
     const result = await new Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>((resolve) => {
-      console.log("[v0] Spawning Python process with:", pythonExecutable, [
-        pythonScriptPath,
-        tempPath,
-        supabaseUrl,
-        supabaseKey,
-      ])
-      const python = spawn(pythonExecutable, [pythonScriptPath, tempPath, supabaseUrl, supabaseKey], {
+      const args = [pythonScriptPath, tempPath, supabaseUrl, supabaseKey, academicYearId]
+      console.log("[v0] Spawning Python process with:", pythonExecutable, args)
+
+      const python = spawn(pythonExecutable, args, {
         stdio: ["ignore", "pipe", "pipe"],
       })
 
@@ -150,7 +136,12 @@ export async function POST(req: NextRequest) {
 
       // ✅ Log successful CSV upload
       console.log("[v0] CSV upload successful, logging activity...")
-      await logActivity(safeUserId, safeRole, "UPLOAD_CSV", `File ${file.name} uploaded successfully.`)
+      await logActivity(
+        safeUserId,
+        safeRole,
+        "UPLOAD_CSV",
+        `File ${file.name} uploaded successfully with academic year ${academicYearId}.`,
+      )
 
       return NextResponse.json({ status: "success", message, logs: result.stdout }, { status: 200 })
     } else {
@@ -159,7 +150,12 @@ export async function POST(req: NextRequest) {
 
       // ❌ Log failed CSV upload
       console.log("[v0] CSV upload failed, logging activity...")
-      await logActivity(safeUserId, safeRole, "UPLOAD_CSV_FAILED", `File ${file?.name} failed. Error: ${firstErrLine}`)
+      await logActivity(
+        safeUserId,
+        safeRole,
+        "UPLOAD_CSV_FAILED",
+        `File ${file?.name} failed with academic year ${academicYearId}. Error: ${firstErrLine}`,
+      )
 
       return NextResponse.json(
         { status: "error", message: firstErrLine, logs: result.stderr || result.stdout, exitCode: result.exitCode },

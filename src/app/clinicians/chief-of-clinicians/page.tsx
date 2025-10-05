@@ -37,6 +37,14 @@ interface Clinician {
   section: string // from public.clinicians
 }
 
+interface AcademicYear {
+  id: string
+  academicYear: string
+  semester: string
+  status: string
+  createdAt: string
+}
+
 interface AttendanceRecord {
   id: number
   date: string
@@ -86,6 +94,7 @@ interface NewClinician {
   yearLevel: string
   section: string
   status: string
+  academicYearId?: string
 }
 
 export default function CliniciansPage() {
@@ -109,6 +118,9 @@ export default function CliniciansPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([])
+  const [isLoadingAcademicYears, setIsLoadingAcademicYears] = useState(false)
 
   const [formData, setFormData] = useState<Partial<NewClinician>>({
     yearLevel: "5th Year",
@@ -142,6 +154,7 @@ export default function CliniciansPage() {
   // Add this useEffect hook and fetchClinicians function
   useEffect(() => {
     fetchClinicians()
+    fetchAcademicYears()
   }, [])
 
   const fetchClinicians = async () => {
@@ -158,6 +171,22 @@ export default function CliniciansPage() {
     } catch (error) {
       console.error("Failed to fetch clinicians:", error)
       // Optionally set an error message to display in the UI
+    }
+  }
+
+  const fetchAcademicYears = async () => {
+    setIsLoadingAcademicYears(true)
+    try {
+      const response = await fetch("/api/academic-years?limit=100") // Get all academic years
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const result = await response.json()
+      setAcademicYears(result.data || [])
+    } catch (error) {
+      console.error("Failed to fetch academic years:", error)
+    } finally {
+      setIsLoadingAcademicYears(false)
     }
   }
 
@@ -288,6 +317,7 @@ export default function CliniciansPage() {
       email: "",
       contactNumber: "",
       status: "",
+      academicYearId: "",
     })
     setFormErrors({})
     setAddSuccessMessage("") // Clear messages on reset
@@ -296,13 +326,14 @@ export default function CliniciansPage() {
 
   const validateForm = (): Record<string, string> => {
     const errors: Record<string, string> = {}
-    if (!formData.studentId?.trim()) errors.studentId = "Student ID is required" // New validation
+    if (!formData.studentId?.trim()) errors.studentId = "Student ID is required"
     if (!formData.firstName?.trim()) errors.firstName = "First name is required"
     if (!formData.lastName?.trim()) errors.lastName = "Last name is required"
     if (!formData.gender) errors.gender = "Gender is required for medical records"
     if (!formData.contactNumber?.trim()) errors.contactNumber = "Contact number is required for emergencies"
     if (!formData.email?.trim()) errors.email = "Email is required for communication"
-    if (!formData.status) errors.status = "Enrollment status is required"
+    if (isSelectedAcademicYearActive && !formData.status) errors.status = "Enrollment status is required"
+    if (!formData.academicYearId) errors.academicYearId = "Academic year is required"
     return errors
   }
 
@@ -325,11 +356,16 @@ export default function CliniciansPage() {
       firstName: formData.firstName?.trim() || "",
       lastName: formData.lastName?.trim() || "",
       gender: formData.gender || "",
-      status: formData.status === "enrolled" ? "Enrolled" : "Not Enrolled",
+      status: isSelectedAcademicYearActive
+        ? formData.status === "enrolled"
+          ? "Enrolled"
+          : "Not Enrolled"
+        : "Not Enrolled", // Default to "Not Enrolled" for inactive academic years
       email: formData.email?.trim() || "",
       contactNumber: formData.contactNumber?.trim() || "",
       yearLevel: formData.yearLevel || "5th Year",
       section: formData.section || "A",
+      academicYearId: formData.academicYearId, // Include academicYearId
     }
 
     try {
@@ -392,6 +428,11 @@ export default function CliniciansPage() {
 
     if (!currentUserId) {
       setUploadErrorMessage("User not authenticated. Please log in and try again.")
+      return
+    }
+
+    if (!formData.academicYearId) {
+      setUploadErrorMessage("Please select an academic year before uploading the CSV file.")
       return
     }
 
@@ -486,6 +527,14 @@ export default function CliniciansPage() {
     if (activeFilter === "not-enrolled") return clinician.status === "Not Enrolled"
     return true
   })
+
+  const getSelectedAcademicYearStatus = () => {
+    if (!formData.academicYearId) return null
+    const selectedYear = academicYears.find((year) => year.id === formData.academicYearId)
+    return selectedYear?.status || null
+  }
+
+  const isSelectedAcademicYearActive = getSelectedAcademicYearStatus() === "Active"
 
   return (
     <>
@@ -769,6 +818,34 @@ export default function CliniciansPage() {
                 </TabsContent>
                 <TabsContent value="academic" className="space-y-4">
                   <div className="space-y-2">
+                    <Label htmlFor="academicYear" className="text-[#333]">
+                      Academic Year <span className="text-red-500">*</span>
+                    </Label>
+                    <Select
+                      value={formData.academicYearId || ""}
+                      onValueChange={(value) => updateFormData("academicYearId", value)}
+                      disabled={isLoadingAcademicYears}
+                    >
+                      <SelectTrigger
+                        id="academicYear"
+                        className={formErrors.academicYearId ? "border-red-500" : "border-gray-300"}
+                      >
+                        <SelectValue
+                          placeholder={isLoadingAcademicYears ? "Loading..." : "Please select academic year"}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {academicYears.map((year) => (
+                          <SelectItem key={year.id} value={year.id}>
+                            {year.academicYear} - {year.semester} Semester{" "}
+                            {year.status === "Inactive" ? "(Inactive)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {formErrors.academicYearId && <p className="text-sm text-red-500">{formErrors.academicYearId}</p>}
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="yearLevel" className="text-[#333]">
                       Year Level
                     </Label>
@@ -801,21 +878,44 @@ export default function CliniciansPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="status" className="text-[#333]">
-                      Enrollment Status <span className="text-red-500">*</span>
-                    </Label>
-                    <Select value={formData.status || ""} onValueChange={(value) => updateFormData("status", value)}>
-                      <SelectTrigger id="status" className={formErrors.status ? "border-red-500" : "border-gray-300"}>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="enrolled">Enrolled</SelectItem>
-                        <SelectItem value="not-enrolled">Not Enrolled</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {formErrors.status && <p className="text-sm text-red-500">{formErrors.status}</p>}
-                  </div>
+                  {isSelectedAcademicYearActive && (
+                    <div className="space-y-2">
+                      <Label htmlFor="status" className="text-[#333]">
+                        Enrollment Status <span className="text-red-500">*</span>
+                      </Label>
+                      <Select value={formData.status || ""} onValueChange={(value) => updateFormData("status", value)}>
+                        <SelectTrigger id="status" className={formErrors.status ? "border-red-500" : "border-gray-300"}>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="enrolled">Enrolled</SelectItem>
+                          <SelectItem value="not-enrolled">Not Enrolled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {formErrors.status && <p className="text-sm text-red-500">{formErrors.status}</p>}
+                    </div>
+                  )}
+                  {formData.academicYearId && !isSelectedAcademicYearActive && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0">
+                          <svg className="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path
+                              fillRule="evenodd"
+                              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                        <div className="ml-3">
+                          <p className="text-sm font-medium text-amber-800">
+                            This academic year is inactive. Enrollment status is not required for inactive academic
+                            years.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </TabsContent>
               </Tabs>
             </div>
@@ -1069,7 +1169,29 @@ export default function CliniciansPage() {
               </div>
             </div>
           )}
-          <div className="px-6 py-8 flex flex-col items-center justify-center">
+          <div className="px-6 py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="csvAcademicYear" className="text-[#333]">
+                Academic Year <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={formData.academicYearId || ""}
+                onValueChange={(value) => updateFormData("academicYearId", value)}
+                disabled={isLoadingAcademicYears}
+              >
+                <SelectTrigger id="csvAcademicYear" className="border-gray-300">
+                  <SelectValue placeholder={isLoadingAcademicYears ? "Loading..." : "Please select academic year"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {academicYears.map((year) => (
+                    <SelectItem key={year.id} value={year.id}>
+                      {year.academicYear} - {year.semester} Semester {year.status === "Inactive" ? "(Inactive)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">Select the academic year for the clinicians being uploaded</p>
+            </div>
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 w-full flex flex-col items-center justify-center">
               <Upload className="h-12 w-12 text-gray-400 mb-4" />
               <h3 className="text-lg font-medium text-[#333] mb-2">

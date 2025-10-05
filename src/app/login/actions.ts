@@ -102,6 +102,7 @@ export async function loginAction(email: string, password: string, loginAsRole: 
   // IMPORTANT: Delete the old cookie first to prevent conflicts
   cookieStore.delete("role")
 
+  // Set the new role cookie (httpOnly: false allows client-side reading)
   // Set the role cookie based on what they're logging in as
   cookieStore.set("role", roleName, {
     httpOnly: false,
