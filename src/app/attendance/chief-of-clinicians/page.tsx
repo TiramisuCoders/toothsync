@@ -1,7 +1,8 @@
-"use client";
+"use client"
 
-import AdminAttendance from "./AdminAttendance"
+import InstructorAttendance from "../clinical-instructor/InstructorsAttendance"
 
-export default function AdminAttendancePage() {
-    return <AdminAttendance/>;
+
+export default function AdminAttendancePage(){
+  return <InstructorAttendance/>
 }

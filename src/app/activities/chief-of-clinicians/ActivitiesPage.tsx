@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ArrowUpDown, Check, ChevronDown, ChevronUp, Download, Edit, Plus, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,22 +10,36 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { toast } from "@/hooks/use-toast"
+import { Toaster } from "@/components/ui/toaster"
 
-export interface Activity {
-  id: string
-  firstName: string
-  lastName: string
-  chair: string
-  patient: string
-  instructor: string
-  procedure: string
-  status: string
-  date: string
+interface ProcedureDetail {
+  name: string
   grade?: string
   remarks?: string
+  status?: string
 }
 
-export default function ActivitiesPage({ data }: { data: Activity[] }) {
+interface Activity {
+  id: string
+  firstName?: string
+  lastName?: string
+  patientName: string
+  chair: string
+  date: string
+  procedures: string[]
+  procedureDetails?: ProcedureDetail[]
+  status: string
+  grade?: string
+  assessmentStatus?: string
+  remarks?: string
+  selectedProcedures?: string[]
+  clinicianName: string
+  timeIn?: string
+  timeOut?: string
+}
+
+export default function ActivitiesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [currentActivity, setCurrentActivity] = useState(null)
@@ -34,394 +48,102 @@ export default function ActivitiesPage({ data }: { data: Activity[] }) {
   const [activityToAction, setActivityToAction] = useState(null)
   const [sortField, setSortField] = useState("id")
   const [sortDirection, setSortDirection] = useState("asc")
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
-  const [selectedActivity, setSelectedActivity] = useState(null)
+  const [activities, setActivities] = useState<Activity[]>([])
 
-  const [activities, setActivities] = useState(data)
+   useEffect(() => {
+      const fetchRecords = async () => {
+        try {
+          const fetchRecords = await fetch('/api/activities/admin', {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          })
+  
+          if (!fetchRecords.ok) {
+            throw new Error(`HTTP error! status: ${fetchRecords.status}`)
+          }
+  
+          const records = await fetchRecords.json()
+          console.log('Fetched records:', records)
+          
+          if (records.success) {
+            console.log('Setting activities:', records.data)
+            setActivities(records.data)
+          } else {
+            throw new Error(records.error || 'Failed to fetch records')
+          }
+        } catch (err) {
+          console.error('Error fetching attendance:', err)
+        } 
+      }
+      fetchRecords()
+    }, []) 
 
-  // Sample data for all activities (including past ones)
-  // const [activities, setActivities] = useState([
-  //   {
-  //     id: "1",
-  //     firstName: "Maria",
-  //     lastName: "Santos",
-  //     chair: "Chair 05",
-  //     patient: "Juan Dela Cruz",
-  //     instructor: "Dr. Reyes",
-  //     procedure: "Root Canal Treatment", // Keep for backward compatibility
-  //     procedures: ["Root Canal Treatment", "Dental Filling"],
-  //     status: "Started",
-  //     date: "2025-05-08",
-  //     history: [
-  //       {
-  //         timestamp: "2025-05-08T14:20:00",
-  //         user: "admin@example.com",
-  //         action: "Created",
-  //         description: "Initial activity record created",
-  //         details: {
-  //           date: "2025-05-08",
-  //           procedure: "Root Canal Treatment",
-  //           patient: "Juan Dela Cruz",
-  //           grade: "",
-  //           remarks: "",
-  //         },
-  //       },
-  //     ],
-  //   },
-  //   {
-  //     id: "2",
-  //     firstName: "John",
-  //     lastName: "Dela Cruz",
-  //     chair: "Chair 12",
-  //     patient: "Ana Reyes",
-  //     instructor: "Dr. Mendoza",
-  //     procedure: "Dental Filling",
-  //     status: "Not started",
-  //     date: "2025-05-08",
-  //     history: [
-  //       {
-  //         timestamp: "2025-05-08T10:15:00",
-  //         user: "admin@example.com",
-  //         action: "Created",
-  //         description: "Initial activity record created",
-  //         details: {
-  //           date: "2025-05-08",
-  //           procedure: "Dental Filling",
-  //           patient: "Ana Reyes",
-  //           grade: "",
-  //           remarks: "",
-  //         },
-  //       },
-  //     ],
-  //   },
-  //   {
-  //     id: "3",
-  //     firstName: "Anna",
-  //     lastName: "Lim",
-  //     chair: "Chair 03",
-  //     patient: "Miguel Santos",
-  //     instructor: "Dr. Santos",
-  //     procedure: "Dental Crown",
-  //     procedures: ["Dental Crown", "Teeth Cleaning"],
-  //     status: "Started",
-  //     date: "2025-05-08",
-  //     history: [
-  //       {
-  //         timestamp: "2025-05-08T09:30:00",
-  //         user: "admin@example.com",
-  //         action: "Created",
-  //         description: "Initial activity record created",
-  //         details: {
-  //           date: "2025-05-08",
-  //           procedure: "Dental Crown",
-  //           patient: "Miguel Santos",
-  //           grade: "",
-  //           remarks: "",
-  //         },
-  //       },
-  //     ],
-  //   },
-  //   {
-  //     id: "4",
-  //     firstName: "Mark",
-  //     lastName: "Aquino",
-  //     chair: "Chair 08",
-  //     patient: "Sofia Reyes",
-  //     instructor: "Dr. Reyes",
-  //     procedure: "Teeth Cleaning",
-  //     status: "Completed",
-  //     date: "2025-05-08",
-  //     grade: "88",
-  //     remarks: "Thorough cleaning, good patient management",
-  //     history: [
-  //       {
-  //         timestamp: "2025-05-08T16:45:00",
-  //         user: "dr.reyes@example.com",
-  //         action: "Updated",
-  //         description: "Status changed to Completed and grade added",
-  //         details: {
-  //           date: "2025-05-08",
-  //           procedure: "Teeth Cleaning",
-  //           patient: "Sofia Reyes",
-  //           grade: "88",
-  //           remarks: "Thorough cleaning, good patient management",
-  //         },
-  //       },
-  //       {
-  //         timestamp: "2025-05-08T11:20:00",
-  //         user: "admin@example.com",
-  //         action: "Created",
-  //         description: "Initial activity record created",
-  //         details: {
-  //           date: "2025-05-08",
-  //           procedure: "Teeth Cleaning",
-  //           patient: "Sofia Reyes",
-  //           grade: "",
-  //           remarks: "",
-  //         },
-  //       },
-  //     ],
-  //   },
-  //   {
-  //     id: "5",
-  //     firstName: "Sarah",
-  //     lastName: "Garcia",
-  //     chair: "Chair 10",
-  //     patient: "Luis Tan",
-  //     instructor: "Dr. Tan",
-  //     procedure: "Dental Extraction",
-  //     status: "Incomplete",
-  //     date: "2025-05-08",
-  //     history: [
-  //       {
-  //         timestamp: "2025-05-08T17:30:00",
-  //         user: "dr.tan@example.com",
-  //         action: "Updated",
-  //         description: "Status changed to Incomplete",
-  //         details: {
-  //           date: "2025-05-08",
-  //           procedure: "Dental Extraction",
-  //           patient: "Luis Tan",
-  //           grade: "",
-  //           remarks: "Patient had to reschedule due to emergency",
-  //         },
-  //       },
-  //       {
-  //         timestamp: "2025-05-08T13:10:00",
-  //         user: "admin@example.com",
-  //         action: "Created",
-  //         description: "Initial activity record created",
-  //         details: {
-  //           date: "2025-05-08",
-  //           procedure: "Dental Extraction",
-  //           patient: "Luis Tan",
-  //           grade: "",
-  //           remarks: "",
-  //         },
-  //       },
-  //     ],
-  //   },
-  //   // Past activities
-  //   {
-  //     id: "6",
-  //     firstName: "Carlos",
-  //     lastName: "Mendoza",
-  //     chair: "Chair 07",
-  //     patient: "Elena Cruz",
-  //     instructor: "Dr. Santos",
-  //     procedure: "Dental Filling",
-  //     status: "Completed",
-  //     date: "2025-05-07",
-  //     grade: "92",
-  //     remarks: "Excellent work on composite layering",
-  //     history: [
-  //       {
-  //         timestamp: "2025-05-07T16:20:00",
-  //         user: "dr.santos@example.com",
-  //         action: "Updated",
-  //         description: "Status changed to Completed and grade added",
-  //         details: {
-  //           date: "2025-05-07",
-  //           procedure: "Dental Filling",
-  //           patient: "Elena Cruz",
-  //           grade: "92",
-  //           remarks: "Excellent work on composite layering",
-  //         },
-  //       },
-  //       {
-  //         timestamp: "2025-05-07T10:30:00",
-  //         user: "admin@example.com",
-  //         action: "Created",
-  //         description: "Initial activity record created",
-  //         details: {
-  //           date: "2025-05-07",
-  //           procedure: "Dental Filling",
-  //           patient: "Elena Cruz",
-  //           grade: "",
-  //           remarks: "",
-  //         },
-  //       },
-  //     ],
-  //   },
-  //   {
-  //     id: "7",
-  //     firstName: "Sophia",
-  //     lastName: "Reyes",
-  //     chair: "Chair 15",
-  //     patient: "Marco Tan",
-  //     instructor: "Dr. Mendoza",
-  //     procedure: "Teeth Cleaning",
-  //     status: "Completed",
-  //     date: "2025-05-07",
-  //     grade: "85",
-  //     remarks: "Good technique, needs to improve on posterior areas",
-  //     history: [
-  //       {
-  //         timestamp: "2025-05-07T15:45:00",
-  //         user: "dr.mendoza@example.com",
-  //         action: "Updated",
-  //         description: "Status changed to Completed and grade added",
-  //         details: {
-  //           date: "2025-05-07",
-  //           procedure: "Teeth Cleaning",
-  //           patient: "Marco Tan",
-  //           grade: "85",
-  //           remarks: "Good technique, needs to improve on posterior areas",
-  //         },
-  //       },
-  //       {
-  //         timestamp: "2025-05-07T09:15:00",
-  //         user: "admin@example.com",
-  //         action: "Created",
-  //         description: "Initial activity record created",
-  //         details: {
-  //           date: "2025-05-07",
-  //           procedure: "Teeth Cleaning",
-  //           patient: "Marco Tan",
-  //           grade: "",
-  //           remarks: "",
-  //         },
-  //       },
-  //     ],
-  //   },
-  //   {
-  //     id: "8",
-  //     firstName: "Miguel",
-  //     lastName: "Santos",
-  //     chair: "Chair 09",
-  //     patient: "Lucia Garcia",
-  //     instructor: "Dr. Reyes",
-  //     procedure: "Root Canal Treatment",
-  //     procedures: ["Root Canal Treatment", "Dental Extraction"],
-  //     status: "Incomplete",
-  //     date: "2025-05-06",
-  //     remarks: "Patient needed to reschedule due to time constraints",
-  //     history: [
-  //       {
-  //         timestamp: "2025-05-06T16:30:00",
-  //         user: "dr.reyes@example.com",
-  //         action: "Updated",
-  //         description: "Status changed to Incomplete",
-  //         details: {
-  //           date: "2025-05-06",
-  //           procedure: "Root Canal Treatment",
-  //           patient: "Lucia Garcia",
-  //           grade: "",
-  //           remarks: "Patient needed to reschedule due to time constraints",
-  //         },
-  //       },
-  //       {
-  //         timestamp: "2025-05-06T10:45:00",
-  //         user: "admin@example.com",
-  //         action: "Created",
-  //         description: "Initial activity record created",
-  //         details: {
-  //           date: "2025-05-06",
-  //           procedure: "Root Canal Treatment",
-  //           patient: "Lucia Garcia",
-  //           grade: "",
-  //           remarks: "",
-  //         },
-  //       },
-  //     ],
-  //   },
-  //   {
-  //     id: "9",
-  //     firstName: "Isabella",
-  //     lastName: "Cruz",
-  //     chair: "Chair 11",
-  //     patient: "Gabriel Lim",
-  //     instructor: "Dr. Tan",
-  //     procedure: "Dental Crown",
-  //     status: "Completed",
-  //     date: "2025-05-06",
-  //     grade: "90",
-  //     remarks: "Excellent margin preparation and temporization",
-  //     history: [
-  //       {
-  //         timestamp: "2025-05-06T17:15:00",
-  //         user: "dr.tan@example.com",
-  //         action: "Updated",
-  //         description: "Status changed to Completed and grade added",
-  //         details: {
-  //           date: "2025-05-06",
-  //           procedure: "Dental Crown",
-  //           patient: "Gabriel Lim",
-  //           grade: "90",
-  //           remarks: "Excellent margin preparation and temporization",
-  //         },
-  //       },
-  //       {
-  //         timestamp: "2025-05-06T11:30:00",
-  //         user: "admin@example.com",
-  //         action: "Created",
-  //         description: "Initial activity record created",
-  //         details: {
-  //           date: "2025-05-06",
-  //           procedure: "Dental Crown",
-  //           patient: "Gabriel Lim",
-  //           grade: "",
-  //           remarks: "",
-  //         },
-  //       },
-  //     ],
-  //   },
-  //   {
-  //     id: "10",
-  //     firstName: "Gabriel",
-  //     lastName: "Tan",
-  //     chair: "Chair 04",
-  //     patient: "Sofia Mendoza",
-  //     instructor: "Dr. Santos",
-  //     procedure: "Dental Extraction",
-  //     status: "Completed",
-  //     date: "2025-05-05",
-  //     grade: "88",
-  //     remarks: "Good technique and patient management",
-  //     history: [
-  //       {
-  //         timestamp: "2025-05-05T16:00:00",
-  //         user: "dr.santos@example.com",
-  //         action: "Updated",
-  //         description: "Status changed to Completed and grade added",
-  //         details: {
-  //           date: "2025-05-05",
-  //           procedure: "Dental Extraction",
-  //           patient: "Sofia Mendoza",
-  //           grade: "88",
-  //           remarks: "Good technique and patient management",
-  //         },
-  //       },
-  //       {
-  //         timestamp: "2025-05-05T10:15:00",
-  //         user: "admin@example.com",
-  //         action: "Created",
-  //         description: "Initial activity record created",
-  //         details: {
-  //           date: "2025-05-05",
-  //           procedure: "Dental Extraction",
-  //           patient: "Sofia Mendoza",
-  //           grade: "",
-  //           remarks: "",
-  //         },
-  //       },
-  //     ],
-  //   },
-  // ])
-
-  // Function to get status color
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case "Graded":
-        return "bg-[#5C8E77]/10 text-[#5C8E77]"
       case "Completed":
-        return "bg-blue-50 text-blue-700"
+        return "bg-[#5C8E77]/10 text-[#5C8E77]"
       case "In Progress":
-        return "bg-yellow-50 text-yellow-700"
-      case "Incomplete":
+        return "bg-blue-50 text-blue-700"
+      case "Cancelled":
         return "bg-red-50 text-red-700"
       default:
         return "bg-gray-50 text-gray-700"
+    }
+  }
+
+  const handleArchiveClick = (activity: Activity) => {
+    setCurrentActivity(activity)
+    setIsArchiveModalOpen(true)
+  }
+
+  const handleArchive = async () => { 
+    if (!currentActivity) return
+
+    try {
+      const res = await fetch("/api/activities/archive-activity", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activityId: currentActivity.id,
+          status: "Cancelled", // or "Incomplete" if that's the exact enum in DB
+        }),
+      })
+
+      const result = await res.json()
+      if (!res.ok) {
+        console.error("❌ Archive failed:", result)
+        toast({
+          title: "Error",
+          description: "Failed to update activity status.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setActivities(
+        activities.map((activity) =>
+          activity.id === currentActivity.id
+            ? { ...activity, status: "Cancelled" } // match DB status
+            : activity
+        )
+      )
+
+      setIsArchiveModalOpen(false)
+      toast({
+        title: "Activity Marked Cancelled",
+        description: `Activity ${currentActivity.id} has been marked as cancelled.`,
+        variant: "destructive",
+      })
+    } catch (error) {
+      console.error("❌ Network error:", error)
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -465,43 +187,6 @@ export default function ActivitiesPage({ data }: { data: Activity[] }) {
         ),
       )
       setIsCompleteModalOpen(false)
-    }
-  }
-
-  const handleArchiveClick = (activity) => {
-    setActivityToAction(activity)
-    setIsArchiveModalOpen(true)
-  }
-
-  const handleArchive = () => {
-    if (activityToAction) {
-      // Create a new history entry
-      const newHistory = {
-        timestamp: new Date().toISOString(),
-        user: "admin@example.com",
-        action: "Updated",
-        description: "Status changed to Incomplete",
-        details: {
-          date: activityToAction.date,
-          procedure: activityToAction.procedure,
-          patient: activityToAction.patient,
-          grade: activityToAction.grade || "",
-          remarks: activityToAction.remarks || "",
-        },
-      }
-
-      setActivities(
-        activities.map((activity) =>
-          activity.id === activityToAction.id
-            ? {
-                ...activity,
-                status: "Incomplete",
-                history: [newHistory, ...activity.history],
-              }
-            : activity,
-        ),
-      )
-      setIsArchiveModalOpen(false)
     }
   }
 
