@@ -1,14 +1,13 @@
 // YEAR AND SECTION OF THE CLINICIAN
 // TIME IN AND OUT INTERFACE
 
-
 "use client"
 
 import { useEffect, useState } from "react"
 import { format } from "date-fns"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Users, Calendar, RockingChair, LogOut } from "lucide-react"
+import { Users, RockingChair, LogOut } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -49,8 +48,6 @@ type DashboardSummary = {
 }
 
 export default function ClinicianDashboard() {
-  const cliniciansLoggedIn = 24
-  const availableInstructors = 3
   const [showTimeoutDialog, setShowTimeoutDialog] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [hasTimedOut, setHasTimedOut] = useState(false)
@@ -114,7 +111,7 @@ export default function ClinicianDashboard() {
         }
 
       } catch (err) {
-        console.error("Error fetching data:", err)
+        // console.error("Error fetching data:", err)
         toast({
           title: "Error",
           description: "Failed to load dashboard data",
@@ -204,7 +201,7 @@ export default function ClinicianDashboard() {
       })
     }, 1500)
   } catch (error) {
-    console.error("Failed to record timeout:", error)
+    // console.error("Failed to record timeout:", error)
 
     toast({
       title: "Update Failed",

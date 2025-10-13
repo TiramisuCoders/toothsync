@@ -63,25 +63,25 @@ export default function ClinicianForm() {
           lastName: clinician.last_name || "",
         }))
 
-        console.log("Loaded user:", { 
-          userId: user.id, 
-          email: user.email,
-          firstName: clinician.first_name, 
-          lastName: clinician.last_name 
-        })
+        // console.log("Loaded user:", { 
+        //   userId: user.id, 
+        //   email: user.email,
+        //   firstName: clinician.first_name, 
+        //   lastName: clinician.last_name 
+        // })
 
         // Fetch procedures using server action
         const { error: procedureError, procedures: procedureData } = await getProcedures()
         
         if (procedureError) {
-          console.error("Error fetching procedures:", procedureError)
+          // console.error("Error fetching procedures:", procedureError)
           toast("Error", { description: "Failed to load procedures." })
         } else {
           setProcedures(procedureData)
         }
 
       } catch (error) {
-        console.error("Error in fetchData:", error)
+        // console.error("Error in fetchData:", error)
         toast("Error", { description: "Failed to load form data." })
       } finally {
         setIsLoading(false)
@@ -209,7 +209,7 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
 
     } catch (error) {
       clearInterval(progressInterval)
-      console.error("Submission error:", error)
+      // console.error("Submission error:", error)
       
       toast("Submission Failed", {
         description: error instanceof Error ? error.message : "Please try again later.",
