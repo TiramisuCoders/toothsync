@@ -2,10 +2,6 @@
 // records tab - records
 // kulang : instructor
 
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { headers, cookies } from 'next/headers'
-import { NextRequest } from 'next/server'
-import { createServerClient } from "@supabase/ssr";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function GET() {
@@ -23,22 +19,22 @@ export async function GET() {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    const { data: userRole } = await supabase
-      .from('users')
-      .select('role')
-      .eq('auth_user_id', user.id)
-      .single()
+    // const { data: userRole } = await supabase
+    //   .from('users')
+    //   .select('role')
+    //   .eq('auth_user_id', user.id)
+    //   .single()
 
-    console.log('User role data:', userRole)
-    console.log('Role value:', userRole?.role)
-    console.log('Role type:', typeof userRole?.role)
+    // console.log('User role data:', userRole)
+    // console.log('Role value:', userRole?.role)
+    // console.log('Role type:', typeof userRole?.role)
 
-    const allowedRoles = ['R01', 'R03']
+    // const allowedRoles = ['R01', 'R03']
 
-    if (!allowedRoles.includes(userRole?.role)) {
-      console.log('Role check failed:', userRole?.role, 'vs allowed roles')
-      return Response.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    // if (!allowedRoles.includes(userRole?.role)) {
+    //   console.log('Role check failed:', userRole?.role, 'vs allowed roles')
+    //   return Response.json({ error: 'Forbidden' }, { status: 403 })
+    // }
     
     console.log('🔍 Fetching activity records with procedures, grades, and remarks...')
 
@@ -101,7 +97,6 @@ export async function GET() {
         procedures: procedureDetails.map(p => p.name), // Just names for table display
         procedureDetails: procedureDetails, // Complete procedure info for modal
         status: r.status,
-        // date: `${new Date(r.time_in).toISOString().split("T")[0]} ${r.time_in ?? ""} - ${r.time_out ?? ""}`,
         date: r.time_in
         ? (() => {
             const d = new Date(r.time_in)
