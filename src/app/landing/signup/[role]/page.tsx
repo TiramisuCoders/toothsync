@@ -7,6 +7,8 @@ import Image from "next/image"
 import Link from "next/link"
 import { notFound, useParams } from "next/navigation"
 import { SignUpForm } from "@/components/auth/signup-form"
+import { ClerkSignUpForm } from "@/components/auth/clerk-signup-form"
+import { InstructorSignUpForm } from "@/components/auth/instructor-signup-form"
 
 const roleDisplayNames = {
   "clinical-instructor": "Clinical Instructor",
@@ -76,7 +78,13 @@ export default function SignUpPage() {
             </p>
           </div>
 
-          <SignUpForm role={role} />
+          {role === "clerk" ? (
+            <ClerkSignUpForm />
+          ) : role === "clinical-instructor" ? (
+            <InstructorSignUpForm />
+          ) : (
+            <SignUpForm role={role} />
+          )}
 
           <div className="mt-6 space-y-3">
             <Link href={`/landing/${role}`} className="block">

@@ -12,6 +12,7 @@ import {
   FormInput,
   AlertTriangle,
   ActivityIcon,
+  Clock,
   RockingChairIcon as Chair,
   BarChartIcon as ChartBar,
   type LucideIcon,
@@ -55,6 +56,8 @@ const getIconForTitle = (title: string): LucideIcon => {
       return ClipboardList
     case "Form":
       return FormInput
+    case "Schedule":
+      return Clock
     default:
       return FileText
   }
@@ -82,6 +85,7 @@ export const RoleBasedSidebar = ({ role }: RoleBasedSidebarProps) => {
     { title: "Attendance", url: "/attendance/clinical-instructor" },
     { title: "Clinicians", url: "/clinicians/clinical-instructor" },
     { title: "Activities", url: "/activities/clinical-instructor" },
+    { title: "Schedule", url: "/schedule/clinical-instructor" },
   ]
 
   const clerkMenu = [
