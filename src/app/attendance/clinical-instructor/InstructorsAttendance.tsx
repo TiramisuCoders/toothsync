@@ -1,13 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { ChevronLeft, ChevronRight, X } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 
 
 export interface Record {
@@ -142,7 +140,9 @@ const filteredRecords = attendanceRecords.filter((record) => {
   const totalPages = Math.ceil(filteredRecords.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
-  const currentRecords = filteredRecords.slice(startIndex, endIndex)
+
+// **<-- ADD THIS LINE: This creates the paginated array**
+const currentRecords = filteredRecords.slice(startIndex, endIndex)
 
 
  return (
