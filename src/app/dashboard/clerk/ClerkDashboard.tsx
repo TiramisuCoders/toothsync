@@ -5,7 +5,6 @@ import { Calendar, Check, LogOut, RockingChair, Users, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -14,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { supabase } from "@/lib/supabase"
 import { toast } from "@/hooks/use-toast"
 
 export interface Record {
@@ -52,7 +50,6 @@ export default function ClerkDashboard() {
   const [attendanceToDelete, setAttendanceToDelete] = useState<Record | null>(null)
   const [clinicianToTimeout, setClinicianToTimeout] = useState<Record | null>(null)
   const [clerkInfo, setClerkInfo] = useState<ClerkInfo | null>(null)
-  const [activeFilter, setActiveFilter] = useState("all")
   const [summary, setSummary] = useState<DashboardSummary>({
     todayCount: 0,
     availableChair1st: 0,
@@ -278,10 +275,10 @@ export default function ClerkDashboard() {
   }
 
   // Function to handle delete click
-  const handleDeleteClick = (record: Record) => {
-    setAttendanceToDelete(record)
-    setIsDeleteModalOpen(true)
-  }
+  // const handleDeleteClick = (record: Record) => {
+  //   setAttendanceToDelete(record)
+  //   setIsDeleteModalOpen(true)
+  // }
 
   // Function to handle delete confirmation
   const handleDeleteConfirm = async () => {
