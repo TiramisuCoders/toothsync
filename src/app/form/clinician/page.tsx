@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Toaster } from "@/components/ui/toaster"
-import { getUserData, getProcedures, submitAttendanceAction } from "@/app/api/form/clinician/route"
+import { getUserData, getProcedures, submitAttendanceAction } from "@/app/api/form/clinician/action"
 
 
 interface Procedure {

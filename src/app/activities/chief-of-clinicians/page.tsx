@@ -1,5 +1,5 @@
 import InstructorActivitiesContent from "../clinical-instructor/InstructorsActivities"
-import ActivitiesPage from "./ActivitiesPage"
+// import ActivitiesPage from "./ActivitiesPage"
 
 export default function AdminActivitiesPage() {
   return (
