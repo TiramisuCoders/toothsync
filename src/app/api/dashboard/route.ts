@@ -76,7 +76,7 @@ export async function GET() {
 
       case 'R03': 
         query = query
-          .eq("instructor.user.auth_user_id", userRole.auth_user_id);
+          .eq("instructor.user_id.auth_user_id", userRole.auth_user_id);
         break
 
       case 'R04': // Admin
