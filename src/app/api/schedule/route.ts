@@ -111,30 +111,46 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Date and shift are required' }, { status: 400 })
     }
 
-    if (!['Morning', 'Afternoon', 'Evening'].includes(shift)) {
+    if (!['1st', '2nd'].includes(shift)) {
       return Response.json({ error: 'Invalid shift value' }, { status: 400 })
     }
 
+    // Get instructor ID
+    const { data: instructorUser, error: instructorError } = await supabase
+      .from('instructors')
+      .select('instructor_id')
+      .eq('user_id', userRole.auth_user_id)
+      .single()
+
+    if (instructorError || !instructorUser) {
+      console.error('Instructor lookup failed:', instructorError)
+      return Response.json({ error: 'Instructor record not found' }, { status: 404 })
+    }
+
     // Check for duplicate schedule
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from('instructors_availability_record')
       .select('id')
-      .eq('instructor_id', userRole?.auth_user_id)
+      .eq('instructor_id', instructorUser.instructor_id)
       .eq('date', date)
       .eq('shift', shift)
-      .single()
+      .maybeSingle()
 
     if (existing) {
       return Response.json({ error: 'Schedule already exists for this date and shift' }, { status: 409 })
+    }
+
+    if (existingError) {
+      console.error('Existing schedule check failed:', existingError)
     }
 
     // Insert new schedule
     const { data: newSchedule, error: insertError } = await supabase
       .from('instructors_availability_record')
       .insert({
-        instructor_id: userRole?.auth_user_id,
-        date: date,
-        shift: shift,
+        instructor_id: instructorUser.instructor_id,
+        date,
+        shift,
         assigned_clinicians: 0
       })
       .select()
