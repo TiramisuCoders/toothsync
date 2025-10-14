@@ -132,8 +132,8 @@ export default function NewTicket() {
 
     // When module changes, update selectedModuleId to fetch issue types
     if (field === "affectedModule") {
-      const module = modules.find(m => m.module_name === value)
-      setSelectedModuleId(module?.module_id || "")
+      const mod = modules.find(m => m.module_name === value)
+      setSelectedModuleId(mod?.module_id || "")
     }
   }
 
