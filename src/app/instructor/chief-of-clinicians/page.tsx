@@ -14,6 +14,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
@@ -28,7 +38,7 @@ interface Instructor {
   firstName: string
   lastName: string
   gender: string
-  status: "Available" | "Not Available"
+  status: "Available" | "Not Available" | "For Approval"
   email: string
   contactNumber: string
   expertise: string[]
@@ -81,6 +91,9 @@ export default function InstructorPage() {
   const [formErrors, setFormErrors] = useState<FormErrors>({})
   const [notification, setNotification] = useState<NotificationState>({ show: false, type: "success", message: "" })
   const [showArchived, setShowArchived] = useState(false)
+  const [showStatusConfirmation, setShowStatusConfirmation] = useState(false)
+  const [pendingStatusChange, setPendingStatusChange] = useState<string | null>(null)
+  const [originalStatus, setOriginalStatus] = useState<string>("")
   const { toast } = useToast()
 
   // Sample data for instructors
@@ -150,6 +163,7 @@ export default function InstructorPage() {
   // Function to handle edit button click
   const handleEditClick = (instructor: Instructor) => {
     setCurrentInstructor(instructor)
+    setOriginalStatus(instructor.status)
     setFormData({
       firstName: instructor.firstName,
       lastName: instructor.lastName,
@@ -160,6 +174,29 @@ export default function InstructorPage() {
       expertise: instructor.expertise,
     })
     setIsEditModalOpen(true)
+  }
+
+  const handleStatusChange = (newStatus: string) => {
+    if (isEditModalOpen && originalStatus !== newStatus) {
+      setPendingStatusChange(newStatus)
+      setShowStatusConfirmation(true)
+    } else {
+      setFormData((prev) => ({ ...prev, status: newStatus }))
+    }
+  }
+
+  const confirmStatusChange = () => {
+    if (pendingStatusChange) {
+      setFormData((prev) => ({ ...prev, status: pendingStatusChange }))
+      setOriginalStatus(pendingStatusChange)
+    }
+    setShowStatusConfirmation(false)
+    setPendingStatusChange(null)
+  }
+
+  const cancelStatusChange = () => {
+    setShowStatusConfirmation(false)
+    setPendingStatusChange(null)
   }
 
   // Function to update instructor
@@ -438,6 +475,10 @@ export default function InstructorPage() {
                       <div className="flex items-center gap-2">
                         {instructor.status === "Available" ? (
                           <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{instructor.status}</Badge>
+                        ) : instructor.status === "For Approval" ? (
+                          <Badge variant="outline" className="text-amber-600 border-amber-600">
+                            {instructor.status}
+                          </Badge>
                         ) : (
                           <Badge variant="outline" className="text-red-600 border-red-600">
                             {instructor.status}
@@ -581,6 +622,7 @@ export default function InstructorPage() {
                       <SelectContent>
                         <SelectItem value="Available">Available</SelectItem>
                         <SelectItem value="Not Available">Not Available</SelectItem>
+                        <SelectItem value="For Approval">For Approval</SelectItem>
                       </SelectContent>
                     </Select>
                     {getFieldError("status")}
@@ -721,7 +763,7 @@ export default function InstructorPage() {
                         <Label htmlFor="edit-status" className="text-[#333]">
                           Status <span className="text-red-500">*</span>
                         </Label>
-                        <Select value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
+                        <Select value={formData.status} onValueChange={handleStatusChange}>
                           <SelectTrigger
                             id="edit-status"
                             className={`border-gray-300 ${formErrors.status ? "border-red-500" : ""}`}
@@ -731,6 +773,7 @@ export default function InstructorPage() {
                           <SelectContent>
                             <SelectItem value="Available">Available</SelectItem>
                             <SelectItem value="Not Available">Not Available</SelectItem>
+                            <SelectItem value="For Approval">For Approval</SelectItem>
                           </SelectContent>
                         </Select>
                         {getFieldError("status")}
@@ -803,6 +846,24 @@ export default function InstructorPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={showStatusConfirmation} onOpenChange={setShowStatusConfirmation}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Status Change</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to update {formData.firstName}'s status? This change may affect their assigned
+              chairs and procedures, and could impact student assignments and scheduling.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelStatusChange}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmStatusChange} className="bg-[#5C8E77] hover:bg-[#406E58] text-white">
+              Confirm Change
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -3,20 +3,19 @@ import os
 import sys
 from datetime import datetime, timezone
 from supabase import create_client, Client
-import uuid # Import uuid for generating temporary passwords
 import certifi
 
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 os.environ['CURL_CA_BUNDLE'] = certifi.where()
 
 # Read Supabase URL and Key from command-line arguments
-if len(sys.argv) < 5:  # Now expecting academic year ID as 4th argument
+if len(sys.argv) < 5:
   print("Error: Missing command-line arguments for Supabase URL, Key, or Academic Year ID.", file=sys.stderr)
   sys.exit(1)
 
 SUPABASE_URL = sys.argv[2]
 SUPABASE_KEY = sys.argv[3]
-ACADEMIC_YEAR_ID = sys.argv[4]  # Added academic year ID parameter
+ACADEMIC_YEAR_ID = sys.argv[4]
 
 # DEBUG: Print first 5 chars of SUPABASE_KEY
 if SUPABASE_KEY:
@@ -24,13 +23,12 @@ if SUPABASE_KEY:
 else:
   print("DEBUG: SUPABASE_KEY NOT SET (This should not happen if args are passed)")
 
-# Ensure environment variables are loaded (though now from args)
+# Ensure environment variables are loaded
 if not SUPABASE_URL or not SUPABASE_KEY or not ACADEMIC_YEAR_ID:
   print("Error: Supabase URL, Key, or Academic Year ID not found from command-line arguments.", file=sys.stderr)
   sys.exit(1)
 
 try:
-    # Using environment variables for SSL certificates
     print(f"DEBUG: Using SSL certificates from: {certifi.where()}")
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     print("DEBUG: Supabase client created successfully")
@@ -38,33 +36,18 @@ except Exception as e:
     print(f"Error creating Supabase client: {e}", file=sys.stderr)
     sys.exit(1)
 
-def get_academic_year_status(academic_year_id: str) -> str:
+def generate_password(first_name: str, last_name: str, contact_number: str) -> str:
     """
-    Get the status of an academic year by ID.
-    Returns 'Active' or 'Inactive'
+    Generate password using: First Initial + Last Initial + Last 4 digits of contact number
+    Example: John Doe with contact 09123456789 -> JD6789
     """
-    try:
-        response = supabase.table('academic_years').select('status').eq('id', academic_year_id).single().execute()
-        if response.data:
-            return response.data.get('status', 'Inactive')
-        else:
-            print(f"WARNING: Academic year {academic_year_id} not found, defaulting to Inactive", file=sys.stderr)
-            return 'Inactive'
-    except Exception as e:
-        print(f"ERROR: Failed to get academic year status for {academic_year_id}: {e}", file=sys.stderr)
-        return 'Inactive'  # Default to inactive on error
+    first_initial = first_name[0].upper() if first_name else 'X'
+    last_initial = last_name[0].upper() if last_name else 'X'
+    # Remove all non-digit characters and get last 4 digits
+    digits_only = ''.join(filter(str.isdigit, contact_number))
+    last_four = digits_only[-4:] if len(digits_only) >= 4 else digits_only.zfill(4)
+    return f"{first_initial}{last_initial}{last_four}"
 
-def parse_year_level(raw: str) -> str | None:
-  """
-  Parses year level string to match expected format (e.g., '5th Year', '6th Year').
-  If input is '5' or '6', it will convert to '5th Year' or '6th Year'.
-  """
-  raw_lower = raw.lower().strip()
-  if "5th" in raw_lower or raw_lower == "5":
-      return "5th Year"
-  if "6th" in raw_lower or raw_lower == "6":
-      return "6th Year"
-  return raw if raw else None # Fallback for other values or empty string
 
 def parse_sex(gender: str) -> str:
   """Return full words to match database constraint (Male, Female, Other)"""
@@ -84,15 +67,13 @@ def parse_enrollment_status(status: str) -> str:
   elif status_lower in ['not-enrolled', 'not enrolled', 'inactive', 'dropped']:
       return 'Not Enrolled'
   else:
-      return 'Not Enrolled'  # Default fallback
+      return 'Not Enrolled'
 
-def get_or_create_auth_user(email: str):
+def get_or_create_auth_user(email: str, password: str):
     """
-    Try to create a new auth user, or get existing one if already exists.
+    Try to create a new auth user with the provided password, or get existing one if already exists.
     Returns (auth_user_id, created_new_user)
     """
-    temp_password = str(uuid.uuid4())
-    
     auth_user_id = None
     created_new_user = False
 
@@ -101,11 +82,9 @@ def get_or_create_auth_user(email: str):
         response_from_list_users = supabase.auth.admin.list_users() 
         
         users_list = []
-        # Check if the response has a 'data' attribute and it's a list (standard Supabase client response)
         if hasattr(response_from_list_users, 'data') and isinstance(response_from_list_users.data, list):
             users_list = response_from_list_users.data
             print(f"DEBUG: list_users() returned object with .data for {email}.")
-        # If not, check if the response itself is a list (observed in some environments/versions)
         elif isinstance(response_from_list_users, list):
             users_list = response_from_list_users
             print(f"DEBUG: list_users() returned a direct list for {email}.")
@@ -128,13 +107,13 @@ def get_or_create_auth_user(email: str):
         try:
             new_auth_user_response = supabase.auth.admin.create_user({
                 "email": email,
-                "password": temp_password,
+                "password": password,
                 "email_confirm": True,
             })
             if new_auth_user_response.user:
                 auth_user_id = new_auth_user_response.user.id
                 created_new_user = True
-                print(f"  Successfully created new auth user: {email} with ID: {auth_user_id}")
+                print(f"  Successfully created new auth user: {email} with ID: {auth_user_id} and password: {password}")
             else:
                 print(f"  Failed to create auth user for {email}: {new_auth_user_response.error.message}", file=sys.stderr)
                 return None, False
@@ -155,10 +134,7 @@ def main():
       sys.exit(1)
   
   print(f"Processing CSV file: {csv_file_path}")
-  
-  academic_year_status = get_academic_year_status(ACADEMIC_YEAR_ID)
-  target_table = 'clinicians' if academic_year_status != 'Inactive' else 'clinicians_records'
-  print(f"Academic year status: {academic_year_status}, Target table: {target_table}")
+  print(f"Academic year ID: {ACADEMIC_YEAR_ID}")
   
   # Try different encodings
   encodings_to_try = ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']
@@ -210,7 +186,7 @@ def main():
                   print(f"  Values for validation: Student ID='{student_id}', First Name='{first_name}', Email='{email}', Gender='{gender}', Status='{enrollment_status}'")
                   
                   # Basic validation for required fields
-                  if not all([student_id, first_name, last_name, email, gender, enrollment_status]):
+                  if not all([student_id, first_name, last_name, email, gender, enrollment_status, contact_number]):
                       print(f"  Skipping row {row_num} due to missing required data. Check CSV columns and data.", file=sys.stderr)
                       skipped_count += 1
                       continue
@@ -220,8 +196,11 @@ def main():
                   parsed_year_level = parse_year_level(year_level_raw)
                   parsed_enrollment_status = parse_enrollment_status(enrollment_status)
 
-                  # Get or create auth user
-                  auth_user_id, created_new_user = get_or_create_auth_user(email)
+                  generated_password = generate_password(first_name, last_name, contact_number)
+                  print(f"  Generated password for {first_name} {last_name}: {generated_password}")
+
+                  # Get or create auth user with generated password
+                  auth_user_id, created_new_user = get_or_create_auth_user(email, generated_password)
                   
                   if not auth_user_id:
                       print(f"  Could not obtain auth_user_id for {email}. Skipping row {row_num}.", file=sys.stderr)
@@ -235,16 +214,14 @@ def main():
                       "last_name": last_name,
                       "email": email,
                       "sex": parsed_gender,
-                      "role": "R01", # clinician role
+                      "role": "R01",
                       "contact_number": contact_number if contact_number else None,
                   }
 
-                  # Check if user exists in public.users using .limit(1)
                   try:
                       user_response = supabase.table('users').select('auth_user_id').eq('auth_user_id', auth_user_id).limit(1).execute()
                       
                       if user_response.data:
-                          # User exists, update it
                           print(f"  User with auth_user_id {auth_user_id} found in public.users. Attempting update.")
                           update_user_response = supabase.table('users').update(user_payload).eq('auth_user_id', auth_user_id).execute()
                           if update_user_response.data:
@@ -252,7 +229,6 @@ def main():
                           else:
                               raise Exception(f"Failed to update user in public.users: {update_user_response.error.message}. Payload: {user_payload}")
                       else:
-                          # User does not exist, insert it
                           print(f"  User with auth_user_id {auth_user_id} not found in public.users. Attempting insert.")
                           insert_user_response = supabase.table('users').insert([user_payload]).execute()
                           if insert_user_response.data:
@@ -269,35 +245,55 @@ def main():
                       "enrollment_status": parsed_enrollment_status,
                       "year_level": parsed_year_level,
                       "section": section if section else None,
+                      "academic_year_id": ACADEMIC_YEAR_ID,
                       "updated_at": datetime.now(timezone.utc).isoformat(),
                   }
 
-                  # Add academic_year_id for clinicians_records table
-                  if target_table == 'clinicians_records':
-                      clinician_payload["academic_year_id"] = ACADEMIC_YEAR_ID
-
-                  # Check if clinician exists in target table using .limit(1)
                   try:
-                      clinician_response = supabase.table(target_table).select('user_id').eq('user_id', auth_user_id).limit(1).execute()
+                      clinician_response = supabase.table('clinicians').select('user_id').eq('user_id', auth_user_id).limit(1).execute()
 
                       if clinician_response.data:
-                          # Clinician exists, update it
-                          print(f"  Clinician with user_id {auth_user_id} found in {target_table}. Attempting update.")
-                          update_clinician_response = supabase.table(target_table).update(clinician_payload).eq('user_id', auth_user_id).execute()
+                          print(f"  Clinician with user_id {auth_user_id} found in clinicians. Attempting update.")
+                          update_clinician_response = supabase.table('clinicians').update(clinician_payload).eq('user_id', auth_user_id).execute()
                           if update_clinician_response.data:
-                              print(f"  Successfully updated clinician {first_name} {last_name} in {target_table}.")
+                              print(f"  Successfully updated clinician {first_name} {last_name} in clinicians.")
                           else:
-                              raise Exception(f"Failed to update clinician in {target_table}: {update_clinician_response.error.message}. Payload: {clinician_payload}")
+                              raise Exception(f"Failed to update clinician in clinicians: {update_clinician_response.error.message}. Payload: {clinician_payload}")
                       else:
-                          # Clinician does not exist, insert it
-                          print(f"  Clinician with user_id {auth_user_id} not found in {target_table}. Attempting insert.")
-                          insert_clinician_response = supabase.table(target_table).insert([clinician_payload]).execute()
+                          print(f"  Clinician with user_id {auth_user_id} not found in clinicians. Attempting insert.")
+                          insert_clinician_response = supabase.table('clinicians').insert([clinician_payload]).execute()
                           if insert_clinician_response.data:
-                              print(f"  Successfully inserted clinician {first_name} {last_name} into {target_table}.")
+                              print(f"  Successfully inserted clinician {first_name} {last_name} into clinicians.")
                           else:
-                              raise Exception(f"Failed to insert clinician into {target_table}: {insert_clinician_response.error.message}. Payload: {clinician_payload}")
+                              raise Exception(f"Failed to insert clinician into clinicians: {insert_clinician_response.error.message}. Payload: {clinician_payload}")
                   except Exception as db_error:
-                      print(f"  Database operation error for {target_table} (user_id: {auth_user_id}): {db_error}", file=sys.stderr)
+                      print(f"  Database operation error for clinicians (user_id: {auth_user_id}): {db_error}", file=sys.stderr)
+                      raise
+
+                  clinician_record_payload = {
+                      "user_id": auth_user_id,
+                      "academic_year_id": ACADEMIC_YEAR_ID,
+                      "student_id": student_id,
+                      "year_level": parsed_year_level,
+                      "section": section if section else None,
+                      "created_at": datetime.now(timezone.utc).isoformat(),
+                  }
+
+                  try:
+                      # Check if record already exists for this user and academic year
+                      record_response = supabase.table('clinician_records').select('user_id').eq('user_id', auth_user_id).eq('academic_year_id', ACADEMIC_YEAR_ID).limit(1).execute()
+
+                      if record_response.data:
+                          print(f"  Clinician record with user_id {auth_user_id} found in clinician_records for academic year {ACADEMIC_YEAR_ID}. Skipping duplicate.")
+                      else:
+                          print(f"  Inserting clinician record for {first_name} {last_name} into clinician_records.")
+                          insert_record_response = supabase.table('clinician_records').insert([clinician_record_payload]).execute()
+                          if insert_record_response.data:
+                              print(f"  Successfully inserted clinician record {first_name} {last_name} into clinician_records.")
+                          else:
+                              raise Exception(f"Failed to insert clinician record into clinician_records: {insert_record_response.error.message}. Payload: {clinician_record_payload}")
+                  except Exception as db_error:
+                      print(f"  Database operation error for clinician_records (user_id: {auth_user_id}): {db_error}", file=sys.stderr)
                       raise
 
                   processed_count += 1
