@@ -94,7 +94,6 @@ export default function InstructorDashboard() {
     const fetchAttendanceRecords = async () => {
       try {
         setLoading(true)
-      console.log('🔍 Fetching from client...')
       
       // Add headers to include credentials
       const response = await fetch('/api/dashboard', {
@@ -105,8 +104,8 @@ export default function InstructorDashboard() {
         }
       })
       
-      console.log('- Response status:', response.status)
-      console.log('- Response ok:', response.ok)
+      // console.log('- Response status:', response.status)
+      // console.log('- Response ok:', response.ok)
       
       const result = await response.json()
       console.log('- Response body:', result)
@@ -152,6 +151,34 @@ export default function InstructorDashboard() {
       setLoading(false)
     }
     }
+<<<<<<< Updated upstream
+=======
+      
+    // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6 p-6 bg-[#f9f9f9] min-h-screen">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="shadow-sm border rounded-lg">
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+>>>>>>> Stashed changes
   // Error state
   if (!instructorInfo) {
     return (
@@ -494,7 +521,13 @@ export default function InstructorDashboard() {
     year: "numeric",
   })
 
+<<<<<<< Updated upstream
   // const confirmationStyles = getVariantStyles(confirmationState.variant)
+=======
+ 
+
+  const confirmationStyles = getVariantStyles(confirmationState.variant)
+>>>>>>> Stashed changes
 
   return (
     <div className="space-y-6">
