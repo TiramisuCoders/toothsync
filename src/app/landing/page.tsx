@@ -175,7 +175,7 @@ export default function LandingPage() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
                 {/* Submit a New Ticket */}
                 <button
-                  onClick={() => handleSupportNavigation("/support/new-ticket")}
+                  onClick={() => handleSupportNavigation("/incident-management/new-ticket")}
                   className="flex flex-col items-center justify-center p-8 bg-white border border-gray-200 rounded-xl hover:border-emerald-300 hover:bg-emerald-50 transition-all duration-200 w-[240px] h-[200px] group"
                 >
                   <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-4 group-hover:bg-emerald-200 transition-colors">
@@ -188,7 +188,7 @@ export default function LandingPage() {
 
                 {/* View My Tickets */}
                 <button
-                  onClick={() => handleSupportNavigation("/support/my-tickets")}
+                  onClick={() => handleSupportNavigation("/incident-management/my-tickets")}
                   className="flex flex-col items-center justify-center p-8 bg-white border border-gray-200 rounded-xl hover:border-emerald-300 hover:bg-emerald-50 transition-all duration-200 w-[240px] h-[200px] group"
                 >
                   <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-4 group-hover:bg-emerald-200 transition-colors">
