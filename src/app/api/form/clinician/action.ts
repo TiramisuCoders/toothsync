@@ -68,6 +68,7 @@ export async function submitAttendanceAction(formData: {
   selectedProcedures: string[]
   shift: string
   clinicianUserId: string
+  patient_type: string
 }) {
   const supabase = await createAuthenticatedSupabaseClient()
 
@@ -81,6 +82,10 @@ export async function submitAttendanceAction(formData: {
 
     if (!formData.shift || !['1st', '2nd'].includes(formData.shift)) {
       errors.push('Valid shift selection is required (1st or 2nd)')
+    }
+
+    if (!formData.patient_type || !['Comprehensive', 'Individual'].includes(formData.patient_type)) {
+      errors.push('Valid patient type selection is required (Comprehensive or Individual)')
     }
 
     if (!formData.clinicianUserId) {
@@ -159,6 +164,7 @@ export async function submitAttendanceAction(formData: {
         patient_name: formData.patientName.trim(),
         clinician_id: formData.clinicianUserId,
         shift: formData.shift,
+        patient_type: formData.patient_type,
         status: 'Pending',
         created_at: new Date().toISOString()
       })
@@ -209,6 +215,7 @@ export async function submitAttendanceAction(formData: {
         patientName: formData.patientName,
         procedures: formData.selectedProcedures,
         shift: formData.shift,
+        patient_type: formData.patient_type,
         submittedBy: `${clinician.first_name} ${clinician.last_name}`,
         submittedAt: new Date().toISOString()
       }

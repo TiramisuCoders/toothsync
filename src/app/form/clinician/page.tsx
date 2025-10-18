@@ -21,6 +21,7 @@ export default function ClinicianForm() {
     firstName: "", 
     lastName: "",
     shift: "",
+    patient_type: "",
     patientFirstName: "",
     patientLastName: "",
     selectedProcedures: [] as string[],
@@ -96,6 +97,11 @@ export default function ClinicianForm() {
     if (errors.shift) setErrors((prev) => ({ ...prev, shift: "" }))
   }
 
+  const handlePatientType = (value: string) => {
+    setFormData((prev) => ({ ...prev, patient_type: value }))
+    if (errors.patient_type) setErrors((prev) => ({ ...prev, patient_type: "" }))
+  }
+
 const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") => 
   (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({ ...prev, [field]: e.target.value }))
@@ -130,6 +136,10 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
 
     if (!formData.shift) {
       newErrors.shift = "Please select a shift"
+    }
+
+    if (!formData.patient_type) {
+      newErrors.patient_type = "Please indicate the type of patient"
     }
 
     if (!formData.patientFirstName.trim()) {
@@ -178,6 +188,7 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
         patientName: `${formData.patientFirstName} ${formData.patientLastName}`.trim(),
         selectedProcedures: formData.selectedProcedures,
         shift: formData.shift,
+        patient_type: formData.patient_type,
         clinicianUserId: formData.clinicianUserId,
       })
 
@@ -203,6 +214,7 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
         patientFirstName: "",
         patientLastName: "",
         selectedProcedures: [],
+        patient_type: "",
       }))
 
       setTimeout(() => setShowConfirmation(false), 5000)
@@ -281,12 +293,15 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
               </div>
             </div>
 
+            
+
             {/* Debug info - remove in production */}
             {/* <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
               Debug: User ID = {formData.clinicianUserId}
             </div> */}
 
             {/* Shift Dropdown */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="shift">Shift</Label>
               <Select value={formData.shift} onValueChange={handleShiftChange}>
@@ -299,6 +314,21 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
                 </SelectContent>
               </Select>
               {errors.shift && <p className="text-sm text-red-500">{errors.shift}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="shift">Patient Type</Label>
+              <Select value={formData.patient_type} onValueChange={handlePatientType}>
+                <SelectTrigger className={`${errors.patient_type ? "border-red-500" : "focus:border-[#5C8E77]"}`}>
+                  <SelectValue placeholder="Select patient type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Comprehensive">Comprehensive</SelectItem>  
+                  <SelectItem value="Individual">Individual</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.patient_type && <p className="text-sm text-red-500">{errors.patient_type}</p>}
+            </div>
             </div>
 
 
