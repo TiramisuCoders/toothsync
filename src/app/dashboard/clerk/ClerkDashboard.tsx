@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Calendar, Check, LogOut, RockingChair, Users, X } from "lucide-react"
+import { Calendar, LogOut, RockingChair, Users } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -60,12 +60,8 @@ export default function ClerkDashboard() {
     request2nd: 0
   })
 
-  // Get current date
+  
   const today = new Date()
-  const options: Intl.DateTimeFormatOptions = { weekday: "long", year: "numeric", month: "long", day: "numeric" }
-  const formattedDate = today.toLocaleDateString("en-US", options)
-
-  // Format for greeting header
   const day = today.toLocaleDateString("en-US", { weekday: "long" })
   const month = today.toLocaleDateString("en-US", { month: "long" })
   const date = today.getDate()
@@ -154,59 +150,59 @@ export default function ClerkDashboard() {
   }
 
   // Function to handle confirm attendance
-  const handleConfirmAttendance = async (id: string) => {
-    try {
-      setAttendanceRecords(prev =>
-        prev.map(record =>
-          record.id === id ? { ...record, status: "Confirmed" } : record
-        )
-      )
+  // const handleConfirmAttendance = async (id: string) => {
+  //   try {
+  //     setAttendanceRecords(prev =>
+  //       prev.map(record =>
+  //         record.id === id ? { ...record, status: "Confirmed" } : record
+  //       )
+  //     )
 
-      const response = await fetch('/api/dashboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          request_id: id
-        })
-      })
+  //     const response = await fetch('/api/dashboard', {
+  //       method: 'POST',
+  //       headers: { 'Content-Type': 'application/json' },
+  //       body: JSON.stringify({
+  //         request_id: id
+  //       })
+  //     })
 
-      const result = await response.json()
+  //     const result = await response.json()
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to confirm attendance')
-      }
+  //     if (!response.ok) {
+  //       throw new Error(result.error || 'Failed to confirm attendance')
+  //     }
 
-      toast({
-        title: "Attendance Confirmed",
-        description: "The clinician has been marked as present.",
-      })
+  //     toast({
+  //       title: "Attendance Confirmed",
+  //       description: "The clinician has been marked as present.",
+  //     })
 
-    } catch (error) {
-      console.error("Failed to confirm attendance:", error)
+  //   } catch (error) {
+  //     console.error("Failed to confirm attendance:", error)
 
-      setAttendanceRecords(prev =>
-        prev.map(record =>
-          record.id === id ? { ...record, status: "Pending" } : record
-        )
-      )
+  //     setAttendanceRecords(prev =>
+  //       prev.map(record =>
+  //         record.id === id ? { ...record, status: "Pending" } : record
+  //       )
+  //     )
 
-      toast({
-        title: "Update Failed",
-        description: "There was a problem confirming the attendance.",
-        variant: "destructive",
-      })
-    }
-  }
+  //     toast({
+  //       title: "Update Failed",
+  //       description: "There was a problem confirming the attendance.",
+  //       variant: "destructive",
+  //     })
+  //   }
+  // }
 
   // Function to handle sanitization update
-  const handleSanitizeChange = (id: string, value: string) => {
-    const newSanitizeValue = value.charAt(0).toUpperCase() + value.slice(1)
-    setAttendanceRecords(prev =>
-      prev.map(record =>
-        record.id === id ? { ...record, sanitize: newSanitizeValue } : record
-      )
-    )
-  }
+  // const handleSanitizeChange = (id: string, value: string) => {
+  //   const newSanitizeValue = value.charAt(0).toUpperCase() + value.slice(1)
+  //   setAttendanceRecords(prev =>
+  //     prev.map(record =>
+  //       record.id === id ? { ...record, sanitize: newSanitizeValue } : record
+  //     )
+  //   )
+  // }
 
   // Function to handle timeout click - opens modal
   const handleTimeoutClick = (record: Record) => {
@@ -272,6 +268,30 @@ export default function ClerkDashboard() {
         variant: "destructive",
       })
     }
+  }
+
+   // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6 p-6 bg-[#f9f9f9] min-h-screen">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+        </div>
+        <div className="grid gap-6 md:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="shadow-sm border rounded-lg">
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   // Function to handle delete click

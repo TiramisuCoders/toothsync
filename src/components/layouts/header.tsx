@@ -92,7 +92,7 @@ export function Header() {
     router.push(`/profile/${profilePath}`)
   }
 
-  const handleSupportClick = () => {
+  const handleHelpClick = () => {
     router.push("/support/faq")
   }
 
@@ -131,9 +131,9 @@ export function Header() {
                 <User className="mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleSupportClick}>
+              <DropdownMenuItem onClick={handleHelpClick}>
                 <HelpCircle className="mr-2 h-4 w-4" />
-                Support
+                Help
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSignOutClick} className="text-red-600 focus:text-red-600">

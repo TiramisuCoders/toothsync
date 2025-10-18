@@ -257,10 +257,10 @@ export default function CliniciansPage() {
     setIsViewModalOpen(true)
   }
 
-  const handleHistoryClick = (activity: Activity) => {
-    setSelectedActivity(activity)
-    setIsHistoryModalOpen(true)
-  }
+  // const handleHistoryClick = (activity: Activity) => {
+  //   setSelectedActivity(activity)
+  //   setIsHistoryModalOpen(true)
+  // }
 
   const handleActivityEditClick = (activity: Activity) => {
     setCurrentActivity(activity)
@@ -272,32 +272,32 @@ export default function CliniciansPage() {
     setIsEditModalOpen(false)
   }
 
-  const handleUpdateActivity = (updatedActivity: Activity) => {
-    const newHistory: HistoryItem = {
-      timestamp: new Date().toISOString(),
-      user: "admin@example.com",
-      action: "Updated",
-      description: "Activity details updated",
-      details: {
-        date: updatedActivity.date,
-        procedure: updatedActivity.procedure,
-        patient: updatedActivity.patient,
-        grade: updatedActivity.grade || "",
-        remarks: updatedActivity.remarks || "",
-      },
-    }
-    setActivitiesData(
-      activitiesData.map((activity) =>
-        activity.id === updatedActivity.id
-          ? {
-              ...updatedActivity,
-              history: [newHistory, ...activity.history],
-            }
-          : activity,
-      ),
-    )
-    setIsActivityEditModalOpen(false)
-  }
+  // const handleUpdateActivity = (updatedActivity: Activity) => {
+  //   const newHistory: HistoryItem = {
+  //     timestamp: new Date().toISOString(),
+  //     user: "admin@example.com",
+  //     action: "Updated",
+  //     description: "Activity details updated",
+  //     details: {
+  //       date: updatedActivity.date,
+  //       procedure: updatedActivity.procedure,
+  //       patient: updatedActivity.patient,
+  //       grade: updatedActivity.grade || "",
+  //       remarks: updatedActivity.remarks || "",
+  //     },
+  //   }
+  //   setActivitiesData(
+  //     activitiesData.map((activity) =>
+  //       activity.id === updatedActivity.id
+  //         ? {
+  //             ...updatedActivity,
+  //             history: [newHistory, ...activity.history],
+  //           }
+  //         : activity,
+  //     ),
+  //   )
+  //   setIsActivityEditModalOpen(false)
+  // }
 
   const updateFormData = (field: keyof NewClinician, value: string) => {
     setFormData((prev: Partial<NewClinician>) => ({
@@ -521,13 +521,13 @@ export default function CliniciansPage() {
     document.body.removeChild(link)
   }
 
-  const exportToCSV = () => {
-    if (activeTab === "activities") {
-      exportActivitiesToCSV()
-    } else {
-      exportAttendanceToCSV()
-    }
-  }
+  // const exportToCSV = () => {
+  //   if (activeTab === "activities") {
+  //     exportActivitiesToCSV()
+  //   } else {
+  //     exportAttendanceToCSV()
+  //   }
+  // }
 
   const filteredClinicians = clinicians.filter((clinician) => {
     if (activeFilter === "all") return true

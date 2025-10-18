@@ -5,15 +5,9 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Check, X, Pencil, Users, ArrowUpDown, AlertTriangle, User } from "lucide-react"
+import { Check, X, Pencil, ArrowUpDown, AlertTriangle, User } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { supabase } from "@/lib/supabase"
 import { toast } from "@/hooks/use-toast"
 import ArchiveConfirmationModal from "@/components/modals/archive-record-modal"
 import GradingModal from "@/components/modals/grading-modal"
@@ -59,15 +53,12 @@ interface ConfirmationState {
 }
 
 export default function InstructorDashboard() {
-  const [isAvailable, setIsAvailable] = useState(true)
-  const [editingActivity, setEditingActivity] = useState<Activity | null>(null)
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [gradeValue, setGradeValue] = useState("")
+  const [gradeRemarks, setGradeRemarks] = useState("")
   const [loading, setLoading] = useState(true)
   const [isGradeModalOpen, setIsGradeModalOpen] = useState(false)
-  const [gradeValue, setGradeValue] = useState("")
   const [currentActivity, setCurrentActivity] = useState<Activity | null>(null)
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false)
-  const [gradeRemarks, setGradeRemarks] = useState("")
   const [activities, setActivitiesRecords] = useState<Activity[]>([])
   const [formData, setFormData] = useState<Activity | null>(null)
   const [todaysActivities, setTodaysActivities] = useState<Activity[]>([])
@@ -161,12 +152,6 @@ export default function InstructorDashboard() {
       setLoading(false)
     }
     }
-      
-    
-  // Centralized data - pulling from admin perspective
-  const cliniciansLoggedIn = 24
-  const availableInstructors = 3
-
   // Error state
   if (!instructorInfo) {
     return (
@@ -182,16 +167,7 @@ export default function InstructorDashboard() {
   }
 
   const today = new Date()
-  const options: Intl.DateTimeFormatOptions = { weekday: "long", year: "numeric", month: "long", day: "numeric" }
-  const formattedDates = today.toLocaleDateString("en-US", options)
-
-  // Get the greeting based on time of day
-   // Format for greeting header
-  const day = today.toLocaleDateString("en-US", { weekday: "long" })
-  const month = today.toLocaleDateString("en-US", { month: "long" })
-  const date = today.getDate()
-  const year = today.getFullYear()
-  const formattedGreetingDate = `${day}, ${month} ${date}, ${year}`
+  
 
   // Get time of day for greeting
   const hour = today.getHours()
@@ -216,27 +192,51 @@ export default function InstructorDashboard() {
     }
   }
 
-  const handleEditActivity = (activity: Activity) => {
-    setEditingActivity(activity)
-    setIsEditModalOpen(true)
+   // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6 p-6 bg-[#f9f9f9] min-h-screen">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+        </div>
+        <div className="grid gap-6 md:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="shadow-sm border rounded-lg">
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
   }
 
-  const handleSaveActivity = () => {
-    if (!formData) return
+  // const handleEditActivity = (activity: Activity) => {
+  //   setEditingActivity(activity)
+  //   setIsEditModalOpen(true)
+  // }
 
-    setTodaysActivities((prev) => prev.map((activity) => (activity.id === formData.id ? formData : activity)))
-    handleCloseEditModal()
-  }
+  // const handleSaveActivity = () => {
+  //   if (!formData) return
 
-  const handleCloseEditModal = () => {
-    setIsEditModalOpen(false)
-    setEditingActivity(null)
-    setFormData(null)
-  }
+  //   setTodaysActivities((prev) => prev.map((activity) => (activity.id === formData.id ? formData : activity)))
+  //   handleCloseEditModal()
+  // }
 
-  const handleInputChange = (field: keyof Activity, value: string) => {
-    setFormData((prev) => (prev ? { ...prev, [field]: value } : null))
-  }
+  // const handleCloseEditModal = () => {
+  //   setIsEditModalOpen(false)
+  //   setEditingActivity(null)
+  //   setFormData(null)
+  // }
+
+  // const handleInputChange = (field: keyof Activity, value: string) => {
+  //   setFormData((prev) => (prev ? { ...prev, [field]: value } : null))
+  // }
 
   const getVariantStyles = (variant: "complete" | "incomplete" | "availability") => {
     switch (variant) {
@@ -267,35 +267,35 @@ export default function InstructorDashboard() {
     }
   }
 
-  const handleCompleteActivity = (activity: Activity) => {
-    setConfirmationState({
-      isOpen: true,
-      title: "Mark as Complete",
-      message: `Are you sure you want to mark ${activity.clinicianName}'s ${activity.procedures} as completed?`,
-      confirmText: "Mark Complete",
-      variant: "complete",
-      onConfirm: () => {
-        setTodaysActivities((prev) =>
-          prev.map((act) => (act.id === activity.id ? { ...act, status: "Completed" } : act)),
-        )
-      },
-    })
-  }
+  // const handleCompleteActivity = (activity: Activity) => {
+  //   setConfirmationState({
+  //     isOpen: true,
+  //     title: "Mark as Complete",
+  //     message: `Are you sure you want to mark ${activity.clinicianName}'s ${activity.procedures} as completed?`,
+  //     confirmText: "Mark Complete",
+  //     variant: "complete",
+  //     onConfirm: () => {
+  //       setTodaysActivities((prev) =>
+  //         prev.map((act) => (act.id === activity.id ? { ...act, status: "Completed" } : act)),
+  //       )
+  //     },
+  //   })
+  // }
 
-  const handleIncompleteActivity = (activity: Activity) => {
-    setConfirmationState({
-      isOpen: true,
-      title: "Mark as Incomplete",
-      message: `Are you sure you want to mark ${activity.clinicianName}'s ${activity.procedures} as incomplete? This will require additional follow-up.`,
-      confirmText: "Mark Incomplete",
-      variant: "incomplete",
-      onConfirm: () => {
-        setTodaysActivities((prev) =>
-          prev.map((act) => (act.id === activity.id ? { ...act, status: "Incomplete" } : act)),
-        )
-      },
-    })
-  }
+  // const handleIncompleteActivity = (activity: Activity) => {
+  //   setConfirmationState({
+  //     isOpen: true,
+  //     title: "Mark as Incomplete",
+  //     message: `Are you sure you want to mark ${activity.clinicianName}'s ${activity.procedures} as incomplete? This will require additional follow-up.`,
+  //     confirmText: "Mark Incomplete",
+  //     variant: "incomplete",
+  //     onConfirm: () => {
+  //       setTodaysActivities((prev) =>
+  //         prev.map((act) => (act.id === activity.id ? { ...act, status: "Incomplete" } : act)),
+  //       )
+  //     },
+  //   })
+  // }
 
   const handleProcedureGradeChange = (index: number, field: 'grade' | 'remarks', value: string) => {
     if (!currentActivity) return
@@ -494,7 +494,7 @@ export default function InstructorDashboard() {
     year: "numeric",
   })
 
-  const confirmationStyles = getVariantStyles(confirmationState.variant)
+  // const confirmationStyles = getVariantStyles(confirmationState.variant)
 
   return (
     <div className="space-y-6">

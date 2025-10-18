@@ -1,0 +1,226 @@
+// app/actions/clinician.ts
+"use server"
+
+import { createAuthenticatedSupabaseClient } from '@/lib/supabase-route'
+
+export async function getUserData() {
+  const supabase = await createAuthenticatedSupabaseClient()
+
+  try {
+    // Get authenticated user
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+    if (userError || !userData.user) {
+      console.error("Authentication error:", userError)
+      return { error: "User not authenticated", user: null, clinician: null }
+    }
+
+    console.log("Authenticated user ID:", userData.user.id)
+    console.log("Authenticated user email:", userData.user.email)
+
+    // Fetch user details
+    const { data: clinician, error: clinicianError } = await supabase
+      .from("users")
+      .select("first_name, last_name, role")
+      .eq("auth_user_id", userData.user.id)
+      .single()
+
+    if (clinicianError) {
+      console.error("Clinician fetch error:", clinicianError)
+      return { error: "Failed to fetch clinician data", user: userData.user, clinician: null }
+    }
+
+    console.log("Found clinician:", clinician)
+
+    return { 
+      error: null, 
+      user: userData.user, 
+      clinician 
+    }
+  } catch (error) {
+    console.error("Error in getUserData:", error)
+    return { error: "Failed to load user data", user: null, clinician: null }
+  }
+}
+
+export async function getProcedures() {
+  const supabase = await createAuthenticatedSupabaseClient()
+
+  try {
+    const { data: procedureData, error: procedureError } = await supabase
+      .from("procedure")
+      .select("procedure_id, name")
+
+    if (procedureError) {
+      console.error("Procedure fetch error:", procedureError)
+      return { error: "Failed to load procedures", procedures: [] }
+    }
+
+    return { error: null, procedures: procedureData || [] }
+  } catch (error) {
+    console.error("Error fetching procedures:", error)
+    return { error: "Failed to load procedures", procedures: [] }
+  }
+}
+
+// Server action for form submission
+export async function submitAttendanceAction(formData: {
+  patientName: string
+  selectedProcedures: string[]
+  shift: string
+  clinicianUserId: string
+}) {
+  const supabase = await createAuthenticatedSupabaseClient()
+
+  try {
+    // Validate form data
+    const errors: string[] = []
+
+    if (!formData.patientName || !formData.patientName.trim()) {
+      errors.push('Patient name is required')
+    }
+
+    if (!formData.shift || !['1st', '2nd'].includes(formData.shift)) {
+      errors.push('Valid shift selection is required (1st or 2nd)')
+    }
+
+    if (!formData.clinicianUserId) {
+      errors.push('Clinician user ID is required')
+    }
+
+    if (!Array.isArray(formData.selectedProcedures) || formData.selectedProcedures.length === 0) {
+      errors.push('At least one procedure must be selected')
+    }
+
+    if (formData.selectedProcedures && formData.selectedProcedures.length > 2) {
+      errors.push('Maximum 2 procedures can be selected')
+    }
+
+    if (errors.length > 0) {
+      return { success: false, error: 'Validation failed', details: errors }
+    }
+
+    // Debug: Log the clinicianUserId being searched for
+    console.log('Searching for clinician with auth_user_id:', formData.clinicianUserId)
+
+    // Verify clinician exists
+    const { data: clinician, error: clinicianError } = await supabase
+      .from('users')
+      .select('first_name, last_name, auth_user_id')
+      .eq('auth_user_id', formData.clinicianUserId)
+      .single()
+
+    // Debug: Log the query result
+    console.log('Clinician query result:', { data: clinician, error: clinicianError })
+
+    if (clinicianError || !clinician) {
+      // Additional debugging: Let's see what users exist
+      const { data: allUsers, error: debugError } = await supabase
+        .from('users')
+        .select('first_name, last_name, auth_user_id')
+        .limit(5)
+      
+      console.log('Sample users in database:', allUsers)
+      console.log('Debug query error:', debugError)
+      
+      console.error('Clinician verification failed:', clinicianError)
+      return {
+        success: false,
+        error: 'Invalid clinician credentials',
+        debug: {
+          searchedUserId: formData.clinicianUserId,
+          sampleUsers: allUsers?.map(u => ({ 
+            first_name: u.first_name,
+            last_name: u.last_name,
+            auth_user_id: u.auth_user_id 
+          })) || []
+        }
+      }
+    }
+
+    // Verify procedures exist
+    const { data: procedureData, error: procedureError } = await supabase
+      .from('procedure')
+      .select('procedure_id')
+      .in('procedure_id', formData.selectedProcedures)
+
+    if (procedureError) {
+      console.error('Procedure verification failed:', procedureError)
+      return { success: false, error: 'Failed to verify procedures' }
+    }
+
+    if (!procedureData || procedureData.length !== formData.selectedProcedures.length) {
+      return { success: false, error: 'One or more selected procedures are invalid' }
+    }
+
+    // Insert main request record
+    const { data: requestData, error: requestError } = await supabase
+      .from('request')
+      .insert({
+        patient_name: formData.patientName.trim(),
+        clinician_id: formData.clinicianUserId,
+        shift: formData.shift,
+        status: 'Pending',
+        created_at: new Date().toISOString()
+      })
+      .select("request_id")
+      .single()
+
+    if (requestError) {
+      console.error('Failed to insert request:', requestError)
+      return { success: false, error: 'Failed to create attendance request' }
+    }
+
+    const newRequestId = requestData.request_id
+    console.log('Created request with ID:', newRequestId)
+
+    // Create procedure association records
+    const procedureRows = formData.selectedProcedures.map((procedureId) => ({
+      rp_id: `${newRequestId}-${procedureId}`,
+      request_id: newRequestId,
+      procedure_id: procedureId,
+    }))
+
+    const { error: procedureInsertError } = await supabase
+      .from('requested_procedures')
+      .insert(procedureRows)
+
+    if (procedureInsertError) {
+      console.error('Failed to insert requested procedures:', procedureInsertError)
+      
+      // Rollback: Delete the request record
+      await supabase
+        .from('request')
+        .delete()
+        .eq('request_id', newRequestId)
+      
+      return { success: false, error: 'Failed to associate procedures with request' }
+    }
+
+    // Log successful submission
+    console.log(`Attendance request ${newRequestId} submitted successfully by ${clinician.first_name} ${clinician.last_name}`)
+
+    // Return success response
+    return {
+      success: true,
+      requestId: newRequestId,
+      message: 'Attendance request submitted successfully',
+      data: {
+        requestId: newRequestId,
+        patientName: formData.patientName,
+        procedures: formData.selectedProcedures,
+        shift: formData.shift,
+        submittedBy: `${clinician.first_name} ${clinician.last_name}`,
+        submittedAt: new Date().toISOString()
+      }
+    }
+
+  } catch (error) {
+    console.error('Unexpected error in attendance submission:', error)
+    
+    return {
+      success: false,
+      error: 'Internal server error',
+      message: 'An unexpected error occurred while processing your request'
+    }
+  }
+}

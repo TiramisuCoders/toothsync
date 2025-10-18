@@ -1,3 +1,4 @@
+// app/incident-management/new-ticket/NewTicket.tsx
 "use client"
 
 import type React from "react"
@@ -12,14 +13,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { TicketSuccessModal } from "@/components/modals/ticket-success-modal"
 import { TicketFailureModal } from "@/components/modals/ticket-failure-modal"
 
-export default function NewTicketPage() {
+export default function NewTicket() {
   const router = useRouter()
   const [formData, setFormData] = useState({
     title: "",
     affectedModule: "",
     category: "",
     description: "",
-    date: "",
     reportedBy: "",
     attachments: null as File[] | null,
   })
@@ -30,8 +30,30 @@ export default function NewTicketPage() {
   const [showFailureModal, setShowFailureModal] = useState(false)
   const [ticketNumber, setTicketNumber] = useState("")
   const [submissionDate, setSubmissionDate] = useState("")
+  const [errorMessage, setErrorMessage] = useState("")
+
+  // Fetched data from database
+  const [modules, setModules] = useState<Array<{ module_id: string; module_name: string }>>([])
+  const [issueTypes, setIssueTypes] = useState<Array<{ issue_type_id: string; issue_type_name: string }>>([])
+  const [isLoadingModules, setIsLoadingModules] = useState(true)
+  const [isLoadingIssueTypes, setIsLoadingIssueTypes] = useState(false)
+  const [selectedModuleId, setSelectedModuleId] = useState("")
 
   const backgroundImages = ["/images/landing-page/school-1.png", "/images/landing-page/school-2.png"]
+
+  // Fetch modules on component mount
+  useEffect(() => {
+    fetchModules()
+  }, [])
+
+  // Fetch issue types when module changes
+  useEffect(() => {
+    if (selectedModuleId) {
+      fetchIssueTypes(selectedModuleId)
+    } else {
+      setIssueTypes([])
+    }
+  }, [selectedModuleId])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -41,72 +63,78 @@ export default function NewTicketPage() {
     return () => clearInterval(interval)
   }, [])
 
-  const modules = [
-    "Login & Authentication",
-    "Instructor Management",
-    "Resource Allocation",
-    "Service Request Form",
-    "Dashboard/UI",
-    "Others",
-  ]
+  const fetchModules = async () => {
+    try {
+      setIsLoadingModules(true)
+      console.log('🔄 Fetching modules from:', '/api/incident-management/NewTickets?action=modules')
+      
+      const response = await fetch('/api/incident-management/NewTickets?action=modules', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store'
+      })
+      
+      console.log('📡 Response status:', response.status, response.statusText)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ Response not OK:', errorText)
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
 
-  const categoryOptions: Record<string, string[]> = {
-    "Login & Authentication": [
-      "Unable to Log In",
-      "Account Locked",
-      "Forgotten Password",
-      "Role Access Issue",
-      "Role Permissions Not Working",
-      "Others",
-    ],
-    "Instructor Management": [
-      "Instructor Not Assigned",
-      "Missing Grade Entry",
-      "Instructor Assigned Outside Schedule",
-      "Access or Visibility Issue",
-      "Unequal Instructor Load",
-      "Others",
-    ],
-    "Resource Allocation": [
-      "Chair Assignment Error",
-      "Incorrect Chair Assignment",
-      "Resource Not Appearing",
-      "Manual Override Failed",
-      "Inaccurate Chair Status",
-      "Others",
-    ],
-    "Service Request Form": [
-      "Form Submission Error",
-      "Cannot Upload Attachment",
-      "Admin Not Assigned",
-      "Incorrect Form Access",
-      "Cannot Update Request",
-      "Others",
-    ],
-    "Dashboard/UI": [
-      "Data Not Loading",
-      "Missing Logs or Data",
-      "Wrong Summary Displayed",
-      "Logbook Export Fails",
-      "Action Buttons Not Responding",
-      "Others",
-    ],
-    Others: [
-      "Ticket Missing",
-      "Unexpected Error Message",
-      "Attendance Log Not Updating",
-      "Data Integrity Issue",
-      "Performance Lag",
-      "General Inquiry",
-    ],
+      const result = await response.json()
+      console.log('📦 Response data:', result)
+
+      if (result.success && result.modules) {
+        setModules(result.modules)
+        console.log('✅ Fetched modules:', result.modules.length, 'modules')
+      } else {
+        console.error('❌ Failed to fetch modules:', result.error || 'Unknown error')
+        setModules([])
+      }
+    } catch (error) {
+      console.error('💥 Error fetching modules:', error)
+      setModules([])
+      // Show error to user
+      alert('Failed to load modules. Please check console for details.')
+    } finally {
+      setIsLoadingModules(false)
+    }
+  }
+
+  const fetchIssueTypes = async (moduleId: string) => {
+    try {
+      setIsLoadingIssueTypes(true)
+      const response = await fetch(`/api/incident-management/NewTickets?action=issue_types&module_id=${moduleId}`)
+      const result = await response.json()
+
+      if (response.ok && result.success) {
+        setIssueTypes(result.issueTypes || [])
+        console.log('✅ Fetched issue types:', result.issueTypes)
+      } else {
+        console.error('Failed to fetch issue types:', result.error)
+      }
+    } catch (error) {
+      console.error('Error fetching issue types:', error)
+    } finally {
+      setIsLoadingIssueTypes(false)
+    }
   }
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,
-      ...(field === "affectedModule" ? { category: "" } : {}), // Reset category when module changes
+      ...(field === "affectedModule" ? { category: "" } : {}),
     }))
+
+    // When module changes, update selectedModuleId to fetch issue types
+    if (field === "affectedModule") {
+      const mod = modules.find(m => m.module_name === value)
+      setSelectedModuleId(mod?.module_id || "")
+    }
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -119,103 +147,70 @@ export default function NewTicketPage() {
     }
   }
 
-  // 🔴 REMOVE THIS FUNCTION WHEN CONNECTING TO DATABASE
-  // This generates random ticket numbers for demo purposes
-  const generateRandomTicketNumber = () => {
-    const year = new Date().getFullYear()
-    const randomNum = Math.floor(Math.random() * 100000)
-      .toString()
-      .padStart(5, "0")
-    return `#TS-${year}-${randomNum}`
-  }
-
-  // 🟢 REPLACE WITH THIS WHEN CONNECTING TO DATABASE
-  // This will generate sequential ticket numbers based on database count
-  const generateSequentialTicketNumber = (ticketCount: number) => {
-    const year = new Date().getFullYear()
-    const sequentialNum = (ticketCount + 1).toString().padStart(5, "0")
-    return `#TS-${year}-${sequentialNum}`
-  }
-
-  const formatSubmissionDate = () => {
-    const now = new Date()
-    return (
-      now.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }) +
-      " | " +
-      now.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      })
-    )
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setErrorMessage("")
 
     try {
-      // 🔴 REMOVE THIS ENTIRE SIMULATION BLOCK WHEN CONNECTING TO DATABASE
-      // ==================== SIMULATION START ====================
-      await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          // Simulate random success/failure for demo
-          const isSuccess = Math.random() > 0.3 // 70% success rate
-          if (isSuccess) {
-            resolve(true)
-          } else {
-            reject(new Error("Network error occurred"))
-          }
-        }, 2000)
-      })
-      // ==================== SIMULATION END ====================
+      console.log("📝 Submitting ticket...", formData)
 
-      // 🟢 REPLACE THE SIMULATION ABOVE WITH REAL API CALL:
-      /*
-      const response = await fetch('/api/tickets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: formData.title,
-          affectedModule: formData.affectedModule,
-          category: formData.category,
-          description: formData.description,
-          reportedBy: formData.reportedBy,
-          // Handle file uploads separately if needed
-          // attachments: formData.attachments,
-        }),
-      })
+      // Prepare form data for submission
+      const submitFormData = new FormData()
+      submitFormData.append('title', formData.title)
+      submitFormData.append('affectedModule', formData.affectedModule)
+      submitFormData.append('category', formData.category)
+      submitFormData.append('description', formData.description)
+      submitFormData.append('reportedBy', formData.reportedBy)
 
-      if (!response.ok) {
-        throw new Error('Failed to submit ticket')
+      // Add files if any
+      if (formData.attachments && formData.attachments.length > 0) {
+        formData.attachments.forEach((file) => {
+          submitFormData.append('files', file)
+        })
       }
 
+      // Submit ticket with attachments to the unified route
+      const response = await fetch('/api/incident-management/NewTickets', {
+        method: 'POST',
+        body: submitFormData,
+      })
+
       const result = await response.json()
-      // result should contain: { ticketNumber: "#TS-2025-00001", submissionDate: "..." }
-      */
 
-      // 🔴 REMOVE THESE LINES WHEN CONNECTING TO DATABASE
-      // Success case - currently using random ticket number
-      console.log("Support ticket submitted:", formData)
-      setTicketNumber(generateRandomTicketNumber()) // 🔴 REMOVE THIS LINE
-      setSubmissionDate(formatSubmissionDate())
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.details || 'Failed to submit ticket')
+      }
 
-      // 🟢 REPLACE WITH THESE LINES WHEN CONNECTING TO DATABASE:
-      /*
-      setTicketNumber(result.ticketNumber) // Get from API response
-      setSubmissionDate(result.submissionDate) // Get from API response
-      */
+      console.log("✅ Ticket created:", result)
 
+      if (result.attachmentsUploaded > 0) {
+        console.log(`✅ Uploaded ${result.attachmentsUploaded} attachment(s)`)
+      }
+
+      if (result.attachmentErrors && result.attachmentErrors.length > 0) {
+        console.warn("⚠️ Some attachments failed to upload:", result.attachmentErrors)
+      }
+
+      // Set success data from API response
+      setTicketNumber(result.ticketNumber)
+      setSubmissionDate(result.submissionDate)
       setShowSuccessModal(true)
+
+      // Reset form
+      setFormData({
+        title: "",
+        affectedModule: "",
+        category: "",
+        description: "",
+        reportedBy: "",
+        attachments: null,
+      })
+      setSelectedModuleId("")
+
     } catch (error) {
-      // 🟢 KEEP THIS ERROR HANDLING - it will work with real API calls
-      console.error("Ticket submission failed:", error)
+      console.error("❌ Ticket submission failed:", error)
+      setErrorMessage(error instanceof Error ? error.message : "Unable to submit your ticket at this time. Please try again.")
       setShowFailureModal(true)
     } finally {
       setIsSubmitting(false)
@@ -229,7 +224,7 @@ export default function NewTicketPage() {
 
   const handleViewTickets = () => {
     setShowSuccessModal(false)
-    router.push("/support/my-tickets")
+    router.push("/incident-management/my-tickets")
   }
 
   const handleFailureClose = () => {
@@ -238,7 +233,6 @@ export default function NewTicketPage() {
 
   const handleRetry = () => {
     setShowFailureModal(false)
-    // Form stays filled, user can try submitting again
   }
 
   const isFormValid = () => {
@@ -257,7 +251,7 @@ export default function NewTicketPage() {
             }`}
           >
             <Image
-              src={image || "/placeholder.svg?height=1080&width=1920&query=school building background"}
+              src={image || "/placeholder.svg"}
               alt={`Background ${index + 1}`}
               fill
               className="object-cover"
@@ -286,7 +280,7 @@ export default function NewTicketPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="p-6 space-y-6">
-            {/* 1. Ticket Title */}
+            {/* Ticket Title */}
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
                 1. Ticket Title <span className="text-red-500">*</span>
@@ -302,7 +296,7 @@ export default function NewTicketPage() {
               />
             </div>
 
-            {/* 2. Affected Module */}
+            {/* Affected Module */}
             <div>
               <label htmlFor="module" className="block text-sm font-medium text-gray-700 mb-2">
                 2. Affected Module <span className="text-red-500">*</span>
@@ -310,21 +304,22 @@ export default function NewTicketPage() {
               <Select
                 value={formData.affectedModule}
                 onValueChange={(value) => handleInputChange("affectedModule", value)}
+                disabled={isLoadingModules}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select Module" />
+                  <SelectValue placeholder={isLoadingModules ? "Loading modules..." : "Select Module"} />
                 </SelectTrigger>
                 <SelectContent>
                   {modules.map((module) => (
-                    <SelectItem key={module} value={module}>
-                      {module}
+                    <SelectItem key={module.module_id} value={module.module_name}>
+                      {module.module_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* 3. Category */}
+            {/* Category */}
             <div>
               <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
                 3. Category / Issue Type <span className="text-red-500">*</span>
@@ -332,22 +327,26 @@ export default function NewTicketPage() {
               <Select
                 value={formData.category}
                 onValueChange={(value) => handleInputChange("category", value)}
-                disabled={!formData.affectedModule}
+                disabled={!formData.affectedModule || isLoadingIssueTypes}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={formData.affectedModule ? "Select Category" : "Select a Module First"} />
+                  <SelectValue placeholder={
+                    isLoadingIssueTypes ? "Loading categories..." : 
+                    formData.affectedModule ? "Select Category" : 
+                    "Select a Module First"
+                  } />
                 </SelectTrigger>
                 <SelectContent>
-                  {(categoryOptions[formData.affectedModule] || []).map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {category}
+                  {issueTypes.map((issueType) => (
+                    <SelectItem key={issueType.issue_type_id} value={issueType.issue_type_name}>
+                      {issueType.issue_type_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* 4. Description */}
+            {/* Description */}
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
                 4. Description <span className="text-red-500">*</span>
@@ -362,7 +361,7 @@ export default function NewTicketPage() {
               />
             </div>
 
-            {/* 5. Reported by */}
+            {/* Reported by */}
             <div>
               <label htmlFor="reportedBy" className="block text-sm font-medium text-gray-700 mb-2">
                 5. Reported by <span className="text-red-500">*</span>
@@ -378,7 +377,7 @@ export default function NewTicketPage() {
               />
             </div>
 
-            {/* 6. Attachments */}
+            {/* Attachments */}
             <div>
               <label htmlFor="attachments" className="block text-sm font-medium text-gray-700 mb-2">
                 6. Attachments (Optional)
@@ -404,7 +403,7 @@ export default function NewTicketPage() {
               </div>
             </div>
 
-            {/* Submit */}
+            {/* Submit Button */}
             <div className="pt-4">
               <Button
                 type="submit"
@@ -432,7 +431,7 @@ export default function NewTicketPage() {
         isOpen={showFailureModal}
         onClose={handleFailureClose}
         onRetry={handleRetry}
-        errorMessage="Unable to submit your ticket at this time. Please check your connection and try again."
+        errorMessage={errorMessage || "Unable to submit your ticket at this time. Please try again."}
       />
     </div>
   )

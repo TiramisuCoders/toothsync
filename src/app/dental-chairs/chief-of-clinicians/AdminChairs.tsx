@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabase } from "@/lib/supabase"
-import { getProcedures } from "@/app/api/form/clinician/route"
+import { getProcedures } from "@/app/api/form/clinician/action"
 
 // Update the Chair interface
 interface Chair {

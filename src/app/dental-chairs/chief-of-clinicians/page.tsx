@@ -1,7 +1,7 @@
 "use client"
 
-import AdminChairs from "./AdminChairs"
+import ChairPage from "./AdminChairs"
 
 export default function AdminChairsPage() {
-  return <AdminChairs />
+  return <ChairPage />
 }
