@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 
-// GET /api/dental-chairs - Fetch all chairs with procedures and status
+// GET /api/dental-chairs - Fetch all chairs with procedures and status for both shifts
 export async function GET() {
   const supabase = await createSupabaseServerClient()
   
@@ -26,7 +26,7 @@ export async function GET() {
 
     console.log('User role data:', userRole)
     
-    console.log('🔍 Fetching chair data with procedures and status...')
+    console.log('🔍 Fetching chair data with procedures and status for both shifts...')
 
     // Fetch all chairs with their basic info
     const { data: chairs, error: chairError } = await supabase
@@ -44,8 +44,8 @@ export async function GET() {
       .from('chair_procedures')
       .select(`
         chair_id,
-        procedure:prod_id(
-          procedure_id,
+        department:department_id(
+          id,
           name
         )
       `)
@@ -55,17 +55,22 @@ export async function GET() {
       return NextResponse.json({ error: 'Database error', details: proceduresError.message }, { status: 500 })
     }
 
-    // Fetch chair availability for today's shift to check occupancy
+    // Fetch chair availability for today for BOTH shifts
     const today = new Date().toISOString().split('T')[0]
     const { data: chairAvailability, error: availabilityError } = await supabase
       .from('chair_availability')
-      .select('chair_id, is_occupied')
-      .gte('date', `${today}T00:00:00`).lt('date', `${today}T23:59:59`)
+      .select('chair_id, shift, is_occupied')
+      .eq("date", today)
+
+      // .gte('date', `${today}T00:00:00`)
+      // .lt('date', `${today}T23:59:59`)
 
     if (availabilityError) {
       console.log('❌ Availability query failed:', availabilityError.message)
       // Don't fail the request, just log the error
     }
+
+    console.log('Chair availability data:', chairAvailability)
 
     // Create maps for easier lookup
     const proceduresByChair = new Map()
@@ -73,41 +78,64 @@ export async function GET() {
       if (!proceduresByChair.has(cp.chair_id)) {
         proceduresByChair.set(cp.chair_id, [])
       }
-      if (cp.procedure) {
-        proceduresByChair.get(cp.chair_id).push(cp.procedure.name)
+      if (cp.department) {
+        proceduresByChair.get(cp.chair_id).push(cp.department.name)
       }
     })
 
-    const occupancyByChair = new Map()
+    // Create separate maps for shift 1 and shift 2 occupancy
+    const shift1OccupancyByChair = new Map()
+    const shift2OccupancyByChair = new Map()
+    
     chairAvailability?.forEach((ca: any) => {
-      occupancyByChair.set(ca.chair_id, ca.is_occupied)
+      if (ca.shift === '1st') {
+        shift1OccupancyByChair.set(ca.chair_id, ca.is_occupied)
+      } else if (ca.shift === '2nd') {
+        shift2OccupancyByChair.set(ca.chair_id, ca.is_occupied)
+      }
     })
 
     // Transform data to match your interface
     const transformedData = chairs?.map(chair => {
       const procedures = proceduresByChair.get(chair.chair_id) || []
-      const isOccupied = occupancyByChair.get(chair.chair_id) || false
+      const shift1Occupied = shift1OccupancyByChair.get(chair.chair_id) || false
+      const shift2Occupied = shift2OccupancyByChair.get(chair.chair_id) || false
       
-      // Determine status based on your logic
-      let status: "Available" | "Occupied" | "Under Maintenance"
+      // Determine status for each shift
+      let shift1Status: "Available" | "Occupied" | "Under Maintenance"
+      let shift2Status: "Available" | "Occupied" | "Under Maintenance"
+      let overallStatus: "Available" | "Occupied" | "Under Maintenance"
+      
       if (!chair.is_active) {
-        status = "Under Maintenance"
-      } else if (isOccupied) {
-        status = "Occupied"
+        shift1Status = "Under Maintenance"
+        shift2Status = "Under Maintenance"
+        overallStatus = "Under Maintenance"
       } else {
-        status = "Available"
+        // Shift 1 status
+        shift1Status = shift1Occupied ? "Occupied" : "Available"
+        
+        // Shift 2 status
+        shift2Status = shift2Occupied ? "Occupied" : "Available"
+        
+        // Overall status: if any shift is occupied, mark as occupied
+        if (shift1Occupied || shift2Occupied) {
+          overallStatus = "Occupied"
+        } else {
+          overallStatus = "Available"
+        }
       }
       
       return {
         id: chair.chair_id.toString(),
         chair_name: chair.chair_name,
         procedures: procedures,
-        status: status
-        // student: status === "Occupied" ? "Student assigned" : null // You can fetch actual student info if needed
+        status: overallStatus,
+        shift1_status: shift1Status,
+        shift2_status: shift2Status
       }
     }) || []
 
-    console.log('Transformed data:', transformedData)
+    console.log('Transformed data with shifts:', transformedData)
     
     return NextResponse.json({ 
       success: true, 
@@ -133,17 +161,17 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { chairId, status, procedures } = await req.json()
+    const { chairId, status, procedures, shift } = await req.json()
 
     if (!chairId) {
       return NextResponse.json({ error: 'Chair ID is required' }, { status: 400 })
     }
 
-    console.log('🔄 Updating chair:', chairId, 'Status:', status, 'Procedures:', procedures)
+    console.log('🔄 Updating chair:', chairId, 'Status:', status, 'Shift:', shift, 'Procedures:', procedures)
 
     // Start a transaction-like approach
     
-    // 1. Update chair status (is_active)
+    // 1. Update chair status (is_active) - this affects both shifts
     const isActive = status !== "Under Maintenance"
     const { error: chairUpdateError } = await supabase
       .from('chair')
@@ -155,42 +183,49 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to update chair status' }, { status: 500 })
     }
 
-    // 2. Update chair availability if needed
+    // 2. Update chair availability for the specified shift (or both if no shift specified)
     const today = new Date().toISOString().split('T')[0]
     const isOccupied = status === "Occupied"
     
-    // Check if availability record exists for today
-    const { data: existingAvailability } = await supabase
-      .from('chair_availability')
-      .select('chair_id')
-      .eq('chair_id', chairId)
-      .eq('date', today)
-      .single()
-
-    if (existingAvailability) {
-      // Update existing record
-      const { error: availabilityUpdateError } = await supabase
+    // Determine which shifts to update
+    const shiftsToUpdate = shift ? [shift] : ['1st', '2nd']
+    
+    for (const currentShift of shiftsToUpdate) {
+      // Check if availability record exists for this shift today
+      const { data: existingAvailability } = await supabase
         .from('chair_availability')
-        .update({ is_occupied: isOccupied })
+        .select('chair_id')
         .eq('chair_id', chairId)
         .eq('date', today)
+        .eq('shift', currentShift)
+        .single()
 
-      if (availabilityUpdateError) {
-        console.error('Error updating chair availability:', availabilityUpdateError)
-      }
-    } else {
-      // Create new availability record
-      const { error: availabilityInsertError } = await supabase
-        .from('chair_availability')
-        .insert({
-          chair_id: chairId,
-          date: today,
-          shift: '1st', // Default shift - you might want to determine this dynamically
-          is_occupied: isOccupied
-        })
+      if (existingAvailability) {
+        // Update existing record
+        const { error: availabilityUpdateError } = await supabase
+          .from('chair_availability')
+          .update({ is_occupied: isOccupied })
+          .eq('chair_id', chairId)
+          .eq('date', today)
+          .eq('shift', currentShift)
 
-      if (availabilityInsertError) {
-        console.error('Error inserting chair availability:', availabilityInsertError)
+        if (availabilityUpdateError) {
+          console.error(`Error updating chair availability for ${currentShift}:`, availabilityUpdateError)
+        }
+      } else {
+        // Create new availability record
+        const { error: availabilityInsertError } = await supabase
+          .from('chair_availability')
+          .insert({
+            chair_id: chairId,
+            date: today,
+            shift: currentShift,
+            is_occupied: isOccupied
+          })
+
+        if (availabilityInsertError) {
+          console.error(`Error inserting chair availability for ${currentShift}:`, availabilityInsertError)
+        }
       }
     }
 

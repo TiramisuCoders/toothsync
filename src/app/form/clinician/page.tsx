@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,11 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner"
 import { Toaster } from "@/components/ui/toaster"
 import { getUserData, getProcedures, submitAttendanceAction } from "@/app/api/form/clinician/action"
+import { ChevronDown, ChevronUp } from "lucide-react"
 
 
 interface Procedure {
   procedure_id: string
   name: string
+  department: string
 }
 
 export default function ClinicianForm() {
@@ -35,7 +37,32 @@ export default function ClinicianForm() {
   const [submitProgress, setSubmitProgress] = useState(0)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showConfirmation, setShowConfirmation] = useState(false)
-  const [procedures, setProcedures] = useState<Procedure[]>([])
+  const [allProcedures, setAllProcedures] = useState<Procedure[]>([])
+  const [expandedDepartments, setExpandedDepartments] = useState<Set<string>>(new Set())
+
+  // Group procedures by department
+  const proceduresByDepartment = useMemo(() => {
+    const grouped: Record<string, Procedure[]> = {}
+    
+    allProcedures.forEach(procedure => {
+      const dept = procedure.department || 'Other'
+      if (!grouped[dept]) {
+        grouped[dept] = []
+      }
+      grouped[dept].push(procedure)
+    })
+
+    // Sort procedures within each department
+    Object.keys(grouped).forEach(dept => {
+      grouped[dept].sort((a, b) => a.name.localeCompare(b.name))
+    })
+
+    return grouped
+  }, [allProcedures])
+
+  const departments = useMemo(() => {
+    return Object.keys(proceduresByDepartment).sort()
+  }, [proceduresByDepartment])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -64,25 +91,16 @@ export default function ClinicianForm() {
           lastName: clinician.last_name || "",
         }))
 
-        // console.log("Loaded user:", { 
-        //   userId: user.id, 
-        //   email: user.email,
-        //   firstName: clinician.first_name, 
-        //   lastName: clinician.last_name 
-        // })
-
-        // Fetch procedures using server action
+        // Fetch all procedures using server action
         const { error: procedureError, procedures: procedureData } = await getProcedures()
         
         if (procedureError) {
-          // console.error("Error fetching procedures:", procedureError)
           toast("Error", { description: "Failed to load procedures." })
         } else {
-          setProcedures(procedureData)
+          setAllProcedures(procedureData)
         }
 
       } catch (error) {
-        // console.error("Error in fetchData:", error)
         toast("Error", { description: "Failed to load form data." })
       } finally {
         setIsLoading(false)
@@ -102,22 +120,25 @@ export default function ClinicianForm() {
     if (errors.patient_type) setErrors((prev) => ({ ...prev, patient_type: "" }))
   }
 
-const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") => 
-  (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({ ...prev, [field]: e.target.value }))
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: "" }))
-    }
+  const toggleDepartment = (department: string) => {
+    setExpandedDepartments(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(department)) {
+        newSet.delete(department)
+      } else {
+        newSet.add(department)
+      }
+      return newSet
+    })
   }
-
 
   const handleProcedureChange = (procedure: string, checked: boolean) => {
     setFormData((prev) => {
       let newProcedures = [...prev.selectedProcedures]
 
       if (checked) {
-        if (newProcedures.length >= 3) {
-          toast("Limit Reached", { description: "You can only select up to 3 procedures." })
+        if (newProcedures.length >= 2) {
+          toast("Limit Reached", { description: "You can only select up to 2 procedures." })
           return prev
         }
         newProcedures.push(procedure)
@@ -149,7 +170,6 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
     if (!formData.patientLastName.trim()) {
       newErrors.patientLastName = "Last name is required"
     }
-
 
     if (formData.selectedProcedures.length === 0) {
       newErrors.procedures = "Please select at least one procedure"
@@ -221,7 +241,7 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
 
     } catch (error) {
       clearInterval(progressInterval)
-      // console.error("Submission error:", error)
+      console.error("Submission error:", error)
       
       toast("Submission Failed", {
         description: error instanceof Error ? error.message : "Please try again later.",
@@ -231,6 +251,13 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
       setSubmitProgress(0)
     }
   }
+
+  // Get selected procedure names for display
+  const selectedProcedureNames = useMemo(() => {
+    return allProcedures
+      .filter(p => formData.selectedProcedures.includes(p.procedure_id))
+      .map(p => `${p.name} (${p.department})`)
+  }, [formData.selectedProcedures, allProcedures])
 
   if (isLoading) {
     return (
@@ -293,48 +320,39 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
               </div>
             </div>
 
-            
-
-            {/* Debug info - remove in production */}
-            {/* <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-              Debug: User ID = {formData.clinicianUserId}
-            </div> */}
-
-            {/* Shift Dropdown */}
+            {/* Shift and Patient Type Dropdown */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="shift">Shift</Label>
-              <Select value={formData.shift} onValueChange={handleShiftChange}>
-                <SelectTrigger className={`${errors.shift ? "border-red-500" : "focus:border-[#5C8E77]"}`}>
-                  <SelectValue placeholder="Select shift" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1st">1st</SelectItem>  
-                  <SelectItem value="2nd">2nd</SelectItem>
-                </SelectContent>
-              </Select>
-              {errors.shift && <p className="text-sm text-red-500">{errors.shift}</p>}
+              <div className="space-y-2">
+                <Label htmlFor="shift">Shift</Label>
+                <Select value={formData.shift} onValueChange={handleShiftChange}>
+                  <SelectTrigger className={`${errors.shift ? "border-red-500" : "focus:border-[#5C8E77]"}`}>
+                    <SelectValue placeholder="Select shift" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1st">1st</SelectItem>  
+                    <SelectItem value="2nd">2nd</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.shift && <p className="text-sm text-red-500">{errors.shift}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="patient_type">Patient Type</Label>
+                <Select value={formData.patient_type} onValueChange={handlePatientType}>
+                  <SelectTrigger className={`${errors.patient_type ? "border-red-500" : "focus:border-[#5C8E77]"}`}>
+                    <SelectValue placeholder="Select patient type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Comprehensive">Comprehensive</SelectItem>  
+                    <SelectItem value="Individual">Individual</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.patient_type && <p className="text-sm text-red-500">{errors.patient_type}</p>}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="shift">Patient Type</Label>
-              <Select value={formData.patient_type} onValueChange={handlePatientType}>
-                <SelectTrigger className={`${errors.patient_type ? "border-red-500" : "focus:border-[#5C8E77]"}`}>
-                  <SelectValue placeholder="Select patient type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Comprehensive">Comprehensive</SelectItem>  
-                  <SelectItem value="Individual">Individual</SelectItem>
-                </SelectContent>
-              </Select>
-              {errors.patient_type && <p className="text-sm text-red-500">{errors.patient_type}</p>}
-            </div>
-            </div>
-
-
-
-            <div className="grid grid-cols-1 gap-6">              
             {/* Patient Name (First + Last) */}
+            <div className="grid grid-cols-1 gap-6">              
               <div className="space-y-2">
                 <Label>Patient</Label>
                 <div className="grid grid-cols-2 gap-4">
@@ -377,30 +395,102 @@ const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") 
               </div>
             </div>
 
-            {/* Procedures */}
+            {/* Procedures by Department - Accordion Style */}
             <div className="space-y-3">
-              <Label>Procedures (Select up to 2)</Label>
-              <div className="grid grid-cols-2 gap-3 border border-gray-200 rounded-md p-4">
-                {procedures.map((procedure) => (
-                  <div key={procedure.procedure_id} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id={`procedure-${procedure.procedure_id}`}
-                      checked={formData.selectedProcedures.includes(procedure.procedure_id)}
-                      onChange={(e) => handleProcedureChange(procedure.procedure_id, e.target.checked)}
-                      className="h-4 w-4 text-[#5C8E77] border-gray-300 rounded focus:ring-[#5C8E77]"
-                    />
-                    <label
-                      htmlFor={`procedure-${procedure.procedure_id}`}
-                      className="text-sm text-gray-700 cursor-pointer"
-                    >
-                      {procedure.name}
-                    </label>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between">
+                <Label>Procedures (Select up to 2)</Label>
+                <span className="text-sm text-gray-500">
+                  {formData.selectedProcedures.length} / 2 selected
+                </span>
               </div>
+
+              {/* Selected Procedures Display */}
+              {formData.selectedProcedures.length > 0 && (
+                <div className="p-3 bg-[#5C8E77]/5 border border-[#5C8E77]/20 rounded-md">
+                  <p className="text-xs font-medium text-[#5C8E77] mb-2">Selected:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedProcedureNames.map((name, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-2 py-1 rounded-md bg-[#5C8E77] text-white text-xs"
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Department Accordion */}
+              <div className="border border-gray-200 rounded-md overflow-hidden">
+                {departments.map((department, deptIndex) => {
+                  const isExpanded = expandedDepartments.has(department)
+                  const proceduresInDept = proceduresByDepartment[department]
+                  const selectedInDept = proceduresInDept.filter(p => 
+                    formData.selectedProcedures.includes(p.procedure_id)
+                  ).length
+
+                  return (
+                    <div key={department} className={deptIndex > 0 ? "border-t border-gray-200" : ""}>
+                      {/* Department Header */}
+                      <button
+                        type="button"
+                        onClick={() => toggleDepartment(department)}
+                        className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="font-medium text-gray-700">{department}</span>
+                          {selectedInDept > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-[#5C8E77] text-white text-xs">
+                              {selectedInDept}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">
+                            {proceduresInDept.length} procedure{proceduresInDept.length !== 1 ? 's' : ''}
+                          </span>
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4 text-gray-500" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-gray-500" />
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Department Procedures */}
+                      {isExpanded && (
+                        <div className="p-4 bg-white">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {proceduresInDept.map((procedure) => (
+                              <div key={procedure.procedure_id} className="flex items-start space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id={`procedure-${procedure.procedure_id}`}
+                                  checked={formData.selectedProcedures.includes(procedure.procedure_id)}
+                                  onChange={(e) => handleProcedureChange(procedure.procedure_id, e.target.checked)}
+                                  className="h-4 w-4 mt-0.5 text-[#5C8E77] border-gray-300 rounded focus:ring-[#5C8E77]"
+                                />
+                                <label
+                                  htmlFor={`procedure-${procedure.procedure_id}`}
+                                  className="text-sm text-gray-700 cursor-pointer flex-1"
+                                >
+                                  {procedure.name}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
               {errors.procedures && <p className="text-sm text-red-500">{errors.procedures}</p>}
-              <p className="text-sm text-gray-500">You can select up to 2 procedures per activity.</p>
+              <p className="text-sm text-gray-500">
+                You can select procedures from different departments (up to 2 total).
+              </p>
             </div>
 
             {/* Chair & Instructor */}

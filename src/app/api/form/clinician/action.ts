@@ -48,7 +48,7 @@ export async function getProcedures() {
   try {
     const { data: procedureData, error: procedureError } = await supabase
       .from("procedure")
-      .select("procedure_id, name")
+      .select("procedure_id, name, department")
 
     if (procedureError) {
       console.error("Procedure fetch error:", procedureError)
