@@ -2,7 +2,7 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import { Copy, X, FileText, MessageSquare, Paperclip } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -558,6 +558,20 @@ export default function MyTickets() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [currentImageIndex, setCurrentImageIndex] = useState(0)
+
+  const backgroundImages = [
+    "/images/landing-page/school-1.png",
+    "/images/landing-page/school-2.png"
+  ]
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % backgroundImages.length)
+    }, 4000)
+    
+    return () => clearInterval(interval)
+  }, [])
 
   const handleTicketNumberSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -646,8 +660,29 @@ export default function MyTickets() {
 
   if (!ticketSubmitted) {
     return (
-      <div className="min-h-screen bg-gray-100 font-poppins m-0 p-0">
-        <header className="bg-emerald-700 text-white p-4 flex items-center justify-between shadow-md m-0">
+  <div className="min-h-screen max-h-screen relative overflow-hidden font-poppins m-0 p-0">
+        {/* Background Carousel */}
+        <div className="absolute inset-0">
+          {backgroundImages.map((image, index) => (
+            <div
+              key={index}
+              className={`absolute inset-0 transition-opacity duration-1000 ${
+                index === currentImageIndex ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              <Image
+                src={image || "/placeholder.svg"}
+                alt={`Background ${index + 1}`}
+                fill
+                className="object-cover"
+                priority={index === 0}
+              />
+              <div className="absolute inset-0 bg-emerald-600/60" />
+            </div>
+          ))}
+        </div>
+
+        <header className="fixed top-0 left-0 right-0 z-20 bg-emerald-700 text-white p-4 flex items-center justify-between shadow-md m-0">          
           <div className="flex items-center gap-3">
             <Link href="/landing" aria-label="Go to landing page" className="flex items-center">
               <Image
@@ -666,8 +701,8 @@ export default function MyTickets() {
           </div>
         </header>
 
-        <main className="flex items-center justify-center p-6" style={{ minHeight: 'calc(100vh - 100px)' }}>
-          <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+        <main className="relative z-10 flex items-center justify-center p-6 overflow-hidden" style={{ minHeight: 'calc(100vh - 100px)', maxHeight: 'calc(100vh - 100px)' }}>
+          <div className="bg-white/90 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-md w-full">
             <h2 className="text-2xl font-bold text-gray-800 mb-2">Track Your Ticket</h2>
             <p className="text-gray-600 mb-6">Enter your ticket number to view status and details</p>
             
@@ -715,7 +750,8 @@ export default function MyTickets() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 font-poppins m-0 p-0">
+    <div className="min-h-screen max-h-screen relative overflow-hidden font-poppins m-0 p-0">
+
       <header className="bg-emerald-700 text-white p-4 flex items-center justify-between shadow-md m-0">
         <div className="flex items-center gap-3">
           <Link href="/landing" aria-label="Go to landing page" className="flex items-center">
@@ -787,7 +823,7 @@ export default function MyTickets() {
                   <p className="text-gray-800">{ticket.affected_module_name}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-600">Issue Type</label>
+                  <label className="textsm font-medium text-gray-600">Issue Type</label>
                   <p className="text-gray-800">{ticket.issue_type_name}</p>
                 </div>
                 <div>
