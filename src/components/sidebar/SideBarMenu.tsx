@@ -1,37 +1,44 @@
 "use client"
 
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot" // Needed for proper asChild support
+import type * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
 import { cn } from "@/lib/utils"
 
-export const SidebarContent = ({ children }: { children: React.ReactNode }) => (
-  <div className="flex flex-col flex-1 overflow-y-auto">{children}</div>
-)
+export function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return <div className={cn("flex flex-col gap-2 p-2", className)} {...props} />
+}
 
-export const SidebarMenu = ({ children }: { children: React.ReactNode }) => (
-  <nav className="flex flex-col gap-1 px-2 py-4">{children}</nav>
-)
+export function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
+  return <div className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-auto", className)} {...props} />
+}
 
-export const SidebarMenuItem = ({ children }: { children: React.ReactNode }) => (
-  <div className="w-full">{children}</div>
-)
+export function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
+  return <ul className={cn("flex w-full min-w-0 flex-col gap-1", className)} {...props} />
+}
 
-export const SidebarMenuButton = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: boolean }
->(({ className, asChild = false, ...props }, ref) => {
+export function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
+  return <li className={cn("group/menu-item relative", className)} {...props} />
+}
+
+export function SidebarMenuButton({
+  asChild = false,
+  isActive = false,
+  className,
+  ...props
+}: React.ComponentProps<"button"> & {
+  asChild?: boolean
+  isActive?: boolean
+}) {
   const Comp = asChild ? Slot : "button"
 
   return (
     <Comp
-      ref={ref}
+      data-active={isActive}
       className={cn(
-        "w-full text-left px-4 py-2 rounded-md hover:bg-muted transition-colors",
-        className
+        "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
+        className,
       )}
       {...props}
     />
   )
-})
-
-SidebarMenuButton.displayName = "SidebarMenuButton"
+}
