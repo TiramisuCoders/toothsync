@@ -66,9 +66,9 @@ export default function NewTicket() {
   const fetchModules = async () => {
     try {
       setIsLoadingModules(true)
-      console.log('🔄 Fetching modules from:', '/api/support/NewTickets?action=modules')
+      console.log('🔄 Fetching modules from:', '/api/incident-management/NewTickets?action=modules')
       
-      const response = await fetch('/api/support/NewTickets?action=modules', {
+      const response = await fetch('/api/incident-management/NewTickets?action=modules', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -107,7 +107,7 @@ export default function NewTicket() {
   const fetchIssueTypes = async (moduleId: string) => {
     try {
       setIsLoadingIssueTypes(true)
-      const response = await fetch(`/api/support/NewTickets?action=issue_types&module_id=${moduleId}`)
+      const response = await fetch(`/api/incident-management/NewTickets?action=issue_types&module_id=${moduleId}`)
       const result = await response.json()
 
       if (response.ok && result.success) {
@@ -132,8 +132,8 @@ export default function NewTicket() {
 
     // When module changes, update selectedModuleId to fetch issue types
     if (field === "affectedModule") {
-      const module = modules.find(m => m.module_name === value)
-      setSelectedModuleId(module?.module_id || "")
+      const mod = modules.find(m => m.module_name === value)
+      setSelectedModuleId(mod?.module_id || "")
     }
   }
 
@@ -171,7 +171,7 @@ export default function NewTicket() {
       }
 
       // Submit ticket with attachments to the unified route
-      const response = await fetch('/api/support/NewTickets', {
+      const response = await fetch('/api/incident-management/NewTickets', {
         method: 'POST',
         body: submitFormData,
       })
@@ -224,7 +224,7 @@ export default function NewTicket() {
 
   const handleViewTickets = () => {
     setShowSuccessModal(false)
-    router.push("/support/my-tickets")
+    router.push("/incident-management/my-tickets")
   }
 
   const handleFailureClose = () => {

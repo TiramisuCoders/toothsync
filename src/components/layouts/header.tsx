@@ -107,7 +107,7 @@ export function Header() {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleSupportClick}>
               <HelpCircle className="mr-2 h-4 w-4" />
-              Support
+              Help
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOutClick} className="text-red-600 focus:text-red-600">
