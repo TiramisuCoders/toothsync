@@ -36,23 +36,24 @@ export default function ChiefOfClinicianLoginPage() {
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    startTransition(async () => {
-      // Pass "R04" as the allowed role for chief of clinicians login
-      const { error } = await loginAction(email, password)
-
-      if (error) {
-        setErrorMessage(error.message)
-        setHasError(true)
-        triggerShakeAnimation()
-      } else {
-        setErrorMessage("")
-        setHasError(false)
-        router.push("/dashboard/clinical-instructor")
+        e.preventDefault()
+    
+        startTransition(async () => {
+          // Pass "R04" as the allowed role for chief of clinicians login
+          const { error } = await loginAction(email, password, "R04")
+    
+          if (error) {
+            setErrorMessage(error.message)
+            setHasError(true)
+            triggerShakeAnimation()
+          } else {
+            setErrorMessage("")
+            setHasError(false)
+            router.push("/dashboard/clinical-instructor")
+          }
+        })
       }
-    })
-  }
+    
 
   const handleBackToRoleSelection = () => {
     router.push("/landing")

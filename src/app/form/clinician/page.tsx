@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Toaster } from "@/components/ui/toaster"
-import { getUserData, getProcedures, submitAttendanceAction } from "@/app/api/form/clinician/route"
+import { getUserData, getProcedures, submitAttendanceAction } from "@/app/api/form/clinician/action"
 
 
 interface Procedure {
@@ -21,7 +21,8 @@ export default function ClinicianForm() {
     firstName: "", 
     lastName: "",
     shift: "",
-    patientName: "",
+    patientFirstName: "",
+    patientLastName: "",
     selectedProcedures: [] as string[],
     chair: "Auto-assigned",
     instructor: "Auto-assigned",
@@ -62,25 +63,25 @@ export default function ClinicianForm() {
           lastName: clinician.last_name || "",
         }))
 
-        console.log("Loaded user:", { 
-          userId: user.id, 
-          email: user.email,
-          firstName: clinician.first_name, 
-          lastName: clinician.last_name 
-        })
+        // console.log("Loaded user:", { 
+        //   userId: user.id, 
+        //   email: user.email,
+        //   firstName: clinician.first_name, 
+        //   lastName: clinician.last_name 
+        // })
 
         // Fetch procedures using server action
         const { error: procedureError, procedures: procedureData } = await getProcedures()
         
         if (procedureError) {
-          console.error("Error fetching procedures:", procedureError)
+          // console.error("Error fetching procedures:", procedureError)
           toast("Error", { description: "Failed to load procedures." })
         } else {
           setProcedures(procedureData)
         }
 
       } catch (error) {
-        console.error("Error in fetchData:", error)
+        // console.error("Error in fetchData:", error)
         toast("Error", { description: "Failed to load form data." })
       } finally {
         setIsLoading(false)
@@ -95,18 +96,22 @@ export default function ClinicianForm() {
     if (errors.shift) setErrors((prev) => ({ ...prev, shift: "" }))
   }
 
-  const handlePatientNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({ ...prev, patientName: e.target.value }))
-    if (errors.patientName) setErrors((prev) => ({ ...prev, patientName: "" }))
+const handlePatientNameChange = (field: "patientFirstName" | "patientLastName") => 
+  (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, [field]: e.target.value }))
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: "" }))
+    }
   }
+
 
   const handleProcedureChange = (procedure: string, checked: boolean) => {
     setFormData((prev) => {
       let newProcedures = [...prev.selectedProcedures]
 
       if (checked) {
-        if (newProcedures.length >= 2) {
-          toast("Limit Reached", { description: "You can only select up to 2 procedures." })
+        if (newProcedures.length >= 3) {
+          toast("Limit Reached", { description: "You can only select up to 3 procedures." })
           return prev
         }
         newProcedures.push(procedure)
@@ -127,9 +132,14 @@ export default function ClinicianForm() {
       newErrors.shift = "Please select a shift"
     }
 
-    if (!formData.patientName.trim()) {
-      newErrors.patientName = "Patient name is required"
+    if (!formData.patientFirstName.trim()) {
+      newErrors.patientFirstName = "First name is required"
     }
+
+    if (!formData.patientLastName.trim()) {
+      newErrors.patientLastName = "Last name is required"
+    }
+
 
     if (formData.selectedProcedures.length === 0) {
       newErrors.procedures = "Please select at least one procedure"
@@ -165,7 +175,7 @@ export default function ClinicianForm() {
     try {
       // Use server action instead of API call
       const result = await submitAttendanceAction({
-        patientName: formData.patientName,
+        patientName: `${formData.patientFirstName} ${formData.patientLastName}`.trim(),
         selectedProcedures: formData.selectedProcedures,
         shift: formData.shift,
         clinicianUserId: formData.clinicianUserId,
@@ -190,7 +200,8 @@ export default function ClinicianForm() {
       setFormData((prev) => ({
         ...prev,
         shift: "",
-        patientName: "",
+        patientFirstName: "",
+        patientLastName: "",
         selectedProcedures: [],
       }))
 
@@ -198,7 +209,7 @@ export default function ClinicianForm() {
 
     } catch (error) {
       clearInterval(progressInterval)
-      console.error("Submission error:", error)
+      // console.error("Submission error:", error)
       
       toast("Submission Failed", {
         description: error instanceof Error ? error.message : "Please try again later.",
@@ -271,9 +282,9 @@ export default function ClinicianForm() {
             </div>
 
             {/* Debug info - remove in production */}
-            <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+            {/* <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
               Debug: User ID = {formData.clinicianUserId}
-            </div>
+            </div> */}
 
             {/* Shift Dropdown */}
             <div className="space-y-2">
@@ -283,24 +294,57 @@ export default function ClinicianForm() {
                   <SelectValue placeholder="Select shift" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1st">1st</SelectItem>
+                  <SelectItem value="1st">1st</SelectItem>  
                   <SelectItem value="2nd">2nd</SelectItem>
                 </SelectContent>
               </Select>
               {errors.shift && <p className="text-sm text-red-500">{errors.shift}</p>}
             </div>
 
-            {/* Patient Name */}
-            <div className="space-y-2">
-              <Label htmlFor="patientName">Patient Name</Label>
-              <Input
-                id="patientName"
-                value={formData.patientName}
-                onChange={handlePatientNameChange}
-                placeholder="Enter patient name"
-                className={`${errors.patientName ? "border-red-500" : "focus:border-[#5C8E77]"} focus:ring-[#5C8E77]`}
-              />
-              {errors.patientName && <p className="text-sm text-red-500">{errors.patientName}</p>}
+
+
+            <div className="grid grid-cols-1 gap-6">              
+            {/* Patient Name (First + Last) */}
+              <div className="space-y-2">
+                <Label>Patient</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* First Name */}
+                  <div>
+                    <Input
+                      id="patientFirstName"
+                      value={formData.patientFirstName}
+                      onChange={(e) =>
+                        setFormData({ ...formData, patientFirstName: e.target.value })
+                      }
+                      placeholder="First name"
+                      className={`${
+                        errors.patientFirstName ? "border-red-500" : "focus:border-[#5C8E77]"
+                      } focus:ring-[#5C8E77]`}
+                    />
+                    {errors.patientFirstName && (
+                      <p className="text-sm text-red-500">{errors.patientFirstName}</p>
+                    )}
+                  </div>
+
+                  {/* Last Name */}
+                  <div>
+                    <Input
+                      id="patientLastName"
+                      value={formData.patientLastName}
+                      onChange={(e) =>
+                        setFormData({ ...formData, patientLastName: e.target.value })
+                      }
+                      placeholder="Last name"
+                      className={`${
+                        errors.patientLastName ? "border-red-500" : "focus:border-[#5C8E77]"
+                      } focus:ring-[#5C8E77]`}
+                    />
+                    {errors.patientLastName && (
+                      <p className="text-sm text-red-500">{errors.patientLastName}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Procedures */}

@@ -1,7 +1,6 @@
 "use client"
 
 import { Phone, Mail, Clock } from "lucide-react"
-import Header from "@/components/layouts/header"
 
 export default function FAQPage() {
   const faqs = [
@@ -57,10 +56,8 @@ export default function FAQPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-
-      <div className="pt-16 max-w-4xl mx-auto px-4 py-8">
+    <div className="w-full">
+      <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Header Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Frequently Asked Questions</h1>
@@ -68,11 +65,11 @@ export default function FAQPage() {
         </div>
 
         {/* FAQ List */}
-        <div className="space-y-4">
+        <div className="space-y-4 mb-6">
           {faqs.map((faq) => (
             <div key={faq.id} className="bg-white rounded-lg shadow-sm border border-gray-200">
               <details className="group">
-                <summary className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 rounded-lg">
+                <summary className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 rounded-lg list-none">
                   <h3 className="text-lg font-medium text-gray-900 pr-4">{faq.question}</h3>
                   <div className="flex-shrink-0">
                     <div className="w-6 h-6 rounded-full bg-[#5C8E77] bg-opacity-10 flex items-center justify-center group-open:rotate-45 transition-transform">
@@ -92,6 +89,7 @@ export default function FAQPage() {
           ))}
         </div>
 
+        {/* Contact Section */}
         <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Need More Help?</h3>
           <div className="space-y-4 mb-6">
@@ -109,18 +107,16 @@ export default function FAQPage() {
             </div>
           </div>
           <div className="flex gap-4">
-            <a
-              href="#" // TODO: Replace with actual link to new-ticket page
-              className="flex-1 bg-[#5C8E77] text-white px-4 py-2 rounded-lg hover:bg-[#406E58] transition-colors text-center"
+            <button
+              className="flex-1 bg-[#5C8E77] text-white px-4 py-2 rounded-lg hover:bg-[#406E58] transition-colors text-center font-medium"
             >
               Submit Support Ticket
-            </a>
-            <a
-              href="#" // TODO: Replace with actual link to my-tickets page
-              className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-center"
+            </button>
+            <button
+              className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-center font-medium"
             >
               View My Tickets
-            </a>
+            </button>
           </div>
         </div>
       </div>

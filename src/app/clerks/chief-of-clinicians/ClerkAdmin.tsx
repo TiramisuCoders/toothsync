@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface Clerk {
   id: string
+  clerk_id: string  // Added this for API operations
   firstName: string
   lastName: string
   email: string
@@ -38,6 +39,10 @@ export default function ClerksPage() {
   const [loading, setLoading] = useState<boolean>(false)
   const [debugInfo, setDebugInfo] = useState<string>("")
 
+  // Available users for promotion to clerk
+  const [availableUsers, setAvailableUsers] = useState<any[]>([])
+  const [selectedUser, setSelectedUser] = useState<any>(null)
+
   const [searchTerm, setSearchTerm] = useState("")
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -50,6 +55,10 @@ export default function ClerksPage() {
     section: "",
     status: "Not On Duty" as "On Duty" | "Not On Duty",
   })
+  const [clerkFormData, setClerkFormData] = useState({
+    academic_year: "",
+    status: "Not On Duty" as "On Duty" | "Not On Duty",
+  })
   const [formErrors, setFormErrors] = useState<FormErrors>({})
   const [showArchived, setShowArchived] = useState(false)
 
@@ -58,7 +67,32 @@ export default function ClerksPage() {
 
   useEffect(() => {
     fetchClerks()
+    fetchAvailableUsers()
   }, [])
+
+  const fetchAvailableUsers = async () => {
+    try {
+      console.log("👥 Fetching available users...")
+
+      const response = await fetch("/api/clerks/available-users", {
+        method: "GET",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch available users")
+      }
+
+      const result = await response.json()
+      setAvailableUsers(result.data || [])
+      console.log("✅ Fetched available users:", result.data?.length || 0)
+      
+    } catch (err) {
+      console.error("❌ Failed to fetch available users:", err)
+      // Don't set main error for this, it's not critical
+    }
+  }
 
   const fetchClerks = async () => {
     try {
@@ -116,10 +150,11 @@ export default function ClerksPage() {
         throw new Error("Expected array of clerks from API")
       }
 
-      // Normalize data
+      // Normalize data - ensure clerk_id is properly mapped
       const normalized: Clerk[] = (payload as any[]).map((c, i) => {
         return {
-          id: String(c?.id ?? c?.clerk_id ?? `CLK${String(i + 1).padStart(3, '0')}`),
+          id: String(c?.id ?? `CLK${String(i + 1).padStart(3, '0')}`),
+          clerk_id: String(c?.clerk_id ?? c?.user_id ?? ''), // Map user_id to clerk_id
           firstName: c?.firstName ?? c?.first_name ?? '',
           lastName: c?.lastName ?? c?.last_name ?? '',
           email: c?.email ?? '',
@@ -131,6 +166,9 @@ export default function ClerksPage() {
       })
 
       console.log("✅ Normalized clerks data:", normalized)
+      console.log("📝 Sample clerk object:", normalized[0])
+      console.log("📊 Archived clerks count:", normalized.filter(c => c.archived).length)
+      console.log("📊 Active clerks count:", normalized.filter(c => !c.archived).length)
       setClerks(normalized)
       setDebugInfo(`Successfully loaded ${normalized.length} clerks`)
       
@@ -166,7 +204,7 @@ export default function ClerksPage() {
   }
 
   // Validation function
-  const validateForm = (): boolean => {
+const validateForm = (_isEdit: boolean = false): boolean => {
     const errors: FormErrors = {}
     
     if (!formData.firstName.trim()) {
@@ -201,9 +239,14 @@ export default function ClerksPage() {
 
   // Filter clerks based on search term, archived status, and duty status
   const filteredClerks = clerks.filter((clerk) => {
-    // First filter by archived status
-    if (showArchived && !clerk.archived) return false
-    if (!showArchived && clerk.archived) return false
+    // Filter by archived status - show archived when showArchived is true
+    if (showArchived) {
+      // When showing archived, only show archived clerks
+      if (!clerk.archived) return false
+    } else {
+      // When not showing archived, only show non-archived clerks
+      if (clerk.archived) return false
+    }
     
     // Then filter by duty status
     if (activeFilter === "on-duty" && clerk.status !== "On Duty") return false
@@ -218,60 +261,122 @@ export default function ClerksPage() {
     )
   })
 
-  const handleAddClerk = () => {
-    if (validateForm()) {
-      const newClerk: Clerk = {
-        id: `CLK${String(clerks.length + 1).padStart(3, "0")}`,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        year: formData.year,
-        section: formData.section,
-        status: formData.status,
-        archived: false,
+  // Debug logging for filtered results
+  console.log("🔍 Filter Debug:", {
+    showArchived,
+    activeFilter,
+    totalClerks: clerks.length,
+    filteredClerks: filteredClerks.length,
+    archivedInData: clerks.filter(c => c.archived).length
+  })
+
+  const handleAddClerk = async () => {
+    if (!selectedUser) {
+      setError("Please select a user to promote to clerk")
+      return
+    }
+
+    if (!clerkFormData.academic_year) {
+      setError("Please fill in academic year")
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError(null)
+
+      const response = await fetch("/api/clerks", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: selectedUser.auth_user_id,
+          academic_year: clerkFormData.academic_year,
+          status: clerkFormData.status
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || result.details || "Failed to add clerk")
       }
-      setClerks([...clerks, newClerk])
-      setFormData({
-        firstName: "",
-        lastName: "",
-        email: "",
-        year: "",
-        section: "",
+
+      // Refresh both lists
+      await fetchClerks()
+      await fetchAvailableUsers()
+      
+      // Reset form and close modal
+      setSelectedUser(null)
+      setClerkFormData({
+        academic_year: "",
         status: "Not On Duty",
       })
-      setFormErrors({})
       setIsAddModalOpen(false)
+      setDebugInfo(`Successfully promoted ${selectedUser.first_name} ${selectedUser.last_name} to clerk`)
+      
+    } catch (err) {
+      console.error("Error adding clerk:", err)
+      setError(err instanceof Error ? err.message : "Failed to add clerk")
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleEditClerk = () => {
-    if (selectedClerk && validateForm()) {
-      setClerks(
-        clerks.map((clerk) =>
-          clerk.id === selectedClerk.id
-            ? {
-                ...clerk,
-                firstName: formData.firstName,
-                lastName: formData.lastName,
-                email: formData.email,
-                year: formData.year,
-                section: formData.section,
-                status: formData.status,
-              }
-            : clerk,
-        ),
-      )
-      setIsEditModalOpen(false)
-      setSelectedClerk(null)
-      setFormData({
-        firstName: "",
-        lastName: "",
-        email: "",
-        year: "",
-        section: "",
-        status: "Not On Duty",
-      })
-      setFormErrors({})
+  const handleEditClerk = async () => {
+    if (selectedClerk && validateForm(true)) {
+      try {
+        setLoading(true)
+        setError(null)
+
+        if (!selectedClerk.clerk_id) {
+          throw new Error("Clerk ID is missing. Cannot update clerk.")
+        }
+
+        const response = await fetch("/api/clerks", {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clerk_id: selectedClerk.clerk_id,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email,
+            year: formData.year,
+            section: formData.section,
+            status: formData.status,
+          })
+        })
+
+        const result = await response.json()
+
+        if (!response.ok) {
+          throw new Error(result.error || result.details || "Failed to update clerk")
+        }
+
+        // Refresh the clerks list
+        await fetchClerks()
+        
+        // Reset form and close modal
+        setIsEditModalOpen(false)
+        setSelectedClerk(null)
+        setFormData({
+          firstName: "",
+          lastName: "",
+          email: "",
+          year: "",
+          section: "",
+          status: "Not On Duty",
+        })
+        setFormErrors({})
+        setDebugInfo("Clerk updated successfully")
+        
+      } catch (err) {
+        console.error("Error updating clerk:", err)
+        setError(err instanceof Error ? err.message : "Failed to update clerk")
+      } finally {
+        setLoading(false)
+      }
     }
   }
 
@@ -290,15 +395,42 @@ export default function ClerksPage() {
   }
 
   // Function to archive/unarchive clerk
-  const handleArchiveClerk = (clerkId: string) => {
-    setClerks(
-      clerks.map((clerk: Clerk) =>
-        clerk.id === clerkId ? { ...clerk, archived: !clerk.archived } : clerk,
-      ),
-    )
-    const clerk = clerks.find((c) => c.id === clerkId)
-    if (clerk) {
-      console.log(`Clerk ${clerk.firstName} ${clerk.lastName} has been ${clerk.archived ? "unarchived" : "archived"}.`)
+  const handleArchiveClerk = async (clerk: Clerk) => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      if (!clerk.clerk_id) {
+        throw new Error("Clerk ID is missing. Cannot archive/unarchive clerk.")
+      }
+      
+      const action = clerk.archived ? 'unarchive' : 'archive'
+      
+      const response = await fetch("/api/clerks", {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clerk_id: clerk.clerk_id,
+          action: action
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || result.details || `Failed to ${action} clerk`)
+      }
+
+      // Refresh the clerks list
+      await fetchClerks()
+      setDebugInfo(`Clerk ${action}d successfully`)
+      
+    } catch (err) {
+      console.error(`Error ${clerk.archived ? 'unarchiving' : 'archiving'} clerk:`, err)
+      setError(err instanceof Error ? err.message : `Failed to ${clerk.archived ? 'unarchive' : 'archive'} clerk`)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -311,6 +443,11 @@ export default function ClerksPage() {
       section: "",
       status: "Not On Duty",
     })
+    setClerkFormData({
+      academic_year: "",
+      status: "Not On Duty",
+    })
+    setSelectedUser(null)
     setFormErrors({})
   }
 
@@ -432,7 +569,7 @@ export default function ClerksPage() {
                   onClick={() => setShowArchived(!showArchived)}
                   className="text-gray-600"
                 >
-                  {showArchived ? "Hide" : "Show"} Archived
+                  {showArchived ? "Show Active" : "Show Archived"}
                 </Button>
               </div>
             </div>
@@ -443,129 +580,126 @@ export default function ClerksPage() {
                   <Button 
                     className="bg-[#5C8E77] hover:bg-[#4a7a63] text-white" 
                     onClick={resetForm}
-                    disabled
-                    title="Add functionality coming soon"
+                    disabled={loading}
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Add Clerk
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
+                <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>Add New Clerk</DialogTitle>
+                    <DialogTitle>Promote User to Clerk</DialogTitle>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="firstName">First Name</Label>
-                        <Input
-                          id="firstName"
-                          value={formData.firstName}
-                          onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                          placeholder="Enter first name"
-                          className={formErrors.firstName ? "border-red-500" : ""}
-                        />
-                        {formErrors.firstName && (
-                          <p className="text-sm text-red-500">{formErrors.firstName}</p>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="lastName">Last Name</Label>
-                        <Input
-                          id="lastName"
-                          value={formData.lastName}
-                          onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                          placeholder="Enter last name"
-                          className={formErrors.lastName ? "border-red-500" : ""}
-                        />
-                        {formErrors.lastName && (
-                          <p className="text-sm text-red-500">{formErrors.lastName}</p>
-                        )}
-                      </div>
-                    </div>
+                    {/* User Selection */}
                     <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        placeholder="Enter email address"
-                        className={formErrors.email ? "border-red-500" : ""}
-                      />
-                      {formErrors.email && (
-                        <p className="text-sm text-red-500">{formErrors.email}</p>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="year">Year</Label>
-                        <Select
-                          value={formData.year}
-                          onValueChange={(value) => setFormData({ ...formData, year: value })}
-                        >
-                          <SelectTrigger className={formErrors.year ? "border-red-500" : ""}>
-                            <SelectValue placeholder="Select year" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1st Year">1st Year</SelectItem>
-                            <SelectItem value="2nd Year">2nd Year</SelectItem>
-                            <SelectItem value="3rd Year">3rd Year</SelectItem>
-                            <SelectItem value="4th Year">4th Year</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {formErrors.year && (
-                          <p className="text-sm text-red-500">{formErrors.year}</p>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="section">Section</Label>
-                        <Select
-                          value={formData.section}
-                          onValueChange={(value) => setFormData({ ...formData, section: value })}
-                        >
-                          <SelectTrigger className={formErrors.section ? "border-red-500" : ""}>
-                            <SelectValue placeholder="Select section" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="A">A</SelectItem>
-                            <SelectItem value="B">B</SelectItem>
-                            <SelectItem value="C">C</SelectItem>
-                            <SelectItem value="D">D</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {formErrors.section && (
-                          <p className="text-sm text-red-500">{formErrors.section}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="status">Status</Label>
-                      <Select
-                        value={formData.status}
-                        onValueChange={(value: "On Duty" | "Not On Duty") =>
-                          setFormData({ ...formData, status: value })
-                        }
+                      <Label>Select User (R01 - Clinicians)</Label>
+                      <Select 
+                        value={selectedUser?.auth_user_id || ""} 
+                        onValueChange={(value) => {
+                          const user = availableUsers.find(u => u.auth_user_id === value)
+                          setSelectedUser(user)
+                        }}
                       >
-                        <SelectTrigger className={formErrors.status ? "border-red-500" : ""}>
-                          <SelectValue placeholder="Select status" />
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a clinician to promote to clerk" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="On Duty">On Duty</SelectItem>
-                          <SelectItem value="Not On Duty">Not On Duty</SelectItem>
+                          {availableUsers.map((user) => (
+                            <SelectItem key={user.auth_user_id} value={user.auth_user_id}>
+                              <div className="flex flex-col">
+                                <span className="font-medium">
+                                  {user.first_name} {user.last_name}
+                                </span>
+                                <span className="text-sm text-gray-500">
+                                  {user.email} • {user.sex}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
-                      {formErrors.status && (
-                        <p className="text-sm text-red-500">{formErrors.status}</p>
+                      {availableUsers.length === 0 && (
+                        <p className="text-sm text-gray-500">
+                          No R01 (Clinician) users available for promotion. All clinicians are already assigned as clerks.
+                        </p>
                       )}
+                    </div>
+
+                    {/* Selected User Display */}
+                    {selectedUser && (
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h4 className="font-medium text-sm text-gray-700 mb-2">Selected Clinician:</h4>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><strong>Name:</strong> {selectedUser.first_name} {selectedUser.last_name}</div>
+                          <div><strong>Email:</strong> {selectedUser.email}</div>
+                          <div><strong>Current Role:</strong> R01 (Clinician)</div>
+                          <div><strong>Gender:</strong> {selectedUser.sex}</div>
+                          {selectedUser.contact_number && (
+                            <div><strong>Contact:</strong> {selectedUser.contact_number}</div>
+                          )}
+                        </div>
+                        <div className="mt-2 text-xs text-blue-600">
+                          Note: This clinician's role will be changed to R02 (Clerk) when promoted. They can be demoted back to R01 later if needed.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Clerk Details */}
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="academicYear">Academic Year</Label>
+                        <Select
+                          value={clerkFormData.academic_year}
+                          onValueChange={(value) => setClerkFormData({ ...clerkFormData, academic_year: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select academic year" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="AY2024-1">AY2024-1 (2024-2025, 1st Semester)</SelectItem>
+                            <SelectItem value="AY2024-2">AY2024-2 (2024-2025, 2nd Semester)</SelectItem>
+                            <SelectItem value="AY2025-1">AY2025-1 (2025-2026, 1st Semester)</SelectItem>
+                            <SelectItem value="AY2025-2">AY2025-2 (2025-2026, 2nd Semester)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="status">Initial Status</Label>
+                        <Select
+                          value={clerkFormData.status}
+                          onValueChange={(value: "On Duty" | "Not On Duty") =>
+                            setClerkFormData({ ...clerkFormData, status: value })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select initial status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="On Duty">On Duty</SelectItem>
+                            <SelectItem value="Not On Duty">Not On Duty</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="text-xs text-gray-500 bg-blue-50 p-2 rounded">
+                        <strong>Note:</strong> Section assignment is not required. The system will automatically handle section management.
+                      </div>
                     </div>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>
+                    <Button variant="outline" onClick={() => {
+                      setIsAddModalOpen(false)
+                      setSelectedUser(null)
+                      setClerkFormData({ academic_year: "", status: "Not On Duty" })
+                    }}>
                       Cancel
                     </Button>
-                    <Button onClick={handleAddClerk} className="bg-[#5C8E77] hover:bg-[#4a7a63] text-white">
-                      Add Clerk
+                    <Button 
+                      onClick={handleAddClerk} 
+                      className="bg-[#5C8E77] hover:bg-[#4a7a63] text-white"
+                      disabled={!selectedUser || loading}
+                    >
+                      {loading ? "Promoting..." : "Promote to Clerk"}
                     </Button>
                   </div>
                 </DialogContent>
@@ -626,8 +760,7 @@ export default function ClerksPage() {
                           size="sm"
                           onClick={() => openEditModal(clerk)}
                           className="text-[#5C8E77] hover:text-[#4a7a63] hover:bg-[#e6f7eb]"
-                          disabled
-                          title="Edit functionality coming soon"
+                          disabled={loading}
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -635,9 +768,9 @@ export default function ClerksPage() {
                           size="sm"
                           variant="ghost"
                           className={`${clerk.archived ? "text-green-600 hover:bg-green-50" : "text-orange-600 hover:bg-orange-50"}`}
-                          onClick={() => handleArchiveClerk(clerk.id)}
-                          title={`${clerk.archived ? "Unarchive" : "Archive"} functionality coming soon`}
-                          disabled
+                          onClick={() => handleArchiveClerk(clerk)}
+                          disabled={loading}
+                          title={clerk.archived ? "Unarchive clerk" : "Archive clerk"}
                         >
                           {clerk.archived ? (
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -677,65 +810,37 @@ export default function ClerksPage() {
 
       {/* Edit Modal - Keeping for future functionality */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Clerk Information</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="editFirstName">First Name</Label>
-                <Input
-                  id="editFirstName"
-                  value={formData.firstName}
-                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                  placeholder="Enter first name"
-                  className={formErrors.firstName ? "border-red-500" : ""}
-                />
-                {formErrors.firstName && (
-                  <p className="text-sm text-red-500">{formErrors.firstName}</p>
-                )}
+            {/* Display current user info (read-only) */}
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <h4 className="font-medium text-sm text-gray-700 mb-2">User Information (Read Only):</h4>
+              <div className="grid gap-2 text-sm">
+                <div><strong>Name:</strong> {selectedClerk?.firstName} {selectedClerk?.lastName}</div>
+                <div><strong>Email:</strong> {selectedClerk?.email}</div>
+                <div><strong>Current Section:</strong> {selectedClerk?.section}</div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="editLastName">Last Name</Label>
-                <Input
-                  id="editLastName"
-                  value={formData.lastName}
-                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  placeholder="Enter last name"
-                  className={formErrors.lastName ? "border-red-500" : ""}
-                />
-                {formErrors.lastName && (
-                  <p className="text-sm text-red-500">{formErrors.lastName}</p>
-                )}
+              <div className="mt-2 text-xs text-blue-600">
+                Note: Personal info and section updates require database schema changes.
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="editEmail">Email</Label>
-              <Input
-                id="editEmail"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="Enter email address"
-                className={formErrors.email ? "border-red-500" : ""}
-              />
-              {formErrors.email && (
-                <p className="text-sm text-red-500">{formErrors.email}</p>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+
+            {/* Editable fields */}
+            <div className="grid gap-4">
               <div className="space-y-2">
-                <Label htmlFor="editYear">Year</Label>
+                <Label htmlFor="editYear">Academic Year</Label>
                 <Select value={formData.year} onValueChange={(value) => setFormData({ ...formData, year: value })}>
                   <SelectTrigger className={formErrors.year ? "border-red-500" : ""}>
                     <SelectValue placeholder="Select year" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1st Year">1st Year</SelectItem>
-                    <SelectItem value="2nd Year">2nd Year</SelectItem>
-                    <SelectItem value="3rd Year">3rd Year</SelectItem>
-                    <SelectItem value="4th Year">4th Year</SelectItem>
+                    <SelectItem value="AY2024-1">AY2024-1 (2024-2025, 1st Semester)</SelectItem>
+                    <SelectItem value="AY2024-2">AY2024-2 (2024-2025, 2nd Semester)</SelectItem>
+                    <SelectItem value="AY2025-1">AY2025-1 (2025-2026, 1st Semester)</SelectItem>
+                    <SelectItem value="AY2025-2">AY2025-2 (2025-2026, 2nd Semester)</SelectItem>
                   </SelectContent>
                 </Select>
                 {formErrors.year && (
@@ -743,51 +848,31 @@ export default function ClerksPage() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="editSection">Section</Label>
+                <Label htmlFor="editStatus">Status</Label>
                 <Select
-                  value={formData.section}
-                  onValueChange={(value) => setFormData({ ...formData, section: value })}
+                  value={formData.status}
+                  onValueChange={(value: "On Duty" | "Not On Duty") => setFormData({ ...formData, status: value })}
                 >
-                  <SelectTrigger className={formErrors.section ? "border-red-500" : ""}>
-                    <SelectValue placeholder="Select section" />
+                  <SelectTrigger className={formErrors.status ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="A">A</SelectItem>
-                    <SelectItem value="B">B</SelectItem>
-                    <SelectItem value="C">C</SelectItem>
-                    <SelectItem value="D">D</SelectItem>
+                    <SelectItem value="On Duty">On Duty</SelectItem>
+                    <SelectItem value="Not On Duty">Not On Duty</SelectItem>
                   </SelectContent>
                 </Select>
-                {formErrors.section && (
-                  <p className="text-sm text-red-500">{formErrors.section}</p>
+                {formErrors.status && (
+                  <p className="text-sm text-red-500">{formErrors.status}</p>
                 )}
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editStatus">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value: "On Duty" | "Not On Duty") => setFormData({ ...formData, status: value })}
-              >
-                <SelectTrigger className={formErrors.status ? "border-red-500" : ""}>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="On Duty">On Duty</SelectItem>
-                  <SelectItem value="Not On Duty">Not On Duty</SelectItem>
-                </SelectContent>
-              </Select>
-              {formErrors.status && (
-                <p className="text-sm text-red-500">{formErrors.status}</p>
-              )}
             </div>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleEditClerk} className="bg-[#5C8E77] hover:bg-[#4a7a63] text-white">
-              Save Changes
+            <Button onClick={handleEditClerk} className="bg-[#5C8E77] hover:bg-[#4a7a63] text-white" disabled={loading}>
+              {loading ? "Updating..." : "Save Changes"}
             </Button>
           </div>
         </DialogContent>

@@ -60,7 +60,7 @@ export async function GET() {
     const { data: chairAvailability, error: availabilityError } = await supabase
       .from('chair_availability')
       .select('chair_id, is_occupied')
-      .eq('date', today)
+      .gte('date', `${today}T00:00:00`).lt('date', `${today}T23:59:59`)
 
     if (availabilityError) {
       console.log('❌ Availability query failed:', availabilityError.message)

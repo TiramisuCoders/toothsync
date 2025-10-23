@@ -13,7 +13,6 @@ interface TicketUpdateFailureModalProps {
 
 export function TicketUpdateFailureModal({
   isOpen,
-  onClose,
   onRetry,
   onBackToTickets,
   errorMessage = "An unexpected error occurred while submitting your update. Please try again.",
