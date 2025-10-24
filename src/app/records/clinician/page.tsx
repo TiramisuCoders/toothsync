@@ -1,7 +1,7 @@
 "use client"
 
-import ClinicianRecords from "./ClinicianRecords"
+import UnifiedActivitiesRecords from "../Records"
 
 export default function ClinicianRecordsPage(){
-  return <ClinicianRecords/>
+  return <UnifiedActivitiesRecords/>
 }
