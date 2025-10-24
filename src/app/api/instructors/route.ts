@@ -179,7 +179,7 @@ export async function POST(req: Request) {
 
     const { data: newAuthUserData, error: newAuthUserError } = await supabaseAdmin.auth.admin.createUser({
       email,
-      password: generatedPassword, // Use generated password instead of tempPassword
+      password: generatedPassword,
       email_confirm: true,
     })
 

@@ -15,7 +15,7 @@ async function logActivity(userId: string | null, role: string, action: string, 
     console.log("[v0] Logging activity:", { userId, role, action, details })
     const { data, error } = await supabaseAdmin.from("activity_logs").insert([
       {
-        user_id: userId ?? null, // ✅ null if not a real UUID
+        user_id: userId ?? null,
         role,
         action,
         details,
@@ -65,20 +65,25 @@ export async function POST(req: NextRequest) {
     const pythonScriptPath = path.join(process.cwd(), "etl", "main.py")
     if (!fs.existsSync(pythonScriptPath)) {
       fs.unlinkSync(tempPath)
-      return NextResponse.json({ status: "error", message: "Python ETL script not found on server." }, { status: 500 })
+      return NextResponse.json(
+        { status: "error", message: "Python ETL script not found. Please ensure etl/main.py exists." },
+        { status: 500 },
+      )
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL || "https://your-project.supabase.co"
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "your-service-role-key"
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-    if (supabaseUrl === "https://your-project.supabase.co" || supabaseKey === "your-service-role-key") {
-      console.warn("Warning: Using default Supabase configuration. Set environment variables for production.")
+    if (!supabaseUrl || !supabaseKey) {
+      fs.unlinkSync(tempPath)
+      return NextResponse.json(
+        { status: "error", message: "Supabase configuration missing. Check environment variables." },
+        { status: 500 },
+      )
     }
 
     const pythonExecutable = process.env.PYTHON_EXECUTABLE || "python3"
     console.log("[v0] Using Python executable:", pythonExecutable)
-
-    // Instead, let the spawn process handle the executable resolution
 
     const result = await new Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>((resolve) => {
       const args = [pythonScriptPath, tempPath, supabaseUrl, supabaseKey, academicYearId]
@@ -116,7 +121,6 @@ export async function POST(req: NextRequest) {
       })
     })
 
-    // Cleanup temp file (async; no need to await)
     fs.unlink(tempPath, () => {})
 
     const extractSummary = (log: string) => {
@@ -134,7 +138,6 @@ export async function POST(req: NextRequest) {
     if (result.ok) {
       const message = extractSummary(result.stdout)
 
-      // ✅ Log successful CSV upload
       console.log("[v0] CSV upload successful, logging activity...")
       await logActivity(
         safeUserId,
@@ -148,7 +151,6 @@ export async function POST(req: NextRequest) {
       const firstErrLine =
         (result.stderr || result.stdout).split(/\r?\n/).find((l) => l.trim().length > 0) || "ETL script failed."
 
-      // ❌ Log failed CSV upload
       console.log("[v0] CSV upload failed, logging activity...")
       await logActivity(
         safeUserId,
@@ -165,9 +167,8 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown server error"
 
-    // ❌ Log exception
     console.log("[v0] CSV upload exception, logging activity...")
-    await logActivity("Admin", "Admin", "UPLOAD_CSV_EXCEPTION", message) // ✅ null user_id
+    await logActivity(null, "Admin", "UPLOAD_CSV_EXCEPTION", message)
 
     return NextResponse.json({ status: "error", message }, { status: 500 })
   }

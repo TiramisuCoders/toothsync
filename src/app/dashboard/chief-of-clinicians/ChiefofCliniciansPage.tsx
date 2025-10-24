@@ -1,25 +1,15 @@
 // admin dashboard
 
-// clinician dsitribution
-// action column
-
-
 "use client"
 
 import { useEffect, useState } from "react"
 import {
   Calendar,
   ChevronDown,
-  Plus,
-  Edit,
-  Check,
   X,
   ChevronUp,
-  User,
   Users,
   ArrowUpDown,
-  AlertCircle,
-  CheckCircle,
   RockingChair,
   ArchiveRestore,
   Pencil,
@@ -27,12 +17,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { supabase } from "@/lib/supabase"
 import { toast } from "@/hooks/use-toast"
 import ArchiveConfirmationModal from "@/components/modals/archive-record-modal"
 import GradingModal from "@/components/modals/grading-modal"
@@ -115,18 +99,18 @@ export default function ChiefOfCliniciansPage() {
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false)
   const [isUnarchiveModalOpen, setIsUnarchiveModalOpen] = useState(false)
   // Add delete modal state
-  const [activityToAction, setActivityToAction] = useState<Activity | null>(null)
+  // const [activityToAction, setActivityToAction] = useState<Activity | null>(null)
   const [sortField, setSortField] = useState("id")
   const [sortDirection, setSortDirection] = useState("asc")
 
   // Form validation states
-  const [formErrors, setFormErrors] = useState<FormErrors>({})
-  const [showSuccess, setShowSuccess] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  // const [formErrors, setFormErrors] = useState<FormErrors>({})
+  // const [showSuccess, setShowSuccess] = useState(false)
+  // const [isSubmitting, setIsSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
  const [clinicianDistribution, setClinicianDistribution] = useState<ClinicianDistribution[]>([])
   const [AdminInfo, setAdminInfo] = useState<AdminInfo | null>(null)
-  const [activeFilter, setActiveFilter] = useState("all")
+  // const [activeFilter, setActiveFilter] = useState("all")
   const [summary, setSummary] = useState<DashboardSummary>({
     todayCount: 0,
     availableChair1st: 0,
@@ -304,16 +288,16 @@ export default function ChiefOfCliniciansPage() {
   // }
 
   // Calculate distribution
-  const calculateDistribution = (totalClinicians: number, totalInstructors: number) => {
-    if (totalInstructors === 0) return []
-    const baseCount = Math.floor(totalClinicians / totalInstructors)
-    const remainder = totalClinicians % totalInstructors
-    const instructors = ["Dr. Reyes", "Dr. Mendoza", "Dr. Santos"]
-    return instructors.slice(0, totalInstructors).map((instructor, index) => ({
-      instructor,
-      clinicians: baseCount + (index < remainder ? 1 : 0),
-    }))
-  }
+  // const calculateDistribution = (totalClinicians: number, totalInstructors: number) => {
+  //   if (totalInstructors === 0) return []
+  //   const baseCount = Math.floor(totalClinicians / totalInstructors)
+  //   const remainder = totalClinicians % totalInstructors
+  //   const instructors = ["Dr. Reyes", "Dr. Mendoza", "Dr. Santos"]
+  //   return instructors.slice(0, totalInstructors).map((instructor, index) => ({
+  //     instructor,
+  //     clinicians: baseCount + (index < remainder ? 1 : 0),
+  //   }))
+  // }
 
   // const instructorDistribution = calculateDistribution(cliniciansLoggedIn, availableInstructors)
 
@@ -476,6 +460,30 @@ export default function ChiefOfCliniciansPage() {
   //   }
   // }
 
+   // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6 p-6 bg-[#f9f9f9] min-h-screen">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+        </div>
+        <div className="grid gap-6 md:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="shadow-sm border rounded-lg">
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   // Sort activities
   const sortedActivities = [...activities]
     .filter((activity) => !activity.archived)
@@ -489,8 +497,6 @@ export default function ChiefOfCliniciansPage() {
       }
       return 0
     })
-
-  const [loggedAdmin, setLoggedAdmin] = useState<string | null>(null)
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -717,14 +723,7 @@ const handleSaveGrades = async () => {
     }
   }
   
-  // Get the greeting based on time of day
-   // Format for greeting header
-  const day = today.toLocaleDateString("en-US", { weekday: "long" })
-  const month = today.toLocaleDateString("en-US", { month: "long" })
-  const date = today.getDate()
-  const year = today.getFullYear()
-  const formattedGreetingDate = `${day}, ${month} ${date}, ${year}`
-
+  
   // Get time of day for greeting
   const hour = today.getHours()
   let greeting = "Good morning"

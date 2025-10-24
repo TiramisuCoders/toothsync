@@ -204,7 +204,7 @@ export default function ClerksPage() {
   }
 
   // Validation function
-  const validateForm = (isEdit: boolean = false): boolean => {
+const validateForm = (_isEdit: boolean = false): boolean => {
     const errors: FormErrors = {}
     
     if (!formData.firstName.trim()) {

@@ -3,20 +3,20 @@
 "use client"
 
 import {useEffect, useState } from "react"
-import { Edit, Check, X, ChevronUp, ChevronDown, ArrowUpDown, Star, Plus, Pencil, ChevronLeft, ChevronRight, ArchiveRestore } from "lucide-react"
+import {  X, ChevronUp, ChevronDown, ArrowUpDown, Star, Plus, Pencil, ChevronLeft, ChevronRight, ArchiveRestore } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
+// import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+// import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+// import { Input } from "@/components/ui/input"
+// import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
-import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
+// import { Badge } from "@/components/ui/badge"
+// import { Checkbox } from "@/components/ui/checkbox"
 import ArchiveConfirmationModal from "@/components/modals/archive-record-modal"
 import GradingModal from "@/components/modals/grading-modal"
 import UnarchiveConfirmationModal from "@/components/modals/unarchive-record-modal"
@@ -251,26 +251,26 @@ export default function InstructorActivitiesContent() {
 })
 
   // Function to update activity
-  const handleUpdateActivity = (updatedActivity: Activity) => {
-    if (!updatedActivity) return
+  // const handleUpdateActivity = (updatedActivity: Activity) => {
+  //   if (!updatedActivity) return
 
-    const proceduresToSave = updatedActivity.selectedProcedures || updatedActivity.procedures || []
-    const finalUpdatedActivity = {
-      ...updatedActivity,
-      procedures: proceduresToSave,
-    }
+  //   const proceduresToSave = updatedActivity.selectedProcedures || updatedActivity.procedures || []
+  //   const finalUpdatedActivity = {
+  //     ...updatedActivity,
+  //     procedures: proceduresToSave,
+  //   }
 
-    delete finalUpdatedActivity.selectedProcedures
+  //   delete finalUpdatedActivity.selectedProcedures
 
-    setActivitiesRecords(
-      activities.map((activity) => (activity.id === finalUpdatedActivity.id ? finalUpdatedActivity : activity)),
-    )
-    setIsEditModalOpen(false)
-    toast({
-      title: "Activity Updated",
-      description: `Activity ${finalUpdatedActivity.id} has been updated successfully.`,
-    })
-  }
+  //   setActivitiesRecords(
+  //     activities.map((activity) => (activity.id === finalUpdatedActivity.id ? finalUpdatedActivity : activity)),
+  //   )
+  //   // setIsEditModalOpen(false)
+  //   toast({
+  //     title: "Activity Updated",
+  //     description: `Activity ${finalUpdatedActivity.id} has been updated successfully.`,
+  //   })
+  // }
 
   // Function to handle procedure grade/remarks changes
   const handleProcedureGradeChange = (index: number, field: 'grade' | 'remarks', value: string) => {

@@ -1,22 +1,20 @@
-import { useState } from "react"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "../ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "../ui/textarea"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 
-interface Chair {
-  chair_id: string
-  chair_name: string
-}
+// interface Chair {
+//   chair_id: string
+//   chair_name: string
+// }
 
-interface Instructor {
-  id: string
-  name: string
-}
+// interface Instructor {
+//   id: string
+//   name: string
+// }
 
 interface GradingModalProps {
   isOpen: boolean

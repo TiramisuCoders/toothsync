@@ -257,10 +257,10 @@ export default function CliniciansPage() {
     setIsViewModalOpen(true)
   }
 
-  const handleHistoryClick = (activity: Activity) => {
-    setSelectedActivity(activity)
-    setIsHistoryModalOpen(true)
-  }
+  // const handleHistoryClick = (activity: Activity) => {
+  //   setSelectedActivity(activity)
+  //   setIsHistoryModalOpen(true)
+  // }
 
   const handleActivityEditClick = (activity: Activity) => {
     setCurrentActivity(activity)
@@ -272,32 +272,32 @@ export default function CliniciansPage() {
     setIsEditModalOpen(false)
   }
 
-  const handleUpdateActivity = (updatedActivity: Activity) => {
-    const newHistory: HistoryItem = {
-      timestamp: new Date().toISOString(),
-      user: "admin@example.com",
-      action: "Updated",
-      description: "Activity details updated",
-      details: {
-        date: updatedActivity.date,
-        procedure: updatedActivity.procedure,
-        patient: updatedActivity.patient,
-        grade: updatedActivity.grade || "",
-        remarks: updatedActivity.remarks || "",
-      },
-    }
-    setActivitiesData(
-      activitiesData.map((activity) =>
-        activity.id === updatedActivity.id
-          ? {
-              ...updatedActivity,
-              history: [newHistory, ...activity.history],
-            }
-          : activity,
-      ),
-    )
-    setIsActivityEditModalOpen(false)
-  }
+  // const handleUpdateActivity = (updatedActivity: Activity) => {
+  //   const newHistory: HistoryItem = {
+  //     timestamp: new Date().toISOString(),
+  //     user: "admin@example.com",
+  //     action: "Updated",
+  //     description: "Activity details updated",
+  //     details: {
+  //       date: updatedActivity.date,
+  //       procedure: updatedActivity.procedure,
+  //       patient: updatedActivity.patient,
+  //       grade: updatedActivity.grade || "",
+  //       remarks: updatedActivity.remarks || "",
+  //     },
+  //   }
+  //   setActivitiesData(
+  //     activitiesData.map((activity) =>
+  //       activity.id === updatedActivity.id
+  //         ? {
+  //             ...updatedActivity,
+  //             history: [newHistory, ...activity.history],
+  //           }
+  //         : activity,
+  //     ),
+  //   )
+  //   setIsActivityEditModalOpen(false)
+  // }
 
   const updateFormData = (field: keyof NewClinician, value: string) => {
     setFormData((prev: Partial<NewClinician>) => ({
@@ -422,7 +422,7 @@ export default function CliniciansPage() {
 
   const processCSVFile = async () => {
     if (!selectedFile) {
-      setUploadErrorMessage("Please select a valid .csv file")
+      setUploadErrorMessage("Please select a CSV file to upload.")
       return
     }
 
@@ -441,7 +441,15 @@ export default function CliniciansPage() {
     setUploadErrorMessage("")
     try {
       console.log("[v0] Frontend CSV upload - currentUserId:", currentUserId, "role:", "chief-of-clinicians")
-      const result = await uploadCliniciansCsv(selectedFile, currentUserId, "chief-of-clinicians")
+      console.log("[v0] Frontend CSV upload - academicYearId:", formData.academicYearId)
+      console.log("[v0] Frontend CSV upload - academicYearId type:", typeof formData.academicYearId)
+
+      const result = await uploadCliniciansCsv(
+        selectedFile,
+        currentUserId,
+        "chief-of-clinicians",
+        formData.academicYearId,
+      )
       if (result.status === "success") {
         setUploadSuccessMessage(result.message)
         setSelectedFile(null)
@@ -513,13 +521,13 @@ export default function CliniciansPage() {
     document.body.removeChild(link)
   }
 
-  const exportToCSV = () => {
-    if (activeTab === "activities") {
-      exportActivitiesToCSV()
-    } else {
-      exportAttendanceToCSV()
-    }
-  }
+  // const exportToCSV = () => {
+  //   if (activeTab === "activities") {
+  //     exportActivitiesToCSV()
+  //   } else {
+  //     exportAttendanceToCSV()
+  //   }
+  // }
 
   const filteredClinicians = clinicians.filter((clinician) => {
     if (activeFilter === "all") return true
@@ -675,7 +683,9 @@ export default function CliniciansPage() {
         open={isAddModalOpen}
         onOpenChange={(open) => {
           setIsAddModalOpen(open)
-          if (!open) resetForm()
+          if (!open) {
+            setTimeout(() => resetForm(), 100)
+          }
         }}
       >
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
@@ -936,7 +946,15 @@ export default function CliniciansPage() {
         </DialogContent>
       </Dialog>
       {/* Edit Clinician Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+      <Dialog
+        open={isEditModalOpen}
+        onOpenChange={(open) => {
+          setIsEditModalOpen(open)
+          if (!open) {
+            setTimeout(() => setCurrentClinician(null), 100)
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
           {currentClinician && (
             <>
@@ -1125,7 +1143,19 @@ export default function CliniciansPage() {
         </DialogContent>
       </Dialog>
       {/* Upload CSV Modal */}
-      <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
+      <Dialog
+        open={isUploadModalOpen}
+        onOpenChange={(open) => {
+          setIsUploadModalOpen(open)
+          if (!open) {
+            setTimeout(() => {
+              setSelectedFile(null)
+              setUploadSuccessMessage("")
+              setUploadErrorMessage("")
+            }, 100)
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
           <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
             <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Upload Clinicians CSV</DialogTitle>
@@ -1247,7 +1277,15 @@ export default function CliniciansPage() {
         </DialogContent>
       </Dialog>
       {/* Clinician Records View Modal */}
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+      <Dialog
+        open={isViewModalOpen}
+        onOpenChange={(open) => {
+          setIsViewModalOpen(open)
+          if (!open) {
+            setTimeout(() => setCurrentClinician(null), 100)
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[900px] p-0 overflow-hidden rounded-lg">
           {selectedClinician && (
             <>
