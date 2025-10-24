@@ -26,37 +26,46 @@ export async function GET() {
     const startOfDay = `${today}T00:00:00.000Z`
     const endOfDay = `${today}T23:59:59.999Z`
 
-    // Build base query
+    // Build base query - FIXED: Corrected all foreign key relationships
     let query = supabase
     .from("activity_records")
     .select(`
       record_id,
       time_in,
       time_out,
-      status,
-      clinician:clinician_id(
-          auth_user_id,
-          first_name,
-          last_name
+      id,
+      instructor_id,
+      chair_id,
+      request_id,
+      activities!activity_records_record_id_fkey(
+        status
       ),
-      instructor:instructor_id (
-        user_id(
+      instructors!activity_records_instructor_id_fkey(
+        instructor_id,
+        users!instructors_user_id_fkey(
           auth_user_id,
           first_name,
           last_name
         )
       ),
-      chair:chair_id (
+      chair!Activity_Records_chair_id_fkey(
         chair_name
       ),
-      request:request_id (
+      request!activity_records_request_id_fkey(
         patient_name,
-        is_sanitized
+        is_sanitized,
+        shift,
+        clinician_id,
+        users!request_clinician_id_fkey(
+          auth_user_id,
+          first_name,
+          last_name
+        )
       ),
-      activity_procedures (
-        grade,
+      activity_procedures(
+        status,
         remarks,
-        procedure:procedure (
+        procedure(
           name
         )
       )
@@ -66,17 +75,23 @@ export async function GET() {
     .lte("time_in", endOfDay);  
 
     switch (userRole.role) {
-      case 'R01': // Clinician
-        query = query
-          .eq("clinician_id", userRole.auth_user_id);
+      case 'R01': // Clinician - filter by clinician_id in request
+        query = query.eq("request.clinician_id", userRole.auth_user_id);
         break
 
-      case 'R02': // Instructor
+      case 'R02': // Clerk
         break
 
-      case 'R03': 
-        query = query
-          .eq("instructor.user_id.auth_user_id", userRole.auth_user_id);
+      case 'R03': // Instructor - filter by instructor_id
+        const { data: instructorData } = await supabase
+          .from("instructors")
+          .select("instructor_id")
+          .eq("user_id", userRole.auth_user_id)
+          .single()
+        
+        if (instructorData) {
+          query = query.eq("instructor_id", instructorData.instructor_id);
+        }
         break
 
       case 'R04': // Admin
@@ -98,28 +113,30 @@ export async function GET() {
 
     const { count: todayCount } = await supabase
     .from("activity_records")
-    .select("record_id, request!inner(clinician_id)", { count: "exact" })
-    .gte("time_in", startOfDay.toString())
-    .lte("time_in", endOfDay.toString())
+    .select("id, request!inner(clinician_id)", { count: "exact" })
+    .gte("time_in", startOfDay)
+    .lte("time_in", endOfDay)
     .eq("request.clinician_id", userRole.auth_user_id);
 
     const { count: todayTotalActivities1st } = await supabase
     .from("activity_records")
-    .select("record_id", { count: "exact" })
-    .gte("time_in", startOfDay.toString())
-    .lte("time_in", endOfDay.toString());
+    .select("id, request!inner(shift)", { count: "exact" })
+    .gte("time_in", startOfDay)
+    .lte("time_in", endOfDay)
+    .eq("request.shift", "1st");
 
     const { count: todayTotalActivities2nd } = await supabase
     .from("activity_records")
-    .select("record_id", { count: "exact" })
-    .gte("time_in", startOfDay.toString())
-    .lte("time_in", endOfDay.toString());
+    .select("id, request!inner(shift)", { count: "exact" })
+    .gte("time_in", startOfDay)
+    .lte("time_in", endOfDay)
+    .eq("request.shift", "2nd");
 
     const { count: availableChair1st, error: chairError1st } = await supabase
       .from("chair_availability")
       .select("chair_id", { count: "exact" })
-      .gte("date", startOfDay.toString())
-      .lte("date", endOfDay.toString())
+      .gte("date", startOfDay)
+      .lte("date", endOfDay)
       .eq("is_occupied", false)
       .eq("shift", "1st");
 
@@ -130,8 +147,8 @@ export async function GET() {
     const { count: availableChair2nd, error: chairError2nd } = await supabase
       .from("chair_availability")
       .select("chair_id", { count: "exact" })
-      .gte("date", startOfDay.toString())
-      .lte("date", endOfDay.toString())
+      .gte("date", startOfDay)
+      .lte("date", endOfDay)
       .eq("is_occupied", false)
       .eq("shift", "2nd");
 
@@ -162,127 +179,144 @@ export async function GET() {
     const { count: request1st, error: requestErr1st } = await supabase
       .from("request")
       .select("request_id", { count: "exact" })
-      .gte("created_at", startOfDay.toString())
-      .lte("created_at", endOfDay.toString())
+      .gte("created_at", startOfDay)
+      .lte("created_at", endOfDay)
       .eq("shift", "1st")
       .eq("status", "Pending");
 
     if (requestErr1st) {
-      console.error("Instructor count error:", requestErr1st)
+      console.error("Request count error:", requestErr1st)
     }
 
     const { count: request2nd, error: requestErr2nd } = await supabase
       .from("request")
       .select("request_id", { count: "exact" })
-      .gte("created_at", startOfDay.toString())
-      .lte("created_at", endOfDay.toString())
+      .gte("created_at", startOfDay)
+      .lte("created_at", endOfDay)
       .eq("shift", "2nd")
       .eq("status", "Confirmed");
 
     if (requestErr2nd) {
-      console.error("Instructor count error:", requestErr2nd)
+      console.error("Request count error:", requestErr2nd)
     }
 
-    const { count: assignedClinicians1st, error: assignedCliniciansErr1st } = await supabase
-      .from("activity_records")
-      .select("record_id, request!inner(shift), instructors!inner(user_id)", { count: "exact" })
-      .gte("time_in", startOfDay.toString())
-      .lte("time_in", endOfDay.toString())
-      .eq("request.shift", "1st")
-      .eq("instructors.user_id", userRole.auth_user_id);
+    // Get instructor_id for filtering (only for instructors)
+    const { data: currentInstructor } = await supabase
+      .from("instructors")
+      .select("instructor_id")
+      .eq("user_id", userRole.auth_user_id)
+      .maybeSingle()
 
-    if (assignedCliniciansErr1st) {
-      console.error("Assigned Clinicians count error:", assignedCliniciansErr1st)
+    let assignedClinicians1st = null
+    let assignedClinicians2nd = null
+    let gradedClinicians = null
+    let ungradedClinicians = null
+
+    // Only fetch instructor-specific counts if user is an instructor
+    if (currentInstructor?.instructor_id) {
+      const { count: count1st, error: assignedCliniciansErr1st } = await supabase
+        .from("activity_records")
+        .select("id, request!inner(shift)", { count: "exact" })
+        .gte("time_in", startOfDay)
+        .lte("time_in", endOfDay)
+        .eq("request.shift", "1st")
+        .eq("instructor_id", currentInstructor.instructor_id);
+
+      assignedClinicians1st = count1st
+
+      if (assignedCliniciansErr1st) {
+        console.error("Assigned Clinicians count error:", assignedCliniciansErr1st)
+      }
+
+      const { count: count2nd, error: assignedCliniciansErr2nd } = await supabase
+        .from("activity_records")
+        .select("id, request!inner(shift)", { count: "exact" })
+        .gte("time_in", startOfDay)
+        .lte("time_in", endOfDay)
+        .eq("request.shift", "2nd")
+        .eq("instructor_id", currentInstructor.instructor_id);
+
+      assignedClinicians2nd = count2nd
+
+      if (assignedCliniciansErr2nd) {
+        console.error("Assigned Clinicians count error:", assignedCliniciansErr2nd)
+      }
+
+      const { count: countGraded, error: gradedCliniciansErr } = await supabase
+        .from("activity_records")
+        .select("id, activities!inner(status)", { count: "exact" })
+        .gte("time_in", startOfDay)
+        .lte("time_in", endOfDay)
+        .eq("activities.status", "Completed")
+        .eq("instructor_id", currentInstructor.instructor_id);
+
+      gradedClinicians = countGraded
+
+      if (gradedCliniciansErr) {
+        console.error("Graded Clinicians count error:", gradedCliniciansErr)
+      }
+
+      const { count: countUngraded, error: ungradedCliniciansErr } = await supabase
+        .from("activity_records")
+        .select("id, activities!inner(status)", { count: "exact" })
+        .gte("time_in", startOfDay)
+        .lte("time_in", endOfDay)
+        .eq("activities.status", "In Progress")
+        .eq("instructor_id", currentInstructor.instructor_id);
+
+      ungradedClinicians = countUngraded
+
+      if (ungradedCliniciansErr) {
+        console.error("Ungraded Clinicians count error:", ungradedCliniciansErr)
+      }
     }
 
-    const { count: assignedClinicians2nd, error: assignedCliniciansErr2nd } = await supabase
-      .from("activity_records")
-      .select("record_id, request!inner(shift), instructors!inner(user_id)", { count: "exact" })
-      .gte("time_in", startOfDay.toString())
-      .lte("time_in", endOfDay.toString())
-      .eq("request.shift", "2nd")
-      .eq("instructors.user_id", userRole.auth_user_id);
-
-
-
-    if (assignedCliniciansErr2nd) {
-      console.error("Assigned Clinicians count error:", assignedCliniciansErr2nd)
-    }
-
-    const { count: gradedClinicians, error: gradedCliniciansErr } = await supabase
-      .from("activity_records")
-      .select("record_id, request!inner(shift), instructors!inner(user_id)", { count: "exact" })
-      .gte("time_in", startOfDay.toString())
-      .lte("time_in", endOfDay.toString())
-      .eq("status", "Completed"); // filter by shift in request
-
-
-    if (gradedCliniciansErr) {
-      console.error("Graded CLincians count error:", gradedCliniciansErr)
-    }
-
-    const { count: ungradedClinicians, error: ungradedCliniciansErr } = await supabase
-      .from("activity_records")
-      .select("record_id, request!inner(shift), instructors!inner(user_id)", { count: "exact" })
-      .gte("time_in", startOfDay.toString())
-      .lte("time_in", endOfDay.toString())
-      .eq("status", "In Progress"); 
-
-
-    if (ungradedCliniciansErr) {
-      console.error("Graded CLincians count error:", ungradedCliniciansErr)
-    }
-
-  const { data:clinicianDistribution, error:clinicianDistributionErr } = await supabase
-    .from("instructors_availability_record")
-    .select(`
-    instructor_id,
-    date,
-    shift,
-    assigned_clinicians,
-    instructors (
-      user_id (
-        auth_user_id,
-        first_name,
-        last_name
-      )
-    )
-  `)
-    .eq("date", new Date().toISOString().split("T")[0]) // today's date
-    .order("shift", { ascending: true })
-    .order("instructor_id", { ascending: true })
+    const { data: clinicianDistribution, error: clinicianDistributionErr } = await supabase
+      .from("instructors_availability_record")
+      .select(`
+        instructor_id,
+        date,
+        shift,
+        assigned_clinicians,
+        instructors(
+          user_id,
+          users!instructors_user_id_fkey(
+            auth_user_id,
+            first_name,
+            last_name
+          )
+        )
+      `)
+      .eq("date", today)
+      .order("shift", { ascending: true })
+      .order("instructor_id", { ascending: true })
 
     if (clinicianDistributionErr) {
       console.error("Error fetching clinician distribution:", clinicianDistributionErr)
-    } else {
-      console.log("Clinician distribution:", data)
     }
 
     const transformedClinicianDistribution = clinicianDistribution?.map(item => ({
       instructor_id: item.instructor_id,
-      instructor_name: `${item.instructors?.user_id?.first_name || ""} ${item.instructors?.user_id?.last_name || ""}`.trim(),
+      instructor_name: `${item.instructors?.users?.first_name || ""} ${item.instructors?.users?.last_name || ""}`.trim(),
       date: item.date,
       shift: item.shift,
       assigned_clinicians: item.assigned_clinicians
     }))
 
-
     // Transform records for frontend
     const transformedRecords = records?.map(r => {
       const procedureDetails = r.activity_procedures?.map(ap => ({
         name: ap.procedure?.name,
-        grade: ap.grade,
         remarks: ap.remarks,
         status: ap.status
       })).filter(p => p.name) || []
       
       return {
         id: r.record_id,
-        patientName: r.request?.patient_name ,
-
+        patientName: r.request?.patient_name,
         procedures: r.activity_procedures?.map(ap => ap.procedure?.name).filter(Boolean) || [],
         procedureDetails: procedureDetails,
-        status: r.status,
+        status: r.activities?.status,
         timeIn: r.time_in
           ? new Date(r.time_in).toLocaleTimeString("en-US", {
               hour: "2-digit",
@@ -300,20 +334,17 @@ export async function GET() {
             })
           : null,
         chair: r.chair?.chair_name,
-        sanitized: r.is_sanitized ? "Yes" : "No",
-        gradeValue: r.grade || null,
-        remarks: r.remarks || null,
+        sanitized: r.request?.is_sanitized ? "Yes" : "No",
 
-        // clinician details
-        clinicianId: r.clinician_id,
-        clinicianName: `${r.clinician?.first_name || ""} ${r.clinician?.last_name || ""}`.trim(),
+        // clinician details (from request table)
+        clinicianId: r.request?.clinician_id,
+        clinicianName: `${r.request?.users?.first_name || ""} ${r.request?.users?.last_name || ""}`.trim(),
 
         // instructor details
-        instructorId: r.instructor?.user_id?.auth_user_id || null,
-        instructorName: `${r.instructor?.user_id?.first_name || ""} ${r.instructor?.user_id?.last_name || ""}`.trim(),
+        instructorId: r.instructors?.users?.auth_user_id || null,
+        instructorName: `${r.instructors?.users?.first_name || ""} ${r.instructors?.users?.last_name || ""}`.trim(),
       };
     }) || []
-  
   
     return Response.json({ 
       success: true, 
