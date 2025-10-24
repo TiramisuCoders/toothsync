@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { Bell, ChevronDown, Search } from "lucide-react"
+import { useRouter } from 'next/navigation'
+import { Bell, ChevronDown, Search, Menu } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -39,21 +39,12 @@ export function Header() {
   }
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-40 flex h-16 items-center justify-between border-b bg-background px-4 text-foreground shadow-sm">
-      {/* Search Input */}
-      <div className="flex-1 max-w-md mx-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search for anything..."
-            className="w-full pl-10"
-          />
-        </div>
-      </div>
+    <header className="fixed top-0 left-0 right-0 z-40 flex h-16 items-center justify-between border-b bg-background px-2 sm:px-4 text-foreground shadow-sm">
+
+    
 
       {/* Right Icons */}
-      <div className="flex items-center gap-4">
+      <div className="flex justify-end gap-1 sm:gap-4 ml-auto">
         {/* Bell */}
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
@@ -62,11 +53,12 @@ export function Header() {
           </span>
         </Button>
 
-        {/* User Menu */}
+        {/*  User Menu - Full text on sm and up, icon only on mobile */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 px-2">
-              <div className="text-right">
+            <Button variant="ghost" className="flex items-center gap-1 sm:gap-2 px-1 sm:px-2">
+              {/*  Hide user info text on mobile, show only on sm and up */}
+              <div className="hidden sm:block text-right">
                 <p className="text-sm font-medium leading-none">
                   {user ? `${user.firstName} ${user.lastName}` : "Profile"}
                 </p>

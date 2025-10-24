@@ -74,35 +74,43 @@ export default function InstructorActivitiesContent() {
   const [activities, setActivitiesRecords] = useState<Activity[]>([])
 
   useEffect(() => {
-    const fetchRecords = async () => {
-      try {
-        const fetchRecords = await fetch('/api/dashboard', {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        })
-
-        if (!fetchRecords.ok) {
-          throw new Error(`HTTP error! status: ${fetchRecords.status}`)
+  const fetchRecords = async () => {
+    try {
+      console.log('🔍 Fetching from /api/activities...')
+      
+      const fetchRecords = await fetch('/api/activities', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
         }
+      })
 
-        const records = await fetchRecords.json()
-        console.log('Fetched records:', records)
-        
-        if (records.success) {
-          console.log('Setting activities:', records.data)
-          setActivitiesRecords(records.data)
-        } else {
-          throw new Error(records.error || 'Failed to fetch records')
-        }
-      } catch (err) {
-        console.error('Error fetching attendance:', err)
-      } 
-    }
-    fetchRecords()
-  }, []) 
+      console.log('📡 Response status:', fetchRecords.status)
+      
+      if (!fetchRecords.ok) {
+        const errorText = await fetchRecords.text()
+        console.error('❌ Response not OK:', errorText)
+        throw new Error(`HTTP error! status: ${fetchRecords.status}`)
+      }
+
+      const records = await fetchRecords.json()
+      console.log('✅ Fetched records:', records)
+      console.log('📊 Records data:', records.data)
+      console.log('📏 Records length:', records.data?.length)
+      
+      if (records.success) {
+        console.log('✅ Setting activities:', records.data)
+        setActivitiesRecords(records.data)
+      } else {
+        throw new Error(records.error || 'Failed to fetch records')
+      }
+    } catch (err) {
+      console.error('❌ Error fetching activities:', err)
+    } 
+  }
+  fetchRecords()
+}, [])
 
   
   // Function to get status color

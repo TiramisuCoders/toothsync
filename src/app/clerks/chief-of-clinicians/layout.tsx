@@ -1,18 +1,16 @@
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { RoleBasedSidebar } from "@/components/sidebar/RoleBasedSidebar"
 import { Header } from "@/components/layouts/header"
-import React from "react"
+import type React from "react"
 
-export default function ChiefLayout({ children }: { children: React.ReactNode }) {
+export default function ClerksLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarProvider>
-      <RoleBasedSidebar role="chief" />
-      <SidebarInset>
+    <div className="flex">
+      <RoleBasedSidebar role="clerk" />
+
+      <div className="flex-1 sm:ml-64 w-full pt-16">
         <Header />
-        <main className="bg-[#f9f9f9] min-h-screen p-6">
-          {children}
-        </main>
-      </SidebarInset>
-    </SidebarProvider>
+        <main className="bg-[#f9f9f9] min-h-screen p-6">{children}</main>
+      </div>
+    </div>
   )
 }
