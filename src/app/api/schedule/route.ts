@@ -134,7 +134,6 @@ export async function POST(request: Request) {
       .eq('instructor_id', instructorUser.instructor_id)
       .eq('date', date)
       .eq('shift', shift)
-      .maybeSingle()
 
     if (existing) {
       return Response.json({ error: 'Schedule already exists for this date and shift' }, { status: 409 })
