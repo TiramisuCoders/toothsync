@@ -62,8 +62,29 @@ export async function getProcedures() {
   }
 }
 
+export async function getDepartments() {
+  const supabase = await createAuthenticatedSupabaseClient()
+
+  try {
+    const { data: departmentData, error: departmentError } = await supabase
+      .from("departments")
+      .select("id, name")
+
+    if (departmentError) {
+      console.error("Deparments fetch error:", departmentError)
+      return { error: "Failed to load deparments", departmentData: [] }
+    }
+
+    return { error: null, departmentData: departmentData || [] }
+  } catch (error) {
+    console.error("Error fetching department:", error)
+    return { error: "Failed to load departmenrs", departmentData: [] }
+  }
+}
+
 // Server action for form submission
 export async function submitAttendanceAction(formData: {
+  record_id?: string // Optional - if provided, adds to existing record
   patientName: string
   selectedProcedures: string[]
   shift: string
@@ -104,6 +125,7 @@ export async function submitAttendanceAction(formData: {
       return { success: false, error: 'Validation failed', details: errors }
     }
 
+    
     // Debug: Log the clinicianUserId being searched for
     console.log('Searching for clinician with auth_user_id:', formData.clinicianUserId)
 
@@ -116,28 +138,16 @@ export async function submitAttendanceAction(formData: {
 
     // Debug: Log the query result
     console.log('Clinician query result:', { data: clinician, error: clinicianError })
+    console.log(formData.record_id)
 
     if (clinicianError || !clinician) {
-      // Additional debugging: Let's see what users exist
-      const { data: allUsers, error: debugError } = await supabase
-        .from('users')
-        .select('first_name, last_name, auth_user_id')
-        .limit(5)
-      
-      console.log('Sample users in database:', allUsers)
-      console.log('Debug query error:', debugError)
       
       console.error('Clinician verification failed:', clinicianError)
       return {
         success: false,
         error: 'Invalid clinician credentials',
         debug: {
-          searchedUserId: formData.clinicianUserId,
-          sampleUsers: allUsers?.map(u => ({ 
-            first_name: u.first_name,
-            last_name: u.last_name,
-            auth_user_id: u.auth_user_id 
-          })) || []
+          searchedUserId: formData.clinicianUserId
         }
       }
     }
@@ -157,17 +167,41 @@ export async function submitAttendanceAction(formData: {
       return { success: false, error: 'One or more selected procedures are invalid' }
     }
 
+    // Check if this is adding to an existing record or creating a new one
+    if (formData.record_id) {
+      // Adding to existing record - verify it exists and belongs to this clinician
+      const { data: existingRecord, error: recordError } = await supabase
+        .from('activity_overview')
+        .select('record_id, clinician_id')
+        .eq('record_id', formData.record_id)
+        .eq('clinician_id', formData.clinicianUserId)
+
+      if (recordError || !existingRecord) {
+        console.error('Record verification failed:', recordError)
+        return { success: false, error: 'Invalid or unauthorized record access' }
+      }
+
+      console.log('Adding to existing record:', formData.record_id)
+    }
+
     // Insert main request record
+    const requestPayload: any = {
+      patient_name: formData.patientName.trim(),
+      clinician_id: formData.clinicianUserId,
+      shift: formData.shift,
+      patient_type: formData.patient_type,
+      status: 'Pending',
+      created_at: new Date().toISOString()
+    }
+
+    // Add record_id if this is for an existing record
+    if (formData.record_id) {
+      requestPayload.record_id = formData.record_id
+    }
+
     const { data: requestData, error: requestError } = await supabase
       .from('request')
-      .insert({
-        patient_name: formData.patientName.trim(),
-        clinician_id: formData.clinicianUserId,
-        shift: formData.shift,
-        patient_type: formData.patient_type,
-        status: 'Pending',
-        created_at: new Date().toISOString()
-      })
+      .insert(requestPayload)
       .select("request_id")
       .single()
 
@@ -203,15 +237,19 @@ export async function submitAttendanceAction(formData: {
     }
 
     // Log successful submission
-    console.log(`Attendance request ${newRequestId} submitted successfully by ${clinician.first_name} ${clinician.last_name}`)
+    const submissionType = formData.record_id ? 'continuation' : 'new'
+    console.log(`Attendance request ${newRequestId} (${submissionType}) submitted successfully by ${clinician.first_name} ${clinician.last_name}`)
 
     // Return success response
     return {
       success: true,
       requestId: newRequestId,
-      message: 'Attendance request submitted successfully',
+      message: formData.record_id 
+        ? 'Attendance request added to existing record successfully'
+        : 'Attendance request submitted successfully',
       data: {
         requestId: newRequestId,
+        recordId: formData.record_id || null,
         patientName: formData.patientName,
         procedures: formData.selectedProcedures,
         shift: formData.shift,
