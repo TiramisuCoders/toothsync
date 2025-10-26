@@ -18,6 +18,10 @@ export async function POST(request: Request) {
       .select('auth_user_id, role')
       .eq('auth_user_id', user.id)
       .single()
+    
+    if (!userRole) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     const allowedRoles = ['R03', 'R04']
     if (!allowedRoles.includes(userRole?.role)) {

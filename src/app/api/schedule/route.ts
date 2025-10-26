@@ -96,6 +96,10 @@ export async function POST(request: Request) {
       .eq('auth_user_id', user.id)
       .single()
 
+    if (!userRole) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const allowedRoles = ['R03', 'R04']
     if (!allowedRoles.includes(userRole?.role)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 })
@@ -133,7 +137,7 @@ export async function POST(request: Request) {
       .select('id')
       .eq('instructor_id', instructorUser.instructor_id)
       .eq('date', date)
-      .eq('shift', shift)
+      .eq('shift', shift) 
 
     if (existing) {
       return Response.json({ error: 'Schedule already exists for this date and shift' }, { status: 409 })
