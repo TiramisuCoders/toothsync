@@ -12,7 +12,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { SignOutModal } from "@/components/modals/sign-out-modal"
-import { signOut } from "@/app/actions/sign-out"
 
 export function Header() {
   const router = useRouter()
