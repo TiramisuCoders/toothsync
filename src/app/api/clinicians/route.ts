@@ -17,11 +17,13 @@ const parseEnrollmentStatus = (status: string): string => {
   return "Not Enrolled" // Default fallback
 }
 
-// Helper to parse year level string (if needed, otherwise just return as is)
+// Helper to parse year level string
 const parseYearLevel = (yearLevel: string): string => {
-  // This helper might be simplified if yearLevel is always stored exactly as received
-  if (yearLevel.includes("5th")) return "5th Year"
-  if (yearLevel.includes("6th")) return "6th Year"
+  if (yearLevel.includes("1st") || yearLevel.includes("1")) return "1st Year"
+  if (yearLevel.includes("2nd") || yearLevel.includes("2")) return "2nd Year"
+  if (yearLevel.includes("3rd") || yearLevel.includes("3")) return "3rd Year"
+  if (yearLevel.includes("4th") || yearLevel.includes("4")) return "4th Year"
+  if (yearLevel.includes("5th") || yearLevel.includes("5")) return "5th Year"
   return yearLevel // Fallback for other values
 }
 
@@ -55,7 +57,7 @@ export async function GET() {
     const { data: cliniciansData, error: cliniciansError } = await supabaseAdmin
       .from("clinicians")
       .select(
-        `user_id, student_id, enrollment_status, year_level, section, users(first_name, last_name, email, sex, contact_number)`,
+        `user_id, student_id, enrollment_status, year_level, users(first_name, last_name, email, sex, contact_number)`,
       )
       .order("user_id", { ascending: true })
 
@@ -79,7 +81,6 @@ export async function GET() {
         email: c.users?.email || "",
         contactNumber: c.users?.contact_number || "",
         yearLevel: c.year_level || "", // Now from public.clinicians
-        section: c.section || "", // Now from public.clinicians
       }
     })
 
@@ -101,7 +102,6 @@ export async function POST(req: Request) {
       email,
       contactNumber,
       yearLevel, // Now handled in clinicians table
-      section, // Now handled in clinicians table
       status,
       studentId,
       academicYearId, // Added academicYearId parameter
@@ -229,12 +229,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Failed to obtain user ID from users table." }, { status: 500 })
     }
 
-    // 3. Insert/Update into clinicians table
+    // 3. Insert/Update into clinicians table (removed section field)
     const cliniciansPayload: any = {
       user_id: actualUserId,
       student_id: studentId,
       year_level: parseYearLevel(yearLevel),
-      section: section,
       enrollment_status: parseEnrollmentStatus(status),
       updated_at: new Date().toISOString(),
     }
@@ -275,12 +274,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. Insert/Update into clinician_records table
+    // 4. Insert/Update into clinician_records table (removed section field)
     const clinicianRecordsPayload = {
       user_id: actualUserId,
       student_id: studentId,
       year_level: parseYearLevel(yearLevel),
-      section: section,
       academic_year_id: academicYearId,
     }
 
