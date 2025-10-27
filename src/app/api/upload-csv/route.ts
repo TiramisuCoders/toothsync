@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { type NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { processClinicianCSV } from "@/lib/etl/csvProcessor"
