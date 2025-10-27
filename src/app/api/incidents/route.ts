@@ -1,6 +1,7 @@
 // app/api/incidents/route.ts
+// Combined API for incidents, notes, and attachments - ALL IN ONE FILE
 import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server'
 
 function getSupabaseClient() {
   return createClient(
@@ -15,24 +16,75 @@ function getSupabaseClient() {
   )
 }
 
-// GET - Fetch all incidents with filters
+// GET - Fetch incidents, notes, or attachments based on query params
 export async function GET(request: NextRequest) {
-  const supabase = getSupabaseClient();
-  const { searchParams } = new URL(request.url);
+  const supabase = getSupabaseClient()
+  const { searchParams } = new URL(request.url)
   
-  const status = searchParams.get('status');
-  const search = searchParams.get('search');
-  const incident_id = searchParams.get('incident_id');
+  const type = searchParams.get('type') // 'notes' or 'attachments'
+  const status = searchParams.get('status')
+  const search = searchParams.get('search')
+  const incident_id = searchParams.get('incident_id')
 
   try {
-    console.log('🔥 Fetching incidents with filters:', { 
-      status, 
-      search,
-      incident_id 
-    });
+    // ============ FETCH NOTES ============
+    if (type === 'notes' && incident_id) {
+      console.log('🔥 Fetching notes for incident:', incident_id)
 
-    // If incident_id is provided, fetch single incident
-    if (incident_id) {
+      const { data: notes, error } = await supabase
+        .from('incident_note')
+        .select('*')
+        .eq('incident_id', incident_id)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('❌ Error fetching notes:', error)
+        return NextResponse.json({ 
+          error: 'Failed to fetch notes', 
+          details: error.message,
+          success: false 
+        }, { status: 500 })
+      }
+
+      console.log(`✅ Found ${notes?.length || 0} notes`)
+      return NextResponse.json({ 
+        success: true, 
+        notes: notes || [],
+        count: notes?.length || 0
+      })
+    }
+
+    // ============ FETCH ATTACHMENTS ============
+    if (type === 'attachments' && incident_id) {
+      console.log('🔥 Fetching attachments for incident:', incident_id)
+
+      const { data: attachments, error } = await supabase
+        .from('incident_attachment')
+        .select('*')
+        .eq('incident_id', incident_id)
+        .order('uploaded_at', { ascending: false })
+
+      if (error) {
+        console.error('❌ Error fetching attachments:', error)
+        return NextResponse.json({ 
+          error: 'Failed to fetch attachments', 
+          details: error.message,
+          success: false 
+        }, { status: 500 })
+      }
+
+      console.log(`✅ Found ${attachments?.length || 0} attachments`)
+      return NextResponse.json({ 
+        success: true, 
+        attachments: attachments || [],
+        count: attachments?.length || 0
+      })
+    }
+
+    // ============ FETCH SINGLE INCIDENT ============
+    if (incident_id && !type) {
+      console.log('🔥 Fetching single incident:', incident_id)
+      
       const { data: incident, error } = await supabase
         .from('incident')
         .select(`
@@ -42,24 +94,26 @@ export async function GET(request: NextRequest) {
           severity_level!fk_incident_severity(severity_name, sfia_level, response_time_hours)
         `)
         .eq('incident_id', incident_id)
-        .single();
+        .single()
 
       if (error) {
-        console.error('❌ Error fetching incident:', error);
+        console.error('❌ Error fetching incident:', error)
         return NextResponse.json({ 
           error: 'Incident not found', 
           success: false 
-        }, { status: 404 });
+        }, { status: 404 })
       }
 
-      console.log('✅ Incident found:', incident.ticket_num);
+      console.log('✅ Incident found:', incident.ticket_num)
       return NextResponse.json({ 
         success: true, 
         incident 
-      });
+      })
     }
 
-    // Build query for all incidents with proper joins
+    // ============ FETCH ALL INCIDENTS ============
+    console.log('🔥 Fetching incidents with filters:', { status, search })
+
     let query = supabase
       .from('incident')
       .select(`
@@ -68,40 +122,33 @@ export async function GET(request: NextRequest) {
         issue_type!fk_incident_issue_type(issue_type_name),
         severity_level!fk_incident_severity(severity_name, sfia_level, response_time_hours)
       `)
-      .order('submitted_at', { ascending: false });
+      .order('submitted_at', { ascending: false })
 
-    // Apply filters
     if (status && status !== 'all') {
-      query = query.eq('status', status);
+      query = query.eq('status', status)
     }
 
     if (search) {
-      query = query.or(`ticket_num.ilike.%${search}%,title.ilike.%${search}%,reporter_email.ilike.%${search}%,description.ilike.%${search}%`);
+      query = query.or(`ticket_num.ilike.%${search}%,title.ilike.%${search}%,reporter_email.ilike.%${search}%,description.ilike.%${search}%`)
     }
 
-    const { data: incidents, error } = await query;
+    const { data: incidents, error } = await query
 
     if (error) {
-      console.error('❌ Error fetching incidents:', error);
+      console.error('❌ Error fetching incidents:', error)
       return NextResponse.json({ 
         error: 'Failed to fetch incidents', 
         details: error.message,
         success: false 
-      }, { status: 500 });
+      }, { status: 500 })
     }
 
-    console.log(`✅ Found ${incidents?.length || 0} incidents`);
+    console.log(`✅ Found ${incidents?.length || 0} incidents`)
 
-    // Transform data for easier frontend consumption
     const transformedIncidents = (incidents || []).map((incident: any) => {
-      // Get severity name from the correct field
-      const severityName = incident.severity_level?.severity_name || 'N/A';
-      
-      // Get module name
-      const moduleName = incident.affected_module?.module_name || 'N/A';
-      
-      // Get issue type name
-      const issueTypeName = incident.issue_type?.issue_type_name || 'N/A';
+      const severityName = incident.severity_level?.severity_name || 'N/A'
+      const moduleName = incident.affected_module?.module_name || 'N/A'
+      const issueTypeName = incident.issue_type?.issue_type_name || 'N/A'
       
       return {
         incident_id: incident.incident_id,
@@ -125,107 +172,107 @@ export async function GET(request: NextRequest) {
         submitted_at: incident.submitted_at,
         updated_at: incident.updated_at,
         resolved_at: incident.resolved_at || undefined
-      };
-    });
+      }
+    })
 
     return NextResponse.json({ 
       success: true, 
       incidents: transformedIncidents,
       count: transformedIncidents.length
-    });
+    })
 
   } catch (error) {
-    console.error('💥 Error in incidents GET:', error);
+    console.error('💥 Error in incidents GET:', error)
     return NextResponse.json({ 
       error: 'Internal server error', 
       details: error instanceof Error ? error.message : 'Unknown error',
       success: false 
-    }, { status: 500 });
+    }, { status: 500 })
   }
 }
 
 // PUT - Update incident
 export async function PUT(request: NextRequest) {
-  const supabase = getSupabaseClient();
+  const supabase = getSupabaseClient()
 
   try {
-    const body = await request.json();
+    const body = await request.json()
     const { 
       incident_id, 
       status,
       note_body,
       note_type,
       author_user_id
-    } = body;
+    } = body
 
-    console.log('🔥 Updating incident:', incident_id, 'to status:', status);
+    console.log('🔥 Updating incident:', incident_id, 'to status:', status)
 
     if (!incident_id) {
       return NextResponse.json({ 
         error: 'Incident ID is required', 
         success: false 
-      }, { status: 400 });
+      }, { status: 400 })
     }
 
-    // Fetch current incident data
     const { data: currentIncident, error: fetchError } = await supabase
       .from('incident')
       .select('*')
       .eq('incident_id', incident_id)
-      .single();
+      .single()
 
     if (fetchError || !currentIncident) {
-      console.error('❌ Incident not found:', fetchError);
+      console.error('❌ Incident not found:', fetchError)
       return NextResponse.json({ 
         error: 'Incident not found', 
         success: false 
-      }, { status: 404 });
+      }, { status: 404 })
     }
 
-    // Build update object
     const updateData: any = {
       updated_at: new Date().toISOString()
-    };
+    }
 
-    // Only update status if provided
     if (status !== undefined && status !== currentIncident.status) {
-      updateData.status = status;
+      updateData.status = status
       
-      // Set resolved_at if status changed to Resolved
       if (status === 'Resolved' && currentIncident.status !== 'Resolved') {
-        updateData.resolved_at = new Date().toISOString();
+        updateData.resolved_at = new Date().toISOString()
       }
       
-      // Clear resolved_at if status changed from Resolved to something else
       if (status !== 'Resolved' && currentIncident.status === 'Resolved') {
-        updateData.resolved_at = null;
+        updateData.resolved_at = null
       }
     }
 
-    // Update incident
     const { data: updatedIncident, error: updateError } = await supabase
       .from('incident')
       .update(updateData)
       .eq('incident_id', incident_id)
       .select()
-      .single();
+      .single()
 
     if (updateError) {
-      console.error('❌ Error updating incident:', updateError);
+      console.error('❌ Error updating incident:', updateError)
       return NextResponse.json({ 
         error: 'Failed to update incident', 
         details: updateError.message,
         success: false 
-      }, { status: 500 });
+      }, { status: 500 })
     }
 
-    console.log('✅ Incident updated successfully');
+    console.log('✅ Incident updated successfully')
 
-    // Create note if provided
     if (note_body && note_body.trim()) {
-      const noteAuthorId = author_user_id || currentIncident.reporter_user_id;
+      const noteAuthorId = author_user_id || currentIncident.reporter_user_id
       
-      const { error: noteError } = await supabase
+      console.log('🔥 Creating note with data:', {
+        incident_id,
+        author_user_id: noteAuthorId,
+        body: note_body,
+        note_type: note_type || 'comment'
+      })
+      
+      const { data: noteData, error: noteError } = await supabase
         .from('incident_note')
         .insert({
           incident_id,
@@ -233,12 +280,13 @@ export async function PUT(request: NextRequest) {
           body: note_body,
           note_type: note_type || 'comment',
           created_at: new Date().toISOString()
-        });
+        })
+        .select()
       
       if (noteError) {
-        console.error('⚠️ Error adding note:', noteError);
+        console.error('⚠️ Error adding note:', noteError)
       } else {
-        console.log('✅ Note added successfully');
+        console.log('✅ Note added successfully:', noteData)
       }
     }
 
@@ -246,24 +294,24 @@ export async function PUT(request: NextRequest) {
       success: true,
       incident: updatedIncident,
       message: 'Incident updated successfully'
-    });
+    })
 
   } catch (error) {
-    console.error('💥 Error in incidents PUT:', error);
+    console.error('💥 Error in incidents PUT:', error)
     return NextResponse.json({ 
       error: 'Internal server error', 
       details: error instanceof Error ? error.message : 'Unknown error',
       success: false 
-    }, { status: 500 });
+    }, { status: 500 })
   }
 }
 
 // POST - Create new incident
 export async function POST(request: NextRequest) {
-  const supabase = getSupabaseClient();
+  const supabase = getSupabaseClient()
 
   try {
-    const body = await request.json();
+    const body = await request.json()
     const {
       title,
       description,
@@ -273,31 +321,27 @@ export async function POST(request: NextRequest) {
       issue_type_id,
       severity_id,
       priority
-    } = body;
+    } = body
 
-    console.log('🔥 Creating new incident');
+    console.log('🔥 Creating new incident')
 
-    // Validation
     if (!title || !reporter_user_id || !reporter_email) {
       return NextResponse.json({ 
         error: 'Title, reporter user ID, and reporter email are required', 
         success: false 
-      }, { status: 400 });
+      }, { status: 400 })
     }
 
-    // Generate ticket number (format: TS-YYYY-NNNNN)
-    const year = new Date().getFullYear();
+    const year = new Date().getFullYear()
     
-    // Get the count of tickets for this year
     const { count } = await supabase
       .from('incident')
       .select('*', { count: 'exact', head: true })
-      .like('ticket_num', `TS-${year}-%`);
+      .like('ticket_num', `TS-${year}-%`)
 
-    const ticketNumber = (count || 0) + 1;
-    const ticket_num = `TS-${year}-${String(ticketNumber).padStart(5, '0')}`;
+    const ticketNumber = (count || 0) + 1
+    const ticket_num = `TS-${year}-${String(ticketNumber).padStart(5, '0')}`
 
-    // Insert incident
     const { data: newIncident, error: insertError } = await supabase
       .from('incident')
       .insert({
@@ -315,31 +359,78 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString()
       })
       .select()
-      .single();
+      .single()
 
     if (insertError) {
-      console.error('❌ Error creating incident:', insertError);
+      console.error('❌ Error creating incident:', insertError)
       return NextResponse.json({ 
         error: 'Failed to create incident', 
         details: insertError.message,
         success: false 
-      }, { status: 500 });
+      }, { status: 500 })
     }
 
-    console.log('✅ Incident created:', ticket_num);
+    console.log('✅ Incident created:', ticket_num)
 
     return NextResponse.json({ 
       success: true,
       incident: newIncident,
       message: 'Incident created successfully'
-    }, { status: 201 });
+    }, { status: 201 })
 
   } catch (error) {
-    console.error('💥 Error in incidents POST:', error);
+    console.error('💥 Error in incidents POST:', error)
     return NextResponse.json({ 
       error: 'Internal server error', 
       details: error instanceof Error ? error.message : 'Unknown error',
       success: false 
-    }, { status: 500 });
+    }, { status: 500 })
+  }
+}
+
+// DELETE - Delete incident
+export async function DELETE(request: NextRequest) {
+  const supabase = getSupabaseClient()
+  const { searchParams } = new URL(request.url)
+  const incident_id = searchParams.get('incident_id')
+
+  try {
+    console.log('🔥 Deleting incident:', incident_id)
+
+    if (!incident_id) {
+      return NextResponse.json({ 
+        error: 'Incident ID is required', 
+        success: false 
+      }, { status: 400 })
+    }
+
+    const { error: deleteError } = await supabase
+      .from('incident')
+      .delete()
+      .eq('incident_id', incident_id)
+
+    if (deleteError) {
+      console.error('❌ Error deleting incident:', deleteError)
+      return NextResponse.json({ 
+        error: 'Failed to delete incident', 
+        details: deleteError.message,
+        success: false 
+      }, { status: 500 })
+    }
+
+    console.log('✅ Incident deleted successfully')
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'Incident deleted successfully'
+    })
+
+  } catch (error) {
+    console.error('💥 Error in incidents DELETE:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error', 
+      details: error instanceof Error ? error.message : 'Unknown error',
+      success: false 
+    }, { status: 500 })
   }
 }
