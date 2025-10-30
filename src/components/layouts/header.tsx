@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { SignOutModal } from "@/components/modals/sign-out-modal"
+import { signOut } from "@/app/actions/sign-out"
 
 export function Header() {
   const router = useRouter()
@@ -26,9 +27,8 @@ export function Header() {
         ?.split("=")[1]
 
       const localRole = localStorage.getItem("role")
-      const role = cookieRole || localRole
 
-      console.log("[v0] Role sync - Cookie:", cookieRole, "Local:", localRole, "Using:", role)
+      const role = cookieRole || localRole
 
       setCurrentRole(role)
 
@@ -38,7 +38,11 @@ export function Header() {
     }
 
     syncRole()
-    const handleStorageChange = () => syncRole()
+
+    const handleStorageChange = () => {
+      syncRole()
+    }
+
     window.addEventListener("storage", handleStorageChange)
     window.addEventListener("focus", syncRole)
 
@@ -49,7 +53,6 @@ export function Header() {
   }, [])
 
   const handleSignOut = async () => {
-    console.log("[v0] Signing out...")
     localStorage.removeItem("role")
     setCurrentRole(null)
     await signOut()
@@ -64,10 +67,7 @@ export function Header() {
   }
 
   const handleProfileClick = () => {
-    console.log("[v0] Profile click - Current role:", currentRole)
-
     if (!currentRole) {
-      console.warn("[v0] No role found, redirecting to landing")
       router.push("/")
       return
     }
@@ -80,7 +80,6 @@ export function Header() {
     }
 
     const profilePath = rolePathMap[currentRole] || currentRole
-    console.log("[v0] Navigating to profile:", `/profile/${profilePath}`)
     router.push(`/profile/${profilePath}`)
   }
 
@@ -101,15 +100,14 @@ export function Header() {
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
-
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem onClick={handleProfileClick}>
               <User className="mr-2 h-4 w-4" />
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleHelpClick}>
+            <DropdownMenuItem onClick={handleSupportClick}>
               <HelpCircle className="mr-2 h-4 w-4" />
-              Help
+              Support
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOutClick} className="text-red-600 focus:text-red-600">

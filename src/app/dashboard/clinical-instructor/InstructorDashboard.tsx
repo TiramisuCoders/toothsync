@@ -151,8 +151,6 @@ export default function InstructorDashboard() {
       setLoading(false)
     }
     }
-<<<<<<< Updated upstream
-=======
       
     // Loading state
   if (loading) {
@@ -178,7 +176,6 @@ export default function InstructorDashboard() {
     )
   }
 
->>>>>>> Stashed changes
   // Error state
   if (!instructorInfo) {
     return (
@@ -521,13 +518,7 @@ export default function InstructorDashboard() {
     year: "numeric",
   })
 
-<<<<<<< Updated upstream
-  // const confirmationStyles = getVariantStyles(confirmationState.variant)
-=======
- 
-
   const confirmationStyles = getVariantStyles(confirmationState.variant)
->>>>>>> Stashed changes
 
   return (
     <div className="space-y-6">

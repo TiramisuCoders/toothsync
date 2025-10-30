@@ -18,5 +18,5 @@ export async function signOut() {
     }
   })
 
-  redirect("/landing")
+  redirect("/app/landing")
 }
