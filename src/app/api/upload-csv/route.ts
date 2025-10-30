@@ -1,9 +1,8 @@
+export const runtime = "nodejs";
+
 import { type NextRequest, NextResponse } from "next/server"
-import { spawn } from "child_process"
-import fs from "fs"
-import path from "path"
-import os from "os"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { processClinicianCSV } from "@/lib/etl/csvProcessor"
 
 async function logActivity(userId: string | null, role: string, action: string, details?: string) {
   try {
@@ -32,6 +31,51 @@ async function logActivity(userId: string | null, role: string, action: string, 
   }
 }
 
+function parseCSV(text: string): any[] {
+  const lines = text.split(/\r?\n/).filter(line => line.trim())
+  if (lines.length === 0) return []
+
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''))
+  const rows: any[] = []
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]
+    const values: string[] = []
+    let currentValue = ''
+    let insideQuotes = false
+
+    for (let j = 0; j < line.length; j++) {
+      const char = line[j]
+      const nextChar = line[j + 1]
+
+      if (char === '"' || char === "'") {
+        if (insideQuotes && nextChar === char) {
+          currentValue += char
+          j++ // Skip next quote
+        } else {
+          insideQuotes = !insideQuotes
+        }
+      } else if (char === ',' && !insideQuotes) {
+        values.push(currentValue.trim())
+        currentValue = ''
+      } else {
+        currentValue += char
+      }
+    }
+    values.push(currentValue.trim())
+
+    if (values.length === headers.length) {
+      const row: any = {}
+      headers.forEach((header, index) => {
+        row[header] = values[index]
+      })
+      rows.push(row)
+    }
+  }
+
+  return rows
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
@@ -54,114 +98,66 @@ export async function POST(req: NextRequest) {
     }
 
     if (!supabaseAdmin) {
-      console.warn("Warning: Supabase admin client not available. Check environment variables.")
-    }
-
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const tempFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`
-    const tempPath = path.join(os.tmpdir(), tempFileName)
-    fs.writeFileSync(tempPath, buffer)
-
-    const pythonScriptPath = path.join(process.cwd(), "etl", "main.py")
-    if (!fs.existsSync(pythonScriptPath)) {
-      fs.unlinkSync(tempPath)
       return NextResponse.json(
-        { status: "error", message: "Python ETL script not found. Please ensure etl/main.py exists." },
-        { status: 500 },
+        { status: "error", message: "Supabase admin client not available. Check environment variables." },
+        { status: 500 }
       )
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-    if (!supabaseUrl || !supabaseKey) {
-      fs.unlinkSync(tempPath)
+    // Read file content
+    const fileContent = await file.text()
+    
+    // Parse CSV
+    const rows = parseCSV(fileContent)
+    
+    if (rows.length === 0) {
       return NextResponse.json(
-        { status: "error", message: "Supabase configuration missing. Check environment variables." },
-        { status: 500 },
+        { status: "error", message: "CSV file is empty or improperly formatted." },
+        { status: 400 }
       )
     }
 
-    const pythonExecutable = process.env.PYTHON_EXECUTABLE || "python3"
-    console.log("[v0] Using Python executable:", pythonExecutable)
+    console.log(`[v0] Parsed ${rows.length} rows from CSV`)
 
-    const result = await new Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>((resolve) => {
-      const args = [pythonScriptPath, tempPath, supabaseUrl, supabaseKey, academicYearId]
-      console.log("[v0] Spawning Python process with:", pythonExecutable, args)
+    // Process CSV rows
+    const result = await processClinicianCSV(rows, academicYearId)
 
-      const python = spawn(pythonExecutable, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-      })
-
-      let stdout = ""
-      let stderr = ""
-
-      python.stdout.on("data", (data) => {
-        const output = data.toString()
-        stdout += output
-        console.log("[v0] Python stdout:", output.trim())
-      })
-
-      python.stderr.on("data", (data) => {
-        const output = data.toString()
-        stderr += output
-        console.log("[v0] Python stderr:", output.trim())
-      })
-
-      python.on("close", (code) => {
-        console.log("[v0] Python process exited with code:", code)
-        console.log("[v0] Final stdout:", stdout.trim())
-        console.log("[v0] Final stderr:", stderr.trim())
-        resolve({ ok: code === 0, stdout, stderr, exitCode: code ?? -1 })
-      })
-
-      python.on("error", (err) => {
-        console.log("[v0] Python spawn error:", err.message)
-        resolve({ ok: false, stdout, stderr: `Failed to spawn Python: ${err.message}`, exitCode: -1 })
-      })
-    })
-
-    fs.unlink(tempPath, () => {})
-
-    const extractSummary = (log: string) => {
-      const lines = log
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean)
-      const finished = [...lines].reverse().find((l) => /^Finished processing CSV\./.test(l))
-      if (finished) return finished
-      const total = lines.find((l) => /Total .* processed/i.test(l))
-      if (total) return total
-      return "Import has been successful."
-    }
-
-    if (result.ok) {
-      const message = extractSummary(result.stdout)
-
+    if (result.success) {
       console.log("[v0] CSV upload successful, logging activity...")
       await logActivity(
         safeUserId,
         safeRole,
         "UPLOAD_CSV",
-        `File ${file.name} uploaded successfully with academic year ${academicYearId}.`,
-      )
-
-      return NextResponse.json({ status: "success", message, logs: result.stdout }, { status: 200 })
-    } else {
-      const firstErrLine =
-        (result.stderr || result.stdout).split(/\r?\n/).find((l) => l.trim().length > 0) || "ETL script failed."
-
-      console.log("[v0] CSV upload failed, logging activity...")
-      await logActivity(
-        safeUserId,
-        safeRole,
-        "UPLOAD_CSV_FAILED",
-        `File ${file?.name} failed with academic year ${academicYearId}. Error: ${firstErrLine}`,
+        `File ${file.name} uploaded successfully with academic year ${academicYearId}. Processed: ${result.processedCount}, Skipped: ${result.skippedCount}`
       )
 
       return NextResponse.json(
-        { status: "error", message: firstErrLine, logs: result.stderr || result.stdout, exitCode: result.exitCode },
-        { status: 500 },
+        {
+          status: "success",
+          message: result.message,
+          processedCount: result.processedCount,
+          skippedCount: result.skippedCount,
+        },
+        { status: 200 }
+      )
+    } else {
+      console.log("[v0] CSV upload completed with errors, logging activity...")
+      await logActivity(
+        safeUserId,
+        safeRole,
+        "UPLOAD_CSV_PARTIAL",
+        `File ${file.name} processed with errors. Processed: ${result.processedCount}, Skipped: ${result.skippedCount}`
+      )
+
+      return NextResponse.json(
+        {
+          status: "partial_success",
+          message: result.message,
+          processedCount: result.processedCount,
+          skippedCount: result.skippedCount,
+          errors: result.errors,
+        },
+        { status: 200 }
       )
     }
   } catch (error) {
