@@ -139,7 +139,8 @@ export async function POST(request: Request) {
       .eq('date', date)
       .eq('shift', shift) 
 
-    if (existing) {
+    if (existing && existing.length > 0) {
+      console.log(existing)
       return Response.json({ error: 'Schedule already exists for this date and shift' }, { status: 409 })
     }
 
