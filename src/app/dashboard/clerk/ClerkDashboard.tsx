@@ -172,13 +172,8 @@ export default function ClerkDashboard() {
   //       description: "The clinician has been marked as present.",
   //     })
 
-<<<<<<< Updated upstream
   //   } catch (error) {
   //     console.error("Failed to confirm attendance:", error)
-=======
-    } catch (error) {
-      // console.error("Failed to confirm attendance:", error)
->>>>>>> Stashed changes
 
   //     setAttendanceRecords(prev =>
   //       prev.map(record =>
