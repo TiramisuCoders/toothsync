@@ -1,171 +1,291 @@
-export const runtime = "nodejs";
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
-import { type NextRequest, NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase/admin"
-import { processClinicianCSV } from "@/lib/etl/csvProcessor"
+interface CSVRow {
+  'Student ID': string
+  'First Name': string
+  'Last Name': string
+  'Email': string
+  'Gender': string
+  'Status': string
+  'Year Level': string
+  'Contact Number': string
+  'Section': string
+}
 
-async function logActivity(userId: string | null, role: string, action: string, details?: string) {
+interface ProcessResult {
+  success: boolean
+  message: string
+  processedCount: number
+  skippedCount: number
+  errors: string[]
+}
+
+function generatePassword(firstName: string, lastName: string, contactNumber: string): string {
+  const firstInitial = firstName?.[0]?.toUpperCase() || 'X'
+  const lastInitial = lastName?.[0]?.toUpperCase() || 'X'
+  const digitsOnly = contactNumber.replace(/\D/g, '')
+  const lastFour = digitsOnly.slice(-4).padStart(4, '0')
+  return `${firstInitial}${lastInitial}${lastFour}`
+}
+
+function parseSex(gender: string): 'Male' | 'Female' | 'Other' {
+  const normalized = gender.toLowerCase().trim()
+  if (normalized === 'male') return 'Male'
+  if (normalized === 'female') return 'Female'
+  return 'Other'
+}
+
+function parseEnrollmentStatus(status: string): 'Enrolled' | 'Not Enrolled' {
+  const normalized = status.toLowerCase().trim()
+  if (['enrolled', 'active', 'current'].includes(normalized)) {
+    return 'Enrolled'
+  }
+  return 'Not Enrolled'
+}
+
+function parseYearLevel(yearLevel: string): string {
+  const normalized = yearLevel.toLowerCase().trim()
+  if (normalized.includes('1')) return '1st Year'
+  if (normalized.includes('2')) return '2nd Year'
+  if (normalized.includes('3')) return '3rd Year'
+  if (normalized.includes('4')) return '4th Year'
+  if (normalized.includes('5')) return '5th Year'
+  return '5th Year'
+}
+
+async function getOrCreateAuthUser(email: string, password: string): Promise<{ authUserId: string | null; createdNew: boolean }> {
   try {
-    if (!supabaseAdmin) {
-      console.error("[v0] Cannot log activity: Supabase admin client not available")
-      return
+    // Try to list users and find existing one
+    const { data: users } = await supabaseAdmin.auth.admin.listUsers()
+    
+    const existingUser = users?.users?.find(u => u.email === email)
+    
+    if (existingUser) {
+      console.log(`Found existing auth user: ${email} with ID: ${existingUser.id}`)
+      return { authUserId: existingUser.id, createdNew: false }
     }
 
-    console.log("[v0] Logging activity:", { userId, role, action, details })
-    const { data, error } = await supabaseAdmin.from("activity_logs").insert([
-      {
-        user_id: userId ?? null,
-        role,
-        action,
-        details,
-      },
-    ])
+    // Create new user
+    const { data: newUser, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    })
 
     if (error) {
-      console.error("[v0] Failed to log activity - Supabase error:", error)
-    } else {
-      console.log("[v0] Activity logged successfully:", data)
+      console.error(`Failed to create auth user for ${email}:`, error.message)
+      return { authUserId: null, createdNew: false }
     }
+
+    if (newUser.user) {
+      console.log(`Successfully created new auth user: ${email} with ID: ${newUser.user.id}`)
+      return { authUserId: newUser.user.id, createdNew: true }
+    }
+
+    return { authUserId: null, createdNew: false }
   } catch (error) {
-    console.error("[v0] Failed to log activity - Exception:", error)
+    console.error(`Error in getOrCreateAuthUser for ${email}:`, error)
+    return { authUserId: null, createdNew: false }
   }
 }
 
-function parseCSV(text: string): any[] {
-  const lines = text.split(/\r?\n/).filter(line => line.trim())
-  if (lines.length === 0) return []
+export async function processClinicianCSV(
+  rows: CSVRow[],
+  academicYearId: string
+): Promise<ProcessResult> {
+  let processedCount = 0
+  let skippedCount = 0
+  const errors: string[] = []
 
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''))
-  const rows: any[] = []
+  console.log(`Processing ${rows.length} rows for academic year: ${academicYearId}`)
 
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i]
-    const values: string[] = []
-    let currentValue = ''
-    let insideQuotes = false
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    const rowNum = i + 2 // Account for header row
 
-    for (let j = 0; j < line.length; j++) {
-      const char = line[j]
-      const nextChar = line[j + 1]
+    try {
+      // Extract and clean data
+      const studentId = row['Student ID']?.trim()
+      const firstName = row['First Name']?.trim()
+      const lastName = row['Last Name']?.trim()
+      const email = row['Email']?.trim()
+      const gender = row['Gender']?.trim()
+      const enrollmentStatus = row['Status']?.trim()
+      const yearLevelRaw = row['Year Level']?.trim()
+      const contactNumber = row['Contact Number']?.trim()
+      const section = row['Section']?.trim()
 
-      if (char === '"' || char === "'") {
-        if (insideQuotes && nextChar === char) {
-          currentValue += char
-          j++ // Skip next quote
-        } else {
-          insideQuotes = !insideQuotes
-        }
-      } else if (char === ',' && !insideQuotes) {
-        values.push(currentValue.trim())
-        currentValue = ''
-      } else {
-        currentValue += char
+      // Validate required fields
+      if (!studentId || !firstName || !lastName || !email || !gender || !enrollmentStatus || !contactNumber) {
+        const error = `Row ${rowNum}: Missing required data`
+        console.error(error)
+        errors.push(error)
+        skippedCount++
+        continue
       }
-    }
-    values.push(currentValue.trim())
 
-    if (values.length === headers.length) {
-      const row: any = {}
-      headers.forEach((header, index) => {
-        row[header] = values[index]
-      })
-      rows.push(row)
+      // Parse and format data
+      const parsedGender = parseSex(gender)
+      const parsedYearLevel = parseYearLevel(yearLevelRaw)
+      const parsedEnrollmentStatus = parseEnrollmentStatus(enrollmentStatus)
+      const generatedPassword = generatePassword(firstName, lastName, contactNumber)
+
+      console.log(`Row ${rowNum}: Processing ${firstName} ${lastName} (${email})`)
+      console.log(`Generated password: ${generatedPassword}`)
+
+      // Get or create auth user
+      const { authUserId, createdNew } = await getOrCreateAuthUser(email, generatedPassword)
+
+      if (!authUserId) {
+        const error = `Row ${rowNum}: Could not obtain auth user ID for ${email}`
+        console.error(error)
+        errors.push(error)
+        skippedCount++
+        continue
+      }
+
+      // 1. Handle public.users table (Insert or Update)
+      const userPayload = {
+        auth_user_id: authUserId,
+        first_name: firstName,
+        last_name: lastName,
+        email: email,
+        sex: parsedGender,
+        role: 'R01',
+        contact_number: contactNumber || null,
+      }
+
+      try {
+        const { data: existingUser } = await supabaseAdmin
+          .from('users')
+          .select('auth_user_id')
+          .eq('auth_user_id', authUserId)
+          .limit(1)
+          .single()
+
+        if (existingUser) {
+          console.log(`Updating existing user: ${email}`)
+          const { error: updateError } = await supabaseAdmin
+            .from('users')
+            .update(userPayload)
+            .eq('auth_user_id', authUserId)
+
+          if (updateError) throw updateError
+        } else {
+          console.log(`Inserting new user: ${email}`)
+          const { error: insertError } = await supabaseAdmin
+            .from('users')
+            .insert([userPayload])
+
+          if (insertError) throw insertError
+        }
+      } catch (dbError: any) {
+        const error = `Row ${rowNum}: Database error for users table: ${dbError.message}`
+        console.error(error)
+        errors.push(error)
+        skippedCount++
+        continue
+      }
+
+      // 2. Handle clinicians table
+      const clinicianPayload = {
+        user_id: authUserId,
+        student_id: studentId,
+        enrollment_status: parsedEnrollmentStatus,
+        year_level: parsedYearLevel,
+        section: section || null,
+        academic_year_id: academicYearId,
+        updated_at: new Date().toISOString(),
+      }
+
+      try {
+        const { data: existingClinician } = await supabaseAdmin
+          .from('clinicians')
+          .select('user_id')
+          .eq('user_id', authUserId)
+          .limit(1)
+          .single()
+
+        if (existingClinician) {
+          console.log(`Updating existing clinician: ${firstName} ${lastName}`)
+          const { error: updateError } = await supabaseAdmin
+            .from('clinicians')
+            .update(clinicianPayload)
+            .eq('user_id', authUserId)
+
+          if (updateError) throw updateError
+        } else {
+          console.log(`Inserting new clinician: ${firstName} ${lastName}`)
+          const { error: insertError } = await supabaseAdmin
+            .from('clinicians')
+            .insert([clinicianPayload])
+
+          if (insertError) throw insertError
+        }
+      } catch (dbError: any) {
+        const error = `Row ${rowNum}: Database error for clinicians table: ${dbError.message}`
+        console.error(error)
+        errors.push(error)
+        skippedCount++
+        continue
+      }
+
+      // 3. Handle clinician_records table
+      const clinicianRecordPayload = {
+        user_id: authUserId,
+        academic_year_id: academicYearId,
+        student_id: studentId,
+        year_level: parsedYearLevel,
+        section: section || null,
+        created_at: new Date().toISOString(),
+      }
+
+      try {
+        const { data: existingRecord } = await supabaseAdmin
+          .from('clinician_records')
+          .select('user_id')
+          .eq('user_id', authUserId)
+          .eq('academic_year_id', academicYearId)
+          .limit(1)
+          .single()
+
+        if (existingRecord) {
+          console.log(`Clinician record already exists for ${firstName} ${lastName} in academic year ${academicYearId}`)
+        } else {
+          console.log(`Inserting clinician record: ${firstName} ${lastName}`)
+          const { error: insertError } = await supabaseAdmin
+            .from('clinician_records')
+            .insert([clinicianRecordPayload])
+
+          if (insertError) throw insertError
+        }
+      } catch (dbError: any) {
+        const error = `Row ${rowNum}: Database error for clinician_records table: ${dbError.message}`
+        console.error(error)
+        errors.push(error)
+        skippedCount++
+        continue
+      }
+
+      processedCount++
+      console.log(`Row ${rowNum}: Successfully processed`)
+
+    } catch (error: any) {
+      const errorMsg = `Row ${rowNum}: Unexpected error: ${error.message}`
+      console.error(errorMsg)
+      errors.push(errorMsg)
+      skippedCount++
     }
   }
 
-  return rows
-}
+  const message = `Finished processing CSV. Total clinicians processed: ${processedCount}, Skipped: ${skippedCount}`
+  console.log(message)
 
-export async function POST(req: NextRequest) {
-  try {
-    const formData = await req.formData()
-    const file = formData.get("file") as File | null
-    const userId = formData.get("userId") as string | null
-    const role = formData.get("role") as string | null
-    const academicYearId = formData.get("academicYearId") as string | null
-
-    console.log("[v0] CSV upload parameters:", { fileName: file?.name, userId, role, academicYearId })
-
-    const safeUserId = userId && userId !== "Admin" ? userId : null
-    const safeRole = role || "Admin"
-
-    if (!file) {
-      return NextResponse.json({ status: "error", message: "No file uploaded." }, { status: 400 })
-    }
-
-    if (!academicYearId) {
-      return NextResponse.json({ status: "error", message: "Academic year ID is required." }, { status: 400 })
-    }
-
-    if (!supabaseAdmin) {
-      return NextResponse.json(
-        { status: "error", message: "Supabase admin client not available. Check environment variables." },
-        { status: 500 }
-      )
-    }
-
-    // Read file content
-    const fileContent = await file.text()
-    
-    // Parse CSV
-    const rows = parseCSV(fileContent)
-    
-    if (rows.length === 0) {
-      return NextResponse.json(
-        { status: "error", message: "CSV file is empty or improperly formatted." },
-        { status: 400 }
-      )
-    }
-
-    console.log(`[v0] Parsed ${rows.length} rows from CSV`)
-
-    // Process CSV rows
-    const result = await processClinicianCSV(rows, academicYearId)
-
-    if (result.success) {
-      console.log("[v0] CSV upload successful, logging activity...")
-      await logActivity(
-        safeUserId,
-        safeRole,
-        "UPLOAD_CSV",
-        `File ${file.name} uploaded successfully with academic year ${academicYearId}. Processed: ${result.processedCount}, Skipped: ${result.skippedCount}`
-      )
-
-      return NextResponse.json(
-        {
-          status: "success",
-          message: result.message,
-          processedCount: result.processedCount,
-          skippedCount: result.skippedCount,
-        },
-        { status: 200 }
-      )
-    } else {
-      console.log("[v0] CSV upload completed with errors, logging activity...")
-      await logActivity(
-        safeUserId,
-        safeRole,
-        "UPLOAD_CSV_PARTIAL",
-        `File ${file.name} processed with errors. Processed: ${result.processedCount}, Skipped: ${result.skippedCount}`
-      )
-
-      return NextResponse.json(
-        {
-          status: "partial_success",
-          message: result.message,
-          processedCount: result.processedCount,
-          skippedCount: result.skippedCount,
-          errors: result.errors,
-        },
-        { status: 200 }
-      )
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown server error"
-
-    console.log("[v0] CSV upload exception, logging activity...")
-    await logActivity(null, "Admin", "UPLOAD_CSV_EXCEPTION", message)
-
-    return NextResponse.json({ status: "error", message }, { status: 500 })
+  return {
+    success: skippedCount === 0,
+    message,
+    processedCount,
+    skippedCount,
+    errors,
   }
 }
