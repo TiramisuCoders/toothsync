@@ -44,6 +44,7 @@ type DashboardSummary = {
 
 export default function ClerkDashboard() {
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [attendanceData, setAttendanceRecords] = useState<Record[]>([])
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false)
@@ -79,6 +80,8 @@ export default function ClerkDashboard() {
 
   useEffect(() => {
     async function fetchSummary() {
+      setLoading(true)
+      setError(null)
       const res = await fetch("/api/dashboard")
       const data = await res.json()
       setSummary(data)
@@ -91,7 +94,6 @@ export default function ClerkDashboard() {
   const fetchAttendanceRecords = async () => {
     try {
       setLoading(true)
-      console.log('🔍 Fetching from client...')
 
       const response = await fetch('/api/dashboard', {
         method: 'GET',
@@ -101,19 +103,12 @@ export default function ClerkDashboard() {
         }
       })
 
-      console.log('- Response status:', response.status)
-      console.log('- Response ok:', response.ok)
-
       const result = await response.json()
-      console.log('- Response body:', result)
 
       if (!response.ok) {
-        console.error('Response status:', response.status)
-        console.error('Response headers:', [...response.headers.entries()])
-        console.error('Error result:', result)
-
         throw new Error(result.error || `Server error (${response.status}): Failed to update sanitization`)
       }
+
       setAttendanceRecords(result.data || [])
 
       // Fetch user info
@@ -138,7 +133,7 @@ export default function ClerkDashboard() {
       }
 
     } catch (error) {
-      console.error('❌ Client error:', error)
+      // console.error('❌ Client error:', error)
       toast({
         title: "Fetch Failed",
         description: error.message,
@@ -177,8 +172,13 @@ export default function ClerkDashboard() {
   //       description: "The clinician has been marked as present.",
   //     })
 
+<<<<<<< Updated upstream
   //   } catch (error) {
   //     console.error("Failed to confirm attendance:", error)
+=======
+    } catch (error) {
+      // console.error("Failed to confirm attendance:", error)
+>>>>>>> Stashed changes
 
   //     setAttendanceRecords(prev =>
   //       prev.map(record =>
@@ -253,7 +253,7 @@ export default function ClerkDashboard() {
       })
 
     } catch (error) {
-      console.error("Failed to record timeout:", error)
+      // console.error("Failed to record timeout:", error)
 
       // Rollback optimistic update
       setAttendanceRecords(prev =>
@@ -334,13 +334,37 @@ export default function ClerkDashboard() {
       })
 
     } catch (error) {
-      console.error("Failed to delete attendance:", error)
+      // console.error("Failed to delete attendance:", error)
       toast({
         title: "Delete Failed",
         description: "Could not delete the attendance record.",
         variant: "destructive",
       })
     }
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6 p-6 bg-[#f9f9f9] min-h-screen">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="shadow-sm border rounded-lg">
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   // Error state

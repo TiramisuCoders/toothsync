@@ -1,7 +1,7 @@
 "use client"
 
-import ClinicianChairs from "./ClinicianChairs"
+import ChairsPage from "../ChairsPage"
 
 export default function ClinicianChairsPage() {
-  return <ClinicianChairs />
+  return <ChairsPage />
 }
