@@ -1,11 +1,11 @@
-// app/api/support/NewTickets/route.ts
-
+// app/api/support/SubmitTicketForm/route.ts
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from '@supabase/supabase-js'; 
+// Import the standard Supabase client for creating the privileged client
+import { createClient } from '@supabase/supabase-js';
 
 // ===============================================
-// HELPER FUNCTIONS (unchanged, but rely on privileged client)
+// HELPER FUNCTIONS
 // ===============================================
 
 // Get an available user with role 'R04' to be the assignee
@@ -19,7 +19,12 @@ async function findAssignee(supabase: any): Promise<{ id: string, email: string 
             console.error('Error finding assignee (RPC failed):', error);
             return null;
         }
-        // ... (rest of logic)
+
+        if (!data || data.length === 0) {
+            console.warn('⚠️ No active users found with role R04 for assignment.');
+            return null;
+        }
+
         const assignee = data[0]; 
         return {
             id: assignee.auth_user_id,
@@ -67,11 +72,10 @@ async function getIssueTypeId(supabase: any, issueTypeName: string, moduleId: st
     return data?.issue_type_id || null;
 }
 
-// Get or create user (unchanged)
+// Get or create user
 async function getOrCreateUser(supabase: any, email: string): Promise<string | null> {
     const lowerCaseEmail = email.toLowerCase();
     
-    // First, try to find existing user by email
     const { data: existingUser, error: userError } = await supabase
         .from('users')
         .select('auth_user_id')
@@ -85,7 +89,6 @@ async function getOrCreateUser(supabase: any, email: string): Promise<string | n
         return existingUser.auth_user_id;
     }
 
-    // Try to get current authenticated user
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
@@ -97,35 +100,91 @@ async function getOrCreateUser(supabase: any, email: string): Promise<string | n
     return null;
 }
 
-// Handle file uploads (unchanged)
+// Handle file uploads
 async function handleFileUploads(
     supabase: any,
     incidentId: string,
     files: File[],
     userId: string
 ): Promise<{ uploadedAttachments: any[]; errors: any[] }> {
-    // ... (logic remains the same)
     const uploadedAttachments: any[] = [];
     const errors: any[] = [];
-    // ... (rest of logic)
+
+    for (const file of files) {
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${incidentId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+            const filePath = `incident-attachments/${fileName}`;
+
+            const arrayBuffer = await file.arrayBuffer();
+            const fileData = new Uint8Array(arrayBuffer);
+
+            const { error: uploadError } = await supabase.storage
+                .from('attachments')
+                .upload(filePath, fileData, {
+                    contentType: file.type,
+                    upsert: false
+                });
+
+            if (uploadError) {
+                console.error('Upload error for file:', file.name, uploadError);
+                errors.push({ file: file.name, error: uploadError.message });
+                continue;
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('attachments')
+                .getPublicUrl(filePath);
+
+            const { data: attachment, error: dbError } = await supabase
+                .from('incident_attachment')
+                .insert({
+                    incident_id: incidentId,
+                    file_name: file.name,
+                    file_size: file.size,
+                    file_type: file.type,
+                    storage_url: publicUrl,
+                    uploaded_by_user_id: userId,
+                    uploaded_at: new Date().toISOString()
+                })
+                .select()
+                .single();
+
+            if (dbError) {
+                console.error('Database error for file:', file.name, dbError);
+                errors.push({ file: file.name, error: dbError.message });
+                await supabase.storage.from('attachments').remove([filePath]);
+                continue;
+            }
+
+            uploadedAttachments.push(attachment);
+
+        } catch (error) {
+            console.error('Error processing file:', file.name, error);
+            errors.push({
+                file: file.name,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
     return { uploadedAttachments, errors };
 }
 
-
 // ===============================================
-// POST - Create ticket (Uses Privileged Client)
+// POST - Create ticket
 // ===============================================
 
 export async function POST(request: NextRequest) {
-    // 🟢 POST uses the Privileged Client for RLS bypass (This is already correct)
+    const supabaseGeneral = await createSupabaseServerClient(); 
+    
     const supabasePrivileged = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-        process.env.SUPABASE_SECRET_KEY!      
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
-    // ... (rest of POST logic remains the same, relying on supabasePrivileged)
-    
+
     try {
-        console.log('📝 Processing ticket submission...');
+        console.log('📥 Processing ticket submission...');
 
         const formData = await request.formData();
         const title = formData.get('title') as string;
@@ -144,8 +203,6 @@ export async function POST(request: NextRequest) {
 
         console.log('Ticket data:', { title, affectedModule, category, reportedBy });
 
-        // Use the general client (which may be unprivileged) for reporter lookup 
-        const supabaseGeneral = await createSupabaseServerClient(); 
         const reporterUserId = await getOrCreateUser(supabaseGeneral, reportedBy);
 
         if (!reporterUserId) {
@@ -177,8 +234,7 @@ export async function POST(request: NextRequest) {
             );
         }
         
-        // ... (rest of POST logic: ticket number generation, assignee lookup, incident insert, file upload) ...
-
+        // Generate ticket number
         const { data: ticketNumResult, error: rpcError } = await supabasePrivileged.rpc('generate_ticket_number');
 
         if (rpcError) {
@@ -192,6 +248,7 @@ export async function POST(request: NextRequest) {
         const ticketNumber = ticketNumResult as string;
         console.log('Generated ticket number:', ticketNumber);
         
+        // Find assignee
         const assignee = await findAssignee(supabasePrivileged);
 
         let assigneeUserId = assignee ? assignee.id : null;
@@ -203,6 +260,7 @@ export async function POST(request: NextRequest) {
             console.log('⚠️ Could not find a default assignee. Ticket will be unassigned (Pending).');
         }
 
+        // Insert incident
         const { data: newIncident, error: incidentInsertError } = await supabasePrivileged
             .from('incident')
             .insert({
@@ -213,12 +271,10 @@ export async function POST(request: NextRequest) {
                 module_id: moduleId,
                 issue_type_id: issueTypeId,
                 description: description,
-                
                 status: assigneeUserId ? 'In Progress' : 'Pending', 
                 priority: 'Medium Priority', 
                 requires_manual_severity_review: true,
                 submitted_at: new Date().toISOString(),
-                
                 assignee_user_id: assigneeUserId,
                 assignee_user_email: assigneeUserEmail, 
             })
@@ -240,11 +296,10 @@ export async function POST(request: NextRequest) {
         console.log('✅ Ticket created successfully:', newIncident.incident_id);
 
         let uploadResults: { uploadedAttachments: any[]; errors: any[] } = { uploadedAttachments: [], errors: [] };
-        const supabaseStorage = await createSupabaseServerClient(); 
         
         if (files && files.length > 0 && files[0].size > 0) {
             console.log('📎 Uploading attachments...');
-            uploadResults = await handleFileUploads(supabaseStorage, newIncident.incident_id, files, reporterUserId);
+            uploadResults = await handleFileUploads(supabaseGeneral, newIncident.incident_id, files, reporterUserId);
             if (uploadResults.uploadedAttachments.length > 0) {
                 console.log(`✅ Uploaded ${uploadResults.uploadedAttachments.length} attachment(s)`);
             }
@@ -285,27 +340,25 @@ export async function POST(request: NextRequest) {
 }
 
 // ===============================================
-// GET - Fetch data (FIXED: Uses Privileged Client for RLS Bypass)
+// GET - Fetch Modules and Issue Types
 // ===============================================
 
 export async function GET(request: NextRequest) {
-    // 🟢 CRITICAL FIX: Use the Privileged Client for RLS bypass to fetch config data.
+    // Create the privileged client using the Service Role Key
     const supabasePrivileged = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-        process.env.SUPABASE_SECRET_KEY!
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
-    const supabase = supabasePrivileged; 
-    
+
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
 
     try {
-        console.log('📥 GET request - action:', action);
-
         if (action === 'modules') {
-            console.log('🔍 Fetching modules from affected_module table...');
-
-            const { data: modules, error } = await supabase // Uses privileged client
+            console.log('📥 Fetching modules from affected_module table...');
+            
+            // Use privileged client to bypass RLS
+            const { data: modules, error } = await supabasePrivileged
                 .from('affected_module')
                 .select('module_id, module_name')
                 .eq('is_active', true)
@@ -315,15 +368,13 @@ export async function GET(request: NextRequest) {
 
             if (error) {
                 console.error('❌ Error fetching modules:', error);
-                // Return a specific error structure that the client can understand
-                return NextResponse.json({
-                    error: 'Failed to fetch modules',
+                return NextResponse.json({ 
+                    error: 'Failed to fetch modules', 
                     details: error.message,
-                    success: false
+                    success: false 
                 }, { status: 500 });
             }
 
-            // ... (rest of module logic remains the same)
             if (!modules || modules.length === 0) {
                 console.log('⚠️ No modules found in database');
                 return NextResponse.json({
@@ -341,64 +392,59 @@ export async function GET(request: NextRequest) {
             const moduleId = searchParams.get('module_id');
 
             if (!moduleId) {
-                return NextResponse.json({ error: 'module_id required', success: false }, { status: 400 });
+                return NextResponse.json({ 
+                    error: 'module_id required', 
+                    success: false 
+                }, { status: 400 });
             }
 
-            // Fetch issue types using the privileged client
-            const { data: issueTypes, error } = await supabase
+            console.log('📥 Fetching issue types for module:', moduleId);
+
+            // Use privileged client to bypass RLS
+            const { data: issueTypes, error } = await supabasePrivileged
                 .from('issue_type')
-                .select('issue_type_id, issue_type_name, description')
+                .select('issue_type_id, issue_type_name')
                 .eq('module_id', moduleId)
                 .eq('is_active', true)
                 .order('issue_type_name');
 
+            console.log('📊 Issue types result:', { issueTypes, error });
+
             if (error) {
-                console.error('Error fetching issue types:', error);
-                return NextResponse.json({ error: 'Failed to fetch issue types', success: false }, { status: 500 });
+                console.error('❌ Error fetching issue types:', error);
+                return NextResponse.json({ 
+                    error: 'Failed to fetch issue types', 
+                    details: error.message,
+                    success: false 
+                }, { status: 500 });
             }
 
+            if (!issueTypes || issueTypes.length === 0) {
+                console.log('⚠️ No issue types found for module:', moduleId);
+                return NextResponse.json({
+                    success: true,
+                    issueTypes: [],
+                    message: 'No active issue types found for this module'
+                });
+            }
+
+            console.log(`✅ Successfully fetched ${issueTypes.length} issue types`);
             return NextResponse.json({ success: true, issueTypes });
         }
 
-        // ... (other GET actions like 'ticket' remain the same)
-
-        if (action === 'ticket') {
-            const ticketNum = searchParams.get('ticket_num');
-
-            if (!ticketNum) {
-                return NextResponse.json({ error: 'Ticket number required', success: false }, { status: 400 });
-            }
-
-            // Note: RLS needs to allow the current user to read this incident, 
-            // so we use the standard client (createSupabaseServerClient) or rely on a privileged client 
-            // if the check is handled later. Sticking to standard client for general GET reads here.
-            
-            const supabaseGeneral = await createSupabaseServerClient(); 
-            const { data, error } = await supabaseGeneral
-                .from('incident')
-                .select(`
-                    *,
-                    affected_module:module_id(module_name),
-                    issue_type:issue_type_id(issue_type_name),
-                    severity_level:severity_id(name)
-                `)
-                .eq('ticket_num', ticketNum)
-                .single();
-
-            if (error) {
-                console.error('Error fetching ticket:', error);
-                return NextResponse.json({ error: 'Ticket not found', success: false }, { status: 404 });
-            }
-
-            return NextResponse.json({ success: true, ticket: data });
-        }
-
-        return NextResponse.json({ error: 'Invalid action parameter', success: false }, { status: 400 });
+        return NextResponse.json({ 
+            error: 'Invalid action parameter', 
+            success: false 
+        }, { status: 400 });
 
     } catch (error) {
-        console.error('Error processing request:', error);
+        console.error('💥 Error processing request:', error);
         return NextResponse.json(
-            { error: 'Failed to process request', success: false },
+            { 
+                error: 'Internal server error', 
+                details: error instanceof Error ? error.message : 'Unknown error',
+                success: false 
+            },
             { status: 500 }
         );
     }

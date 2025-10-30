@@ -50,8 +50,7 @@ export async function GET(request: NextRequest) {
         description,
         submitted_at,
         updated_at,
-        resolved_at,
-        closed_at
+        resolved_at
       `)
       .eq('ticket_num', ticketNum)
       .single();
@@ -132,7 +131,7 @@ export async function GET(request: NextRequest) {
       reporter_user_id: ticketData.reporter_user_id,
       reporter_email: ticketData.reporter_email,
       assigned_user_id: ticketData.assignee_user_id,
-      assigned_user_name: ticketData.assignee_user_email?.split('@')[0] || 'Unassigned',
+      assigned_user_name: ticketData.assignee_user_email || 'Unassigned', // FIXED: Display full email
       affected_module_id: ticketData.module_id,
       affected_module_name: moduleData?.module_name || 'N/A',
       issue_type_id: ticketData.issue_type_id,
@@ -345,7 +344,7 @@ export async function POST(request: NextRequest) {
     // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase
       .storage
-      .from('attachments') // Changed from 'incident-attachments' to 'attachments'
+      .from('attachments')
       .upload(storagePath, buffer, {
         contentType: file.type,
         upsert: false
@@ -363,7 +362,7 @@ export async function POST(request: NextRequest) {
     // Get public URL
     const { data: urlData } = supabase
       .storage
-      .from('attachments') // Changed from 'incident-attachments' to 'attachments'
+      .from('attachments')
       .getPublicUrl(storagePath);
 
     const storage_url = urlData.publicUrl;
@@ -390,7 +389,7 @@ export async function POST(request: NextRequest) {
       
       // Clean up uploaded file if DB insert fails
       await supabase.storage
-        .from('incident-attachments')
+        .from('attachments')
         .remove([storagePath]);
 
       return NextResponse.json({ 
@@ -455,14 +454,14 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Extract storage path from URL
-    const urlParts = attachment.storage_url.split('/incident-attachments/');
+    const urlParts = attachment.storage_url.split('/attachments/');
     const storagePath = urlParts[1] || null;
 
     // Delete from storage
     if (storagePath) {
       const { error: storageError } = await supabase
         .storage
-        .from('incident-attachments')
+        .from('attachments')
         .remove([storagePath]);
 
       if (storageError) {

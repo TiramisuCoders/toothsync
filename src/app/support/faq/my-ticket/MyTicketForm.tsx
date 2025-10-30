@@ -1,17 +1,18 @@
-// app/support/my-tickets/MyTicket.tsx
+// app/support/faq/my-ticket/MyTicketForm.tsx
 "use client"
 
 import Link from "next/link"
 import { useState, useEffect } from "react"
-import Image from "next/image"
 import { Copy } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { TicketDetailsModal } from "./TicketDetailsModal"
-import { FeedbackFormModal } from "@/components/modals/feedback-form-modal" // Correct Alias Path
+// ⚠️ Ensure this path is correct for the Ticket Details Modal
+import { TicketDetailsModal } from "@/app/incident-management/my-tickets/TicketDetailsModal" 
+// 🟢 CRITICAL FIX: Import FeedbackFormModal from the new dedicated support-faq folder
+import { FeedbackFormModal } from "@/components/modals/support-faq/feedback-form-modal" 
 
 interface IncidentAttachment {
   attachment_id: string
@@ -87,7 +88,7 @@ const getPriorityBadgeColors = (priority: string) => {
   }
 }
 
-export default function MyTicket() {
+export default function MyTicketForm() {
   const router = useRouter()
   const { toast } = useToast()
 
@@ -98,29 +99,6 @@ export default function MyTicket() {
   const [error, setError] = useState<string | null>(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [showFeedbackModal, setShowFeedbackModal] = useState(false) 
-  const [currentImageIndex, setCurrentImageIndex] = useState(0)
-
-  const backgroundImages = [
-    "/images/landing-page/school-1.png",
-    "/images/landing-page/school-2.png"
-  ]
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % backgroundImages.length)
-    }, 4000)
-    
-    return () => clearInterval(interval)
-  }, [])
-
-  useEffect(() => {
-    if (!ticketSubmitted) {
-      document.body.style.overflow = 'hidden'
-      return () => {
-        document.body.style.overflow = 'auto'
-      }
-    }
-  }, [ticketSubmitted])
 
   const handleTicketNumberSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -172,7 +150,6 @@ export default function MyTicket() {
     }
   }
 
-  // 🟢 UPDATED: Handles closure of TicketDetailsModal AND the decision to open Feedback.
   const handleCloseDetailsModal = (feedbackRequired: boolean = false) => {
     setShowDetailsModal(false)
     if (feedbackRequired) {
@@ -180,7 +157,6 @@ export default function MyTicket() {
     }
   }
   
-  // 🟢 NEW: Handles the closure of the Feedback Modal
   const handleCloseFeedbackModal = () => {
       setShowFeedbackModal(false);
   }
@@ -198,14 +174,14 @@ export default function MyTicket() {
     fetchTicket() 
   }
 
-  const handleNewTicket = () => {
-    router.push("/landing")
+  const handleGoToFAQ = () => {
+    // Link back to the FAQ page
+    router.push("/support/faq")
   }
 
   if (isLoading && !ticket) {
-    // Only show full loading spinner if there is no ticket data at all
     return (
-      <div className="min-h-screen bg-gray-100 font-poppins flex items-center justify-center overflow-hidden">
+      <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading ticket...</p>
@@ -216,120 +192,59 @@ export default function MyTicket() {
 
   if (!ticketSubmitted) {
     return (
-      <div className="h-screen w-screen fixed inset-0 overflow-hidden font-poppins m-0 p-0">
-        {/* Background Carousel */}
-        <div className="absolute inset-0">
-          {backgroundImages.map((image, index) => (
-            <div
-              key={index}
-              className={`absolute inset-0 transition-opacity duration-1000 ${
-                index === currentImageIndex ? "opacity-100" : "opacity-0"
-              }`}
-            >
-              <Image
-                src={image || "/placeholder.svg"}
-                alt={`Background ${index + 1}`}
-                fill
-                className="object-cover"
-                priority={index === 0}
+      // 🟢 Outer Container: Set the entire page area background to light gray (bg-gray-100)
+      <div className="min-h-screen font-poppins bg-gray-100 pt-10">
+        {/* Card: Set to white background with shadow */}
+        <div className="p-8 rounded-lg bg-white shadow-lg w-full max-w-lg mx-auto">
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Track Your Ticket</h2>
+          <p className="text-gray-600 mb-6">Enter your ticket number to view status and details</p>
+          
+          <form onSubmit={handleTicketNumberSubmit}>
+            <div className="mb-4">
+              <label htmlFor="ticketNumber" className="block text-sm font-medium text-gray-700 mb-2">
+                Ticket Number
+              </label>
+              <Input
+                id="ticketNumber"
+                type="text"
+                placeholder="TS-2025-00001"
+                value={ticketNumber}
+                onChange={(e) => setTicketNumber(e.target.value)}
+                className="w-full"
+                required
               />
-              <div className="absolute inset-0 bg-emerald-600/60" />
+              <p className="text-xs text-gray-500 mt-1">
+                You can find your ticket number in the confirmation email
+              </p>
             </div>
-          ))}
-        </div>
-
-        <main className="relative z-10 flex items-center justify-center p-6 h-screen">
-          <div className="bg-white/90 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-md w-full">
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Track Your Ticket</h2>
-            <p className="text-gray-600 mb-6">Enter your ticket number to view status and details</p>
             
-            <form onSubmit={handleTicketNumberSubmit}>
-              <div className="mb-4">
-                <label htmlFor="ticketNumber" className="block text-sm font-medium text-gray-700 mb-2">
-                  Ticket Number
-                </label>
-                <Input
-                  id="ticketNumber"
-                  type="text"
-                  placeholder="TS-2025-00001"
-                  value={ticketNumber}
-                  onChange={(e) => setTicketNumber(e.target.value)}
-                  className="w-full"
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  You can find your ticket number in the confirmation email
-                </p>
-              </div>
-              
-              <Button
-                type="submit"
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3"
-                disabled={isLoading}
-              >
-                {isLoading ? "Searching..." : "Track Ticket"}
-              </Button>
-            </form>
+            <Button
+              type="submit"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3"
+              disabled={isLoading}
+            >
+              {isLoading ? "Searching..." : "Track Ticket"}
+            </Button>
+          </form>
 
-            <div className="mt-6 text-center">
-              <Button
-                variant="link"
-                onClick={handleNewTicket}
-                className="text-emerald-600"
-              >
-                Go to Landing Page
-              </Button>
-            </div>
+          <div className="mt-6 text-center">
+            <Button
+              variant="link"
+              onClick={handleGoToFAQ}
+              className="text-emerald-600"
+            >
+              Go back to Help/FAQ
+            </Button>
           </div>
-        </main>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 font-poppins">
-      {/* Fixed Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-emerald-700 text-white p-4 flex items-center justify-between shadow-md">
-        <div className="flex items-center gap-3">
-          <Link href="/landing" aria-label="Go to landing page" className="flex items-center">
-            <Image
-              src="/images/DOMC-logo.png"
-              alt="App Logo"
-              width={75}
-              height={75}
-              className="object-contain cursor-pointer"
-              priority
-            />
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold">Ticket Tracker</h1>
-            <p className="text-sm text-emerald-100">Tracking: {ticketNumber}</p>
-          </div>
-        </div>
-
-        <div className="flex gap-3">
-          <Button
-            onClick={() => {
-              setTicketSubmitted(false)
-              setTicket(null)
-              setTicketNumber("")
-              setError(null)
-            }}
-            variant="outline"
-            className="bg-white text-emerald-700 hover:bg-emerald-50 border-white font-medium"
-          >
-            Track Another Ticket
-          </Button>
-          <Button
-            onClick={() => router.push("/landing")}
-            className="bg-emerald-600 text-white hover:bg-emerald-800 border-emerald-600 font-medium"
-          >
-            Go to Landing Page
-          </Button>
-        </div>
-      </header>
-
-      <main className="p-6">
+    // 🟢 Outer Page Container: Set the entire page area background to light gray (bg-gray-100)
+    <div className="min-h-screen font-poppins bg-gray-100"> 
+      <main className="p-6 pt-10">
         <div className="max-w-4xl mx-auto">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded mb-4">
@@ -338,7 +253,8 @@ export default function MyTicket() {
           )}
 
           {ticket && (
-            <div className="bg-white rounded-lg shadow-lg p-6">
+            // 🟢 Ticket Display Card: Set to white background with shadow
+            <div className="rounded-lg p-6 bg-white shadow-lg">
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-800">{ticket.title}</h2>
@@ -393,6 +309,17 @@ export default function MyTicket() {
                   View Full Details
                 </Button>
               </div>
+              
+              <div className="mt-6">
+                <Button
+                  variant="link"
+                  onClick={() => setTicketSubmitted(false)}
+                  className="text-gray-500 hover:text-gray-700 p-0"
+                >
+                  Track Another Ticket
+                </Button>
+              </div>
+
             </div>
           )}
         </div>
@@ -402,7 +329,7 @@ export default function MyTicket() {
       {ticket && (
         <TicketDetailsModal
           isOpen={showDetailsModal}
-          onClose={handleCloseDetailsModal} // 👈 Passes handler that checks for feedback
+          onClose={handleCloseDetailsModal} 
           ticket={ticket}
           onTicketUpdated={handleTicketUpdated}
         />
@@ -412,7 +339,7 @@ export default function MyTicket() {
       {ticket && (
         <FeedbackFormModal
           isOpen={showFeedbackModal}
-          onClose={handleCloseFeedbackModal} // 👈 Dedicated handler for closure
+          onClose={handleCloseFeedbackModal} 
           ticketId={ticket.incident_id}
         />
       )}

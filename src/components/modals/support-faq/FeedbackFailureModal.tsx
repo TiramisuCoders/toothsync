@@ -19,7 +19,6 @@ export function FeedbackFailureModal({
   if (!isOpen) return null
 
   const handleCloseFailure = () => {
-    // This is the clean closure action that directs the user back to the ticket list.
     onClose();
   }
 
@@ -41,7 +40,6 @@ export function FeedbackFailureModal({
         {/* Content */}
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Feedback Submission Failed</h2>
-          {/* 🔴 Removed instructional text and block elements */}
           <p className="text-gray-600 text-sm leading-relaxed">
             {errorMessage}
           </p>
@@ -49,7 +47,6 @@ export function FeedbackFailureModal({
 
         {/* Action Buttons */}
         <div className="space-y-3">
-          {/* 🟢 Keep only the primary Close button */}
           <Button
             onClick={handleCloseFailure}
             className="w-full bg-red-600 hover:bg-red-700 text-white py-3 text-base font-medium"

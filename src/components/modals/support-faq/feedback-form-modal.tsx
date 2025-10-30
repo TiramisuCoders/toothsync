@@ -1,4 +1,4 @@
-// components/modals/feedback-form-modal.tsx
+// components/modals/support-faq/feedback-form-modal.tsx
 "use client"
 
 import type React from "react"
@@ -10,8 +10,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { FeedbackSuccessModal } from "./feedback-success-modal"
-import { FeedbackFailureModal } from "./feedback-failure-modal"
+// 🟢 CORRECTED IMPORTS: Use relative paths to the new support-faq directory
+import { FeedbackSuccessModal } from "./FeedbackSuccessModal"
+import { FeedbackFailureModal } from "./FeedbackFailureModal"
 
 interface FeedbackFormModalProps {
   isOpen: boolean
@@ -80,7 +81,6 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
 
     setIsSubmitting(true)
 
-    // 🟢 Step 1: Prepare Payloads
     const feedbackPayload = {
       incident_id: ticketId,
       overall_experience: overallExperience,
@@ -95,7 +95,7 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
     };
 
     try {
-      // 🟢 Step 2: Submit Feedback API Call
+      // Step 2: Submit Feedback API Call
       const feedbackResponse = await fetch('/api/feedback-form', {
         method: 'POST',
         headers: {
@@ -105,11 +105,16 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
       });
 
       if (!feedbackResponse.ok) {
-        throw new Error('Failed to submit feedback.');
+        // ... (Error handling remains the same) ...
+        const errorResult = await feedbackResponse.json();
+        if (errorResult.details && errorResult.details.includes('duplicate key')) {
+             console.warn("Feedback already exists for this ticket. Proceeding to update status.");
+        } else {
+             throw new Error('Failed to submit feedback.');
+        }
       }
       
-      // 🟢 Step 3: Execute Deferred Status Update API Call
-      // Mark the ticket as Resolved ONLY AFTER feedback submission succeeds
+      // Step 3: Execute Deferred Status Update API Call
       const statusResponse = await fetch("/api/support/MyTickets", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -117,17 +122,16 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
       });
       
       if (!statusResponse.ok) {
-          // Log an error but proceed with success modal since the user finished their job
           console.error("Warning: Feedback submitted, but status update failed. The ticket might not show as resolved yet.");
       }
 
-      // 🟢 Step 4: Success
+      // Step 4: Success
       handleClearForm() 
-      onClose() // Closes the FeedbackFormModal
+      onClose() 
       setShowFeedbackSuccessModal(true)
       
     } catch (error) {
-      // 🟢 Step 5: Failure
+      // Step 5: Failure
       console.error("Error submitting process:", error)
       
       handleClearForm()
