@@ -1,4 +1,4 @@
-// app/login/actions.ts - DEBUG VERSION
+// app/login/actions.ts
 "use server";
 
 import { cookies, headers } from "next/headers";
@@ -30,80 +30,53 @@ function isPrivateIP(ip: string): boolean {
   return false;
 }
 
-// DEBUG VERSION - Logs all headers
+// Helper function to get client IP from request headers
+// FIXED: Prioritize x-forwarded-for FIRST, not x-nf-client-connection-ip
 async function getClientIp(): Promise<string> {
   const headersList = await headers();
   
-  // LOG ALL HEADERS FOR DEBUGGING
-  console.log("==========================================");
-  console.log("🔍 DEBUGGING IP DETECTION");
-  console.log("==========================================");
-  console.log("ALL HEADERS:");
-  headersList.forEach((value, key) => {
-    console.log(`  ${key}: ${value}`);
-  });
-  console.log("==========================================");
+  // CRITICAL: On Netlify, x-forwarded-for contains the real client IP as the FIRST value
+  // x-nf-client-connection-ip is unreliable and often shows Netlify's own IP
+  const forwardedFor = headersList.get('x-forwarded-for');
   
-  // Platform-specific headers (in order of priority)
-  const ipHeaders = [
-    'x-nf-client-connection-ip',  // Netlify
-    'x-forwarded-for',            // Standard
-    'cf-connecting-ip',           // Cloudflare
-    'true-client-ip',             // Cloudflare Enterprise
-    'x-real-ip',                  // Vercel
-    'x-client-ip',                // AWS
-    'x-forwarded',
-    'forwarded-for',
-    'forwarded',
+  if (forwardedFor) {
+    // x-forwarded-for format: "client_ip, proxy1_ip, proxy2_ip"
+    // We want the FIRST IP (the original client)
+    const ips = forwardedFor.split(',');
+    const clientIp = ips[0].trim();
+    
+    if (clientIp && !isPrivateIP(clientIp)) {
+      console.log(`[IP Detection] Using x-forwarded-for (first IP): ${clientIp}`);
+      return clientIp;
+    }
+  }
+  
+  // Fallback to other headers (but x-forwarded-for should work on Netlify)
+  const otherHeaders = [
+    'cf-connecting-ip',      // Cloudflare
+    'true-client-ip',        // Cloudflare Enterprise
+    'x-real-ip',             // Some proxies
+    'x-client-ip',           // Alternative
   ];
   
-  console.log("CHECKING HEADERS IN ORDER:");
-  
-  // Try each header in order
-  for (const header of ipHeaders) {
+  for (const header of otherHeaders) {
     const value = headersList.get(header);
-    console.log(`  ${header}: ${value || '(not found)'}`);
-    
     if (value) {
-      // x-forwarded-for can contain multiple IPs: "client, proxy1, proxy2"
-      if (header === 'x-forwarded-for' || header === 'forwarded-for') {
-        const ips = value.split(',');
-        console.log(`    → Split into: [${ips.join(', ')}]`);
-        const clientIp = ips[0].trim();
-        console.log(`    → Taking first: ${clientIp}`);
-        
-        const isPrivate = isPrivateIP(clientIp);
-        console.log(`    → Is private IP? ${isPrivate}`);
-        
-        if (clientIp && !isPrivate) {
-          console.log(`✅ SELECTED IP: ${clientIp} (from ${header})`);
-          console.log("==========================================");
-          return clientIp;
-        }
-      } else {
-        const ip = value.trim();
-        const isPrivate = isPrivateIP(ip);
-        console.log(`    → Is private IP? ${isPrivate}`);
-        
-        if (ip && !isPrivate) {
-          console.log(`✅ SELECTED IP: ${ip} (from ${header})`);
-          console.log("==========================================");
-          return ip;
-        }
+      const ip = value.trim();
+      if (ip && !isPrivateIP(ip)) {
+        console.log(`[IP Detection] Using ${header}: ${ip}`);
+        return ip;
       }
     }
   }
   
-  console.warn('❌ Could not determine client IP - using "unknown"');
-  console.log("==========================================");
+  console.warn('[IP Detection] Could not determine client IP');
   return "unknown";
 }
 
 export async function loginAction(email: string, password: string, loginAsRole: string) {
   const cookieStore = await cookies();
   const clientIp = await getClientIp();
-  
-  console.log("🌍 FINAL CLIENT IP FOR LOGGING:", clientIp);
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -223,8 +196,6 @@ export async function loginAction(email: string, password: string, loginAsRole: 
 export async function logoutAction() {
   const cookieStore = await cookies();
   const clientIp = await getClientIp();
-  
-  console.log("🌍 FINAL CLIENT IP FOR LOGOUT:", clientIp);
   
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
