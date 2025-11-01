@@ -11,70 +11,26 @@ import {
   logLogout,
 } from "@/app/utils/activityLogger";
 
-// Helper to check if IP is private/internal
-function isPrivateIP(ip: string): boolean {
-  const cleanIP = ip.replace(/^\[|\]$/g, '');
-  
-  if (cleanIP.startsWith('10.')) return true;
-  if (cleanIP.startsWith('172.')) {
-    const second = parseInt(cleanIP.split('.')[1]);
-    if (second >= 16 && second <= 31) return true;
-  }
-  if (cleanIP.startsWith('192.168.')) return true;
-  if (cleanIP.startsWith('127.')) return true;
-  if (cleanIP === '::1') return true;
-  if (cleanIP.startsWith('::ffff:127.')) return true;
-  if (cleanIP.startsWith('fc00:')) return true;
-  if (cleanIP.startsWith('fd00:')) return true;
-  
-  return false;
-}
-
-// Helper function to get client IP from request headers
-// FIXED: Prioritize x-forwarded-for FIRST, not x-nf-client-connection-ip
 async function getClientIp(): Promise<string> {
   const headersList = await headers();
-  
-  // CRITICAL: On Netlify, x-forwarded-for contains the real client IP as the FIRST value
-  // x-nf-client-connection-ip is unreliable and often shows Netlify's own IP
-  const forwardedFor = headersList.get('x-forwarded-for');
-  
+  const forwardedFor = headersList.get("x-forwarded-for");
+  const realIp = headersList.get("x-real-ip");
+  const cfConnectingIp = headersList.get("cf-connecting-ip");
+  const trueClientIp = headersList.get("true-client-ip");
+
   if (forwardedFor) {
-    // x-forwarded-for format: "client_ip, proxy1_ip, proxy2_ip"
-    // We want the FIRST IP (the original client)
-    const ips = forwardedFor.split(',');
-    const clientIp = ips[0].trim();
-    
-    if (clientIp && !isPrivateIP(clientIp)) {
-      console.log(`[IP Detection] Using x-forwarded-for (first IP): ${clientIp}`);
-      return clientIp;
-    }
+    const ips = forwardedFor.split(",");
+    return ips[0].trim();
   }
-  
-  // Fallback to other headers (but x-forwarded-for should work on Netlify)
-  const otherHeaders = [
-    'cf-connecting-ip',      // Cloudflare
-    'true-client-ip',        // Cloudflare Enterprise
-    'x-real-ip',             // Some proxies
-    'x-client-ip',           // Alternative
-  ];
-  
-  for (const header of otherHeaders) {
-    const value = headersList.get(header);
-    if (value) {
-      const ip = value.trim();
-      if (ip && !isPrivateIP(ip)) {
-        console.log(`[IP Detection] Using ${header}: ${ip}`);
-        return ip;
-      }
-    }
-  }
-  
-  console.warn('[IP Detection] Could not determine client IP');
-  return "unknown";
+
+  return realIp || cfConnectingIp || trueClientIp || "unknown";
 }
 
-export async function loginAction(email: string, password: string, loginAsRole: string) {
+export async function loginAction(
+  email: string,
+  password: string,
+  loginAsRole: string
+) {
   const cookieStore = await cookies();
   const clientIp = await getClientIp();
 
@@ -92,30 +48,35 @@ export async function loginAction(email: string, password: string, loginAsRole: 
     }
   );
 
-  // Clear any existing session
   await supabase.auth.signOut();
   await supabase.auth.refreshSession();
 
-  // Attempt sign in
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
   const user = data.user;
 
-  // --- Failed login ---
+  // Failed login
   if (error || !user) {
-    // Try to get user ID for logging purposes
     const { data: existingUser } = await supabase
       .from("users")
       .select("auth_user_id")
       .eq("email", email)
       .single();
 
-    // Log failed login attempt with client IP
-    await logFailedLogin(email, loginAsRole, existingUser?.auth_user_id, clientIp);
+    // Log failed login with role_id instead of role name
+    await logFailedLogin(
+      email,
+      loginAsRole, // This is the role_id (R01, R02, etc.)
+      existingUser?.auth_user_id,
+      clientIp
+    );
 
     return { error: { message: "Invalid email or password." } };
   }
 
-  // --- Fetch user role ---
+  // Fetch user role
   const { data: userRecord, error: roleError } = await supabase
     .from("users")
     .select("role")
@@ -126,13 +87,19 @@ export async function loginAction(email: string, password: string, loginAsRole: 
     return { error: { message: "User role not found" } };
   }
 
-  // --- Role validation ---
+  // Role validation
   const canLoginAs = (userRole: string, loginAs: string) =>
     userRole === loginAs || (userRole === "R02" && loginAs === "R01");
 
   if (!canLoginAs(userRecord.role, loginAsRole)) {
-    // Log unauthorized access attempt with client IP
-    await logUnauthorizedAccess(user.id, userRecord.role, email, loginAsRole, clientIp);
+    // Log unauthorized access with role_ids
+    await logUnauthorizedAccess(
+      user.id,
+      userRecord.role, // Actual role_id
+      email,
+      loginAsRole, // Attempted role_id
+      clientIp
+    );
 
     const roleNameMap: Record<string, string> = {
       R01: "clinician",
@@ -142,13 +109,15 @@ export async function loginAction(email: string, password: string, loginAsRole: 
     };
 
     return {
-      error: { 
-        message: `Not authorized to log in as ${roleNameMap[loginAsRole] || "this role"}.` 
+      error: {
+        message: `Not authorized to log in as ${
+          roleNameMap[loginAsRole] || "this role"
+        }.`,
       },
     };
   }
 
-  // --- Map role code to role name ---
+  // Map role code to role name for cookie
   const roleMap: Record<string, string> = {
     R01: "clinician",
     R02: "clerk",
@@ -157,29 +126,42 @@ export async function loginAction(email: string, password: string, loginAsRole: 
   };
   const roleName = roleMap[loginAsRole];
 
-  // --- Log successful login with client IP ---
-  await logSuccessfulLogin(user.id, roleName, email, clientIp);
+  // Log successful login with role_id
+  await logSuccessfulLogin(
+    user.id,
+    loginAsRole, // Pass role_id instead of role name
+    email,
+    clientIp
+  );
 
-  // --- Set role cookie ---
+  // Set cookies
   cookieStore.delete("role");
   cookieStore.set("role", roleName, {
     httpOnly: false,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
     path: "/",
   });
 
-  // Store email in cookie for logout logging
+  // Store role_id for logout logging
+  cookieStore.set("role_id", loginAsRole, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 7,
+    path: "/",
+  });
+
   cookieStore.set("user_email", email, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
     path: "/",
   });
 
-  // --- Redirect based on role ---
+  // Redirect
   const redirectMap: Record<string, string> = {
     R01: "/dashboard/clinician",
     R02: "/dashboard/clerk",
@@ -196,7 +178,7 @@ export async function loginAction(email: string, password: string, loginAsRole: 
 export async function logoutAction() {
   const cookieStore = await cookies();
   const clientIp = await getClientIp();
-  
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -212,18 +194,23 @@ export async function logoutAction() {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
-  const roleCookie = cookieStore.get("role");
+  const roleIdCookie = cookieStore.get("role_id"); // Get role_id instead of role name
   const emailCookie = cookieStore.get("user_email");
 
-  // Log logout before clearing session with client IP
-  if (user && roleCookie) {
-    await logLogout(user.id, roleCookie.value, emailCookie?.value, clientIp);
+  // Log logout with role_id
+  if (user && roleIdCookie) {
+    await logLogout(
+      user.id,
+      roleIdCookie.value, // This is now role_id (R01, R02, etc.)
+      emailCookie?.value,
+      clientIp
+    );
   }
 
-  // Clear session and cookies
   await supabase.auth.signOut();
   cookieStore.delete("role");
+  cookieStore.delete("role_id");
   cookieStore.delete("user_email");
-  
+
   return { success: true };
 }
