@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, Clock, Plus, Trash2, Users, Sun, Sunset, Moon, Search, Filter } from "lucide-react"
+import { Calendar, Clock, Plus, Trash2, Users, Sun, Sunset, Moon, Search, Filter, CalendarRange } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 import {
@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/popover"
 import { Label } from "@/components/ui/label"
 import AddScheduleModal from "@/components/modals/add-schedule-modal"
+import BulkScheduleModal from "@/components/modals/BulkScheduleModal"
+
 
 interface ScheduleRecord {
   id: string
@@ -29,6 +31,7 @@ export default function InstructorSchedulePage() {
   const [scheduleRecords, setScheduleRecords] = useState<ScheduleRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAddingSchedule, setIsAddingSchedule] = useState(false)
+  const [isBulkAdding, setIsBulkAdding] = useState(false)
   const [activeTab, setActiveTab] = useState("this-week")
   const [customDateFilter, setCustomDateFilter] = useState({
     startDate: "",
@@ -113,6 +116,50 @@ export default function InstructorSchedulePage() {
     }
   }
 
+  const handleBulkAddSchedule = async (data: {
+    startDate: string
+    endDate: string
+    daysOfWeek: number[]
+    shift: string
+  }) => {
+    try {
+      const response = await fetch('/api/schedule/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDate: data.startDate,
+          endDate: data.endDate,
+          daysOfWeek: data.daysOfWeek,
+          shift: data.shift
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: result.message || `Created ${result.created} schedules successfully`,
+        })
+        setIsBulkAdding(false)
+        fetchScheduleRecords()
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to create schedules",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error creating bulk schedules:', error)
+      toast({
+        title: "Error",
+        description: "Failed to create schedules",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleDeleteSchedule = async (scheduleId: string) => {
     if (!confirm('Are you sure you want to delete this schedule?')) {
       return
@@ -151,8 +198,10 @@ export default function InstructorSchedulePage() {
   const getShiftIcon = (shift: string) => {
     switch (shift) {
       case "Morning":
+      case "1st":
         return <Sun className="h-4 w-4" />
       case "Afternoon":
+      case "2nd":
         return <Sunset className="h-4 w-4" />
       case "Evening":
         return <Moon className="h-4 w-4" />
@@ -164,8 +213,10 @@ export default function InstructorSchedulePage() {
   const getShiftTime = (shift: string) => {
     switch (shift) {
       case "Morning":
+      case "1st":
         return "8:00 AM - 12:00 PM"
       case "Afternoon":
+      case "2nd":
         return "12:00 PM - 5:00 PM"
       case "Evening":
         return "5:00 PM - 9:00 PM"
@@ -177,13 +228,26 @@ export default function InstructorSchedulePage() {
   const getShiftColor = (shift: string) => {
     switch (shift) {
       case "Morning":
+      case "1st":
         return "bg-amber-100 text-amber-800"
       case "Afternoon":
+      case "2nd":
         return "bg-orange-100 text-orange-800"
       case "Evening":
         return "bg-indigo-100 text-indigo-800"
       default:
         return "bg-gray-100 text-gray-800"
+    }
+  }
+
+  const getShiftLabel = (shift: string) => {
+    switch (shift) {
+      case "1st":
+        return "1st Shift"
+      case "2nd":
+        return "2nd Shift"
+      default:
+        return shift
     }
   }
 
@@ -287,7 +351,7 @@ export default function InstructorSchedulePage() {
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             {getShiftIcon(record.shift)}
-            <span className="font-semibold">{record.shift}</span>
+            <span className="font-semibold">{getShiftLabel(record.shift)}</span>
             <Badge className={getShiftColor(record.shift)}>{getShiftTime(record.shift)}</Badge>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -380,6 +444,10 @@ export default function InstructorSchedulePage() {
               </div>
             </PopoverContent>
           </Popover>
+          <Button variant="outline" onClick={() => setIsBulkAdding(true)}>
+            <CalendarRange className="h-4 w-4 mr-2" />
+            Bulk Add
+          </Button>
           <Button onClick={() => setIsAddingSchedule(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Schedule
@@ -391,6 +459,12 @@ export default function InstructorSchedulePage() {
         open={isAddingSchedule}
         onOpenChange={setIsAddingSchedule}
         onSubmit={handleAddSchedule}
+      />
+
+      <BulkScheduleModal
+        open={isBulkAdding}
+        onOpenChange={setIsBulkAdding}
+        onSubmit={handleBulkAddSchedule}
       />
 
       {isLoading ? (

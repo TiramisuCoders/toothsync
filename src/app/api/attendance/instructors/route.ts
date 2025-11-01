@@ -1,13 +1,7 @@
 // api/attendance/clerk/route.ts
 // double with activities / clinical - instructor
 
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { headers, cookies } from 'next/headers'
-import { NextRequest } from 'next/server'
-import { createServerClient } from "@supabase/ssr";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-// import { createSupabaseRouteClient } from '@/lib/supabase-route';
-
 
 export async function GET() {
 
@@ -27,34 +21,31 @@ export async function GET() {
       .select('role')
       .eq('auth_user_id', user.id)
       .single()
-
-    // console.log('User role data:', userRole) // See what this returns
-    // console.log('Role value:', userRole?.role)
-    // console.log('Role type:', typeof userRole?.role)
-
   
-    if (userRole?.role !== 'R03'|| userRole?.role !== 'R04') {
+    if (userRole?.role !== 'R03' && userRole?.role !== 'R04') {
       return Response.json({ error: 'Forbidden' }, { status: 403 })
     }
     
-    // console.log("user is clerk")
-    
-    // console.log('🔍 Fetching attendance records...')
 
     // Fetch attendance records
-    const { data: attendance, error: err } = await supabase.from("activity_records").select(`
-        record_id,
-        time_in,
-        time_out,
-        status,
-        request:request_id(
-          is_sanitized,
-            clinician:clinician_id(
-            first_name,
-            last_name
-            )
+    const { data: attendance, error: err } = await supabase
+    .from('activity_records')
+    .select(`
+      id,
+      record_id,
+      time_in,
+      time_out,
+      request:request_id (
+        is_sanitized,
+        shift,
+        clinician:clinician_id (
+          first_name,
+          last_name
         )
-      `).order("time_in", { ascending: false })
+      )
+    `)
+    .order('time_in', { ascending: false });
+
     
     console.log('- Attendance query result:', attendance)
     console.log('- Attendance query error:', err)
@@ -65,6 +56,7 @@ export async function GET() {
     }
 
    const transformedData = attendance?.map(record => ({
+      realid: record.id,
       id: record.record_id,
       firstName: record.request?.clinician?.first_name || '',
       lastName: record.request?.clinician?.last_name || '',
@@ -82,9 +74,8 @@ export async function GET() {
           hour12: true,
         })
       : "-",
-
-      sanitize: record.request?.is_sanitized ? "Yes" : "No",
-      status: record.status || "Pending"
+      attendanceShift: record.request?.shift,
+      sanitize: record.request?.is_sanitized ? "Yes" : "No"
     })) || []
 
 

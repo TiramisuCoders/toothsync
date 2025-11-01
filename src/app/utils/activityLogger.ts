@@ -11,6 +11,7 @@ async function logToEdge(payload: Record<string, any>, clientIp?: string) {
 
   try {
     console.log("[ActivityLogger] Logging activity:", payload.action);
+    console.log("[ActivityLogger] Client IP to send:", clientIp);
     
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -22,16 +23,17 @@ async function logToEdge(payload: Record<string, any>, clientIp?: string) {
       headers["apikey"] = SUPABASE_ANON_KEY;
     }
 
-    // Forward client IP
-    if (clientIp) {
-      headers["X-Forwarded-For"] = clientIp;
-      headers["X-Real-IP"] = clientIp;
-    }
+    // IMPORTANT: Pass the IP in the payload, not just headers
+    // Headers can be overwritten by proxies, but payload stays intact
+    const payloadWithIp = {
+      ...payload,
+      clientIp: clientIp || "unknown", // Add IP to payload
+    };
 
     const response = await fetch(EDGE_LOG_ACTIVITY_URL, {
       method: "POST",
       headers,
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payloadWithIp),
     });
 
     if (!response.ok) {
@@ -56,7 +58,11 @@ export async function logSuccessfulLogin(
     userId, 
     role, 
     action: "login_success", 
-    details: `User ${username} logged in successfully`
+    details: { 
+      message: `User ${username} logged in successfully`,
+      email,
+      role
+    } 
   }, clientIp);
 }
 

@@ -11,27 +11,66 @@ import {
   logLogout,
 } from "@/app/utils/activityLogger";
 
+// Helper to check if IP is private/internal
+function isPrivateIP(ip: string): boolean {
+  const cleanIP = ip.replace(/^\[|\]$/g, '');
+  
+  if (cleanIP.startsWith('10.')) return true;
+  if (cleanIP.startsWith('172.')) {
+    const second = parseInt(cleanIP.split('.')[1]);
+    if (second >= 16 && second <= 31) return true;
+  }
+  if (cleanIP.startsWith('192.168.')) return true;
+  if (cleanIP.startsWith('127.')) return true;
+  if (cleanIP === '::1') return true;
+  if (cleanIP.startsWith('::ffff:127.')) return true;
+  if (cleanIP.startsWith('fc00:')) return true;
+  if (cleanIP.startsWith('fd00:')) return true;
+  
+  return false;
+}
+
 // Helper function to get client IP from request headers
+// FIXED: Prioritize x-forwarded-for FIRST, not x-nf-client-connection-ip
 async function getClientIp(): Promise<string> {
   const headersList = await headers();
   
-  // Try various headers that might contain the client IP
-  const forwardedFor = headersList.get("x-forwarded-for");
-  const realIp = headersList.get("x-real-ip");
-  const cfConnectingIp = headersList.get("cf-connecting-ip"); // Cloudflare
-  const trueClientIp = headersList.get("true-client-ip"); // Cloudflare Enterprise
+  // CRITICAL: On Netlify, x-forwarded-for contains the real client IP as the FIRST value
+  // x-nf-client-connection-ip is unreliable and often shows Netlify's own IP
+  const forwardedFor = headersList.get('x-forwarded-for');
   
-  // x-forwarded-for can contain multiple IPs (client, proxy1, proxy2, ...)
-  // We want the first one (the original client)
   if (forwardedFor) {
-    const ips = forwardedFor.split(",");
-    return ips[0].trim();
+    // x-forwarded-for format: "client_ip, proxy1_ip, proxy2_ip"
+    // We want the FIRST IP (the original client)
+    const ips = forwardedFor.split(',');
+    const clientIp = ips[0].trim();
+    
+    if (clientIp && !isPrivateIP(clientIp)) {
+      console.log(`[IP Detection] Using x-forwarded-for (first IP): ${clientIp}`);
+      return clientIp;
+    }
   }
   
-  if (realIp) return realIp;
-  if (cfConnectingIp) return cfConnectingIp;
-  if (trueClientIp) return trueClientIp;
+  // Fallback to other headers (but x-forwarded-for should work on Netlify)
+  const otherHeaders = [
+    'cf-connecting-ip',      // Cloudflare
+    'true-client-ip',        // Cloudflare Enterprise
+    'x-real-ip',             // Some proxies
+    'x-client-ip',           // Alternative
+  ];
   
+  for (const header of otherHeaders) {
+    const value = headersList.get(header);
+    if (value) {
+      const ip = value.trim();
+      if (ip && !isPrivateIP(ip)) {
+        console.log(`[IP Detection] Using ${header}: ${ip}`);
+        return ip;
+      }
+    }
+  }
+  
+  console.warn('[IP Detection] Could not determine client IP');
   return "unknown";
 }
 
@@ -131,7 +170,7 @@ export async function loginAction(email: string, password: string, loginAsRole: 
     path: "/",
   });
 
-  // Also store email in cookie for logout logging (optional but helpful)
+  // Store email in cookie for logout logging
   cookieStore.set("user_email", email, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
