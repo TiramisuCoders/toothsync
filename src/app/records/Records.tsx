@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, Pencil, ChevronLeft, ChevronRight, ArchiveRestore, FileText, Download, Eye } from "lucide-react"
+import { X, Pencil, ChevronLeft, ChevronRight, ArchiveRestore, FileText, Download, Eye, Search } from "lucide-react"
 import { Card, CardContent} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -16,12 +16,14 @@ import GradingModal from "@/components/modals/grading-modal"
 import UnarchiveConfirmationModal from "@/components/modals/unarchive-record-modal"
 
 export interface ProcedureStatus {
+  ap_id: string  // ADDED: activity_procedures.ap_id
   procedure: string
   status: string
   remarks: string
 }
 
 export interface RecordInstance {
+  id: string  // activity_records.id
   date: string
   timeIn: string
   timeOut: string
@@ -31,7 +33,7 @@ export interface RecordInstance {
 }
 
 export interface Activity {
-  id: string
+  activity_id: string
   patientName: string
   patientType: string
   dateStarted: string | null
@@ -66,7 +68,7 @@ export default function UnifiedActivitiesRecords() {
   const [dateFilter, setDateFilter] = useState("all")
   const [customDate, setCustomDate] = useState("")
   const [activeFilter, setActiveFilter] = useState("all")
-  // const [activeTab, setActiveTab] = useState("activities")
+  const [searchQuery, setSearchQuery] = useState("")  // ADDED: Search state
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -85,6 +87,7 @@ export default function UnifiedActivitiesRecords() {
     setLoading(true)
     setError(null)
     try {
+      console.log('🔄 Fetching records from API...')
       const response = await fetch('/api/records', {
         method: 'GET',
         credentials: 'include',
@@ -100,16 +103,15 @@ export default function UnifiedActivitiesRecords() {
       const records = await response.json()
       
       if (records.success) {
+        console.log('✅ Records fetched successfully:', records.data.length, 'activities')
+        console.log('📋 First activity sample:', records.data[0])
         setActivitiesRecords(records.data)
-        // Get user role from the response if available
-        // You might need to add this to your API response
-        setUserRole(records.userRole) // Default to clinician if not provided
-        console.log(userRole)
+        setUserRole(records.userRole)
       } else {
         throw new Error(records.error || 'Failed to fetch records')
       }
     } catch (err) {
-      console.error('Error fetching records:', err)
+      console.error('❌ Error fetching records:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch records')
     } finally {
       setLoading(false)
@@ -235,10 +237,18 @@ export default function UnifiedActivitiesRecords() {
 
     const updatedProcedureDetails = [...(currentActivity.procedureDetails || [])]
     if (!updatedProcedureDetails[index]) {
+      // Get ap_id from the latest record if creating new entry
+      const latestRecord = currentActivity.allRecords?.[0]
+      const procName = currentActivity.procedures[index]
+      const procStatus = latestRecord?.procedureStatuses?.find(
+        (ps: ProcedureStatus) => ps.procedure === procName
+      )
+      
       updatedProcedureDetails[index] = {
-        name: currentActivity.procedures[index],
+        name: procName,
         remarks: '',
-        status: ''
+        status: '',
+        ap_id: procStatus?.ap_id || ''
       }
     }
     
@@ -253,39 +263,114 @@ export default function UnifiedActivitiesRecords() {
     })
   }
 
-  const handleSaveGrades = async () => {
-    if (!currentActivity || !currentActivity.procedureDetails) return
+  const initializeGradingModal = (activity: Activity) => {
+    // Get the latest procedure data from most recent record
+    const latestProcedureData = activity.allRecords && activity.allRecords.length > 0
+      ? activity.procedures?.map((procName: string) => {
+          const latestRecord = activity.allRecords[0]
+          const procStatus = latestRecord.procedureStatuses?.find(
+            (ps: ProcedureStatus) => ps.procedure === procName
+          )
+          
+          return {
+            name: procName,
+            status: procStatus?.status || "In Progress",
+            remarks: procStatus?.remarks || "",
+            ap_id: procStatus?.ap_id || ""  // ADDED: Include ap_id
+          }
+        }) || []
+      : activity.procedures?.map((procName: string) => ({
+          name: procName,
+          status: "In Progress",
+          remarks: "",
+          ap_id: ""
+        })) || []
+
+    setCurrentActivity({
+      ...activity,
+      procedureDetails: latestProcedureData
+    })
+    setIsGradeModalOpen(true)
+  }
+
+  const handleSaveGrades = async (updatedProcedures?: any[]) => {
+    if (!currentActivity) return
+
+    console.log('=== SAVE GRADES START ===')
+    console.log('Activity ID:', currentActivity.activity_id)
+    
+    // CRITICAL FIX: Use updatedProcedures from modal if provided, otherwise fallback to currentActivity
+    const procedureDetails = updatedProcedures || currentActivity.procedureDetails || []
+    
+    console.log('📋 Procedure details to save:', procedureDetails)
+
+    if (procedureDetails.length === 0) {
+      toast({
+        title: "Error",
+        description: "No procedures to update",
+        variant: "destructive"
+      })
+      return
+    }
 
     try {
-      const procedureUpdates = currentActivity.procedureDetails.map(async (procedure) => {
-        if (procedure.status && String(procedure.status || "").trim() !== "") {
+      console.log('All Records:', currentActivity.allRecords)
+      
+      const procedureUpdates = procedureDetails.map(async (procedure) => {
+        console.log('--- Processing procedure ---')
+        console.log('Procedure object:', procedure)
+        console.log('Procedure name:', procedure.name)
+        console.log('Procedure status:', procedure.status)
+        console.log('Procedure remarks:', procedure.remarks)
+        console.log('Procedure ap_id:', procedure.ap_id)
+        
+        if (procedure.status && String(procedure.status).trim() !== "") {
+          // CRITICAL FIX: Use ap_id directly from the procedure
+          if (!procedure.ap_id) {
+            console.error('❌ Missing ap_id for procedure:', procedure)
+            throw new Error(`Missing ap_id for procedure ${procedure.name}`)
+          }
+
+          const updatePayload = {
+            activity_id: currentActivity.activity_id,
+            ap_id: procedure.ap_id,
+            remarks: procedure.remarks || "",
+            status: procedure.status
+          }
+
+          console.log('📤 Sending update request:', updatePayload)
+
           const response = await fetch('/api/activities/clinical-instructor', {
             method: 'PATCH',
             credentials: 'include',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              record_id: currentActivity.id,
-              procedure_name: procedure.name,
-              remarks: procedure.remarks || "",
-              status: "Completed"
-            })
+            body: JSON.stringify(updatePayload)
           })
 
           if (!response.ok) {
-            throw new Error(`Failed to update procedure ${procedure.name}`)
+            const errorData = await response.json()
+            console.error('❌ Failed to update procedure:', errorData)
+            throw new Error(`Failed to update procedure ${procedure.name}: ${errorData.error}`)
           }
 
-          return { ...procedure, status: "Completed" }
+          const responseData = await response.json()
+          console.log('✅ Update response:', responseData)
+
+          return { ...procedure, status: procedure.status }
         }
         return procedure
       })
 
       const updatedProcedures = await Promise.all(procedureUpdates)
+      console.log('All procedures updated:', updatedProcedures)
+
       const allCompleted = updatedProcedures.every(p => p.status === "Completed")
+      console.log('All completed?', allCompleted)
 
       if (allCompleted) {
+        console.log('Updating activity status to Completed')
         const activityResponse = await fetch('/api/activities/clinical-instructor', {
           method: 'PATCH',
           credentials: 'include',
@@ -293,7 +378,7 @@ export default function UnifiedActivitiesRecords() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            record_id: currentActivity.id,
+            activity_id: currentActivity.activity_id,
             update_activity_status: true,
             status: "Completed"
           })
@@ -304,36 +389,53 @@ export default function UnifiedActivitiesRecords() {
         }
       }
 
-      setActivitiesRecords(activities.map(activity => 
-        activity.id === currentActivity.id 
-          ? { 
-              ...activity, 
-              procedureDetails: updatedProcedures,
-              status: allCompleted ? "Completed" : activity.status
-            }
-          : activity
-      ))
-
-      setIsGradeModalOpen(false)
       toast({
         title: "Grades Saved",
         description: `Assessment has been saved successfully${allCompleted ? '. Activity marked as completed.' : '.'}`,
       })
 
+      // CRITICAL: Refresh data from server to show updates
+      await fetchRecords()
+      
+      // Close the modal after successful update
+      setIsGradeModalOpen(false)
+
     } catch (error) {
-      console.error('Error saving grades:', error)
+      console.error('❌ Error saving grades:', error)
       toast({
         title: "Error",
-        description: "Failed to save grades. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to save grades. Please try again.",
         variant: "destructive"
       })
     }
   }
 
+  // Helper function to highlight search matches
+  const highlightText = (text: string, query: string) => {
+    if (!query.trim() || !text) return text
+    
+    const parts = text.split(new RegExp(`(${query})`, 'gi'))
+    return (
+      <>
+        {parts.map((part, index) => 
+          part.toLowerCase() === query.toLowerCase() ? (
+            <mark key={index} className="bg-yellow-200 font-semibold px-0.5 rounded">
+              {part}
+            </mark>
+          ) : (
+            <span key={index}>{part}</span>
+          )
+        )}
+      </>
+    )
+  }
+
   const filteredActivities = activities.filter((record) => {
     let matchesDate = true
     let matchesStatus = true
+    let matchesSearch = true
 
+    // Date filtering
     if (dateFilter === "today") {
       const recordDate = new Date(record.date).toDateString()
       const today = new Date().toDateString()
@@ -342,6 +444,7 @@ export default function UnifiedActivitiesRecords() {
       matchesDate = record.date === customDate
     }
 
+    // Status filtering
     if (activeFilter === "in progress") {
       matchesStatus = record.status.toLowerCase() === "in progress"
     } else if (activeFilter === "completed") {
@@ -350,7 +453,27 @@ export default function UnifiedActivitiesRecords() {
       matchesStatus = record.status.toLowerCase() === "cancelled"
     }
 
-    return matchesDate && matchesStatus
+    // Search filtering (searches across multiple fields)
+    if (searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase()
+      matchesSearch = 
+        // Search by Activity ID
+        record.activity_id?.toLowerCase().includes(query) ||
+        // Search by Clinician Name
+        record.clinicianName?.toLowerCase().includes(query) ||
+        // Search by Patient Name
+        record.patientName?.toLowerCase().includes(query) ||
+        // Search by Patient Type
+        record.patientType?.toLowerCase().includes(query) ||
+        // Search by Procedures
+        record.procedures?.some((proc: string) => proc.toLowerCase().includes(query)) ||
+        // Search by Instructor Name
+        record.instructorName?.toLowerCase().includes(query) ||
+        // Search by Chair
+        record.chair?.toLowerCase().includes(query)
+    }
+
+    return matchesDate && matchesStatus && matchesSearch
   })
 
   const totalPages = Math.ceil(filteredActivities.length / itemsPerPage)
@@ -399,29 +522,54 @@ export default function UnifiedActivitiesRecords() {
 
      
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold text-gray-800">Records</h1>
-                
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">Date:</span>
+        
+        <div className="flex items-center gap-3">
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search records..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#5C8E77] focus:border-transparent w-[250px]"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          
+          {/* Date Filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Date:</span>
             <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-[140px]"> <SelectValue /> </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Dates</SelectItem>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="custom">Custom Date</SelectItem>
-                </SelectContent>
+              <SelectTrigger className="w-[140px]"> 
+                <SelectValue /> 
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Dates</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="custom">Custom Date</SelectItem>
+              </SelectContent>
             </Select>
-              {dateFilter === "custom" && (
+            {dateFilter === "custom" && (
               <input
                 type="date"
                 value={customDate}
                 onChange={(e) => setCustomDate(e.target.value)}
                 className="px-3 py-1.5 border border-gray-300 rounded-md text-sm"
               />
-              )}
-       </div>
-    </div>
+            )}
+          </div>
+        </div>
+      </div>
     
     <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg w-fit">
       <Button
@@ -460,10 +608,83 @@ export default function UnifiedActivitiesRecords() {
         Cancelled
       </Button>
     </div>
+    
+    {/* Active Filters Summary */}
+    {(searchQuery || dateFilter !== "all" || activeFilter !== "all") && (
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm text-gray-600">Active filters:</span>
+        
+        {searchQuery && (
+          <Badge variant="outline" className="gap-1 pr-1">
+            Search: {searchQuery}
+            <button
+              onClick={() => setSearchQuery("")}
+              className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        )}
+        
+        {dateFilter !== "all" && (
+          <Badge variant="outline" className="gap-1 pr-1">
+            Date: {dateFilter === "custom" ? customDate : dateFilter}
+            <button
+              onClick={() => {
+                setDateFilter("all")
+                setCustomDate("")
+              }}
+              className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        )}
+        
+        {activeFilter !== "all" && (
+          <Badge variant="outline" className="gap-1 pr-1">
+            Status: {activeFilter}
+            <button
+              onClick={() => setActiveFilter("all")}
+              className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        )}
+        
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setSearchQuery("")
+            setActiveFilter("all")
+            setDateFilter("all")
+            setCustomDate("")
+          }}
+          className="h-7 text-xs text-gray-600 hover:text-gray-900"
+        >
+          Clear all
+        </Button>
+      </div>
+    )}
+    
+    {/* Search Results Info */}
+    {searchQuery && (
+      <div className="flex items-center gap-2 text-sm text-gray-600">
+        <Search className="h-4 w-4" />
+        <span>
+          Found <strong>{filteredActivities.length}</strong> result{filteredActivities.length !== 1 ? 's' : ''} for "{searchQuery}"
+        </span>
+        <button
+          onClick={() => setSearchQuery("")}
+          className="text-[#5C8E77] hover:underline font-medium"
+        >
+          Clear search
+        </button>
+      </div>
+    )}
     </div>
-
-      {/* Only show tabs for clinicians */}
-      
     
     <Card>
       <CardContent className="p-0">
@@ -483,19 +704,58 @@ export default function UnifiedActivitiesRecords() {
             </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {currentRecords.map((activity) => (
+                    {currentRecords.length === 0 ? (
+                      <TableRow>
+                        <TableCell 
+                          colSpan={isInstructor || isChief ? 8 : 7} 
+                          className="text-center py-12"
+                        >
+                          <div className="flex flex-col items-center gap-3 text-gray-500">
+                            <Search className="h-12 w-12 text-gray-300" />
+                            {searchQuery ? (
+                              <>
+                                <p className="text-lg font-medium">No results found</p>
+                                <p className="text-sm">
+                                  Try adjusting your search or filters
+                                </p>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSearchQuery("")
+                                    setActiveFilter("all")
+                                    setDateFilter("all")
+                                  }}
+                                  className="mt-2"
+                                >
+                                  Clear all filters
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-lg font-medium">No records found</p>
+                                <p className="text-sm">
+                                  No activities match the current filters
+                                </p>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      currentRecords.map((activity) => (
                       <TableRow key={activity.id}>
-                        <TableCell>{activity.id}</TableCell>
+                        <TableCell>{highlightText(activity.id, searchQuery)}</TableCell>
                         {(isInstructor || isChief) && (
-                          <TableCell>{activity.clinicianName}</TableCell>
+                          <TableCell>{highlightText(activity.clinicianName || '', searchQuery)}</TableCell>
                         )}
-                        <TableCell>{activity.patientName}</TableCell>
+                        <TableCell>{highlightText(activity.patientName || '', searchQuery)}</TableCell>
                         <TableCell>
                           {activity.procedures && activity.procedures.length > 0 ? (
                             <div className="space-y-1">
                               {activity.procedures.map((proc, index) => (
                                 <div key={index} className="text-sm">
-                                  {proc}
+                                  {highlightText(proc, searchQuery)}
                                 </div>
                               ))}
                             </div>
@@ -522,7 +782,6 @@ export default function UnifiedActivitiesRecords() {
                         </TableCell>
                         {(isClinician || isChief) && (
                         <TableCell>
-                          {/* {activity.status === "Completed" &&  ( */}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -532,10 +791,8 @@ export default function UnifiedActivitiesRecords() {
                                 setIsViewModalOpen(true)
                               }}
                             >
-                              {/* <FileText className="h-4 w-4" /> */}
                               <Eye/>
                             </Button>
-                          {/* )} */}
                         </TableCell>
                         )}
                         {isInstructor && (
@@ -546,10 +803,7 @@ export default function UnifiedActivitiesRecords() {
                               size="sm"
                               variant="ghost"
                               className="h-8 text-blue-600 hover:bg-blue-50 bg-transparent"
-                              onClick={() => {
-                                setCurrentActivity(activity)
-                                setIsGradeModalOpen(true)
-                              }}
+                              onClick={() => initializeGradingModal(activity)}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -578,7 +832,8 @@ export default function UnifiedActivitiesRecords() {
                       </TableCell>
                         )}
                       </TableRow>
-                    ))}
+                    ))
+                    )}
                   </TableBody>
                 </Table>
 
@@ -790,16 +1045,6 @@ export default function UnifiedActivitiesRecords() {
                   )}
                 </div>
               </div>
-
-              {/* <DialogFooter className="bg-gray-50 px-6 py-4 border-t border-gray-200">
-                <Button 
-                  variant="outline" 
-                  className="border-gray-300 hover:bg-gray-100"
-                  onClick={() => setIsViewModalOpen(false)}
-                >
-                  Close
-                </Button>
-              </DialogFooter> */}
             </>
           )}
         </DialogContent>

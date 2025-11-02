@@ -13,7 +13,7 @@ interface UnarchiveConfirmationProps {
 export default function UnarchiveConfirmationModal({ isOpen, onClose,  onConfirm, activity }: UnarchiveConfirmationProps) {
     return(
         <Dialog open={isOpen} onOpenChange={onClose}>
-                <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-lg">
+                <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-lg [&>button]:hidden">
                   <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
                     <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Confirm Action</DialogTitle>
                   </DialogHeader>

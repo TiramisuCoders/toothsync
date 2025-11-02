@@ -38,9 +38,9 @@ export async function GET() {
 
     // Group records by record_id and organize procedures
     const groupedByActivityId = records.reduce((acc, r) => {
-      if (!acc[r.record_id]) {
-        acc[r.record_id] = {
-          id: r.record_id,
+      if (!acc[r.activity_id]) {
+        acc[r.activity_id] = {
+          id: r.activity_id,
           clinicianName: r.clinician,
           patientName: r.patient_name,
           patientType: r.patient_type,
@@ -62,12 +62,12 @@ export async function GET() {
         : null
       
       // Track unique procedures
-      if (r.procedure_name && !acc[r.record_id].procedures.includes(r.procedure_name)) {
-        acc[r.record_id].procedures.push(r.procedure_name)
+      if (r.procedure_name && !acc[r.activity_id].procedures.includes(r.procedure_name)) {
+        acc[r.activity_id].procedures.push(r.procedure_name)
       }
       
       // Find if this date already has a record entry
-      let existingRecord = acc[r.record_id].records.find((rec: any) => 
+      let existingRecord = acc[r.activity_id].records.find((rec: any) => 
         rec.date === formattedDate && 
         rec.instructorName === r.instructor &&
         rec.chair === r.chair
@@ -82,7 +82,7 @@ export async function GET() {
         })
       } else {
         // Create new record entry for this date/session
-        acc[r.record_id].records.push({
+        acc[r.activity_id].records.push({
           date: formattedDate,
           timeIn: new Date(r.time_in).toLocaleTimeString("en-US", {
             hour: "2-digit",
