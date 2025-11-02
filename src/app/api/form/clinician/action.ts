@@ -1,13 +1,13 @@
-// app/actions/clinician.ts
+// app/api/form/clinician/action.ts
 "use server"
 
 import { createAuthenticatedSupabaseClient } from '@/lib/supabase-route'
+import { logRequestCreated } from '@/app/utils/activityLogger' // ADD THIS IMPORT
 
 export async function getUserData() {
   const supabase = await createAuthenticatedSupabaseClient()
 
   try {
-    // Get authenticated user
     const { data: userData, error: userError } = await supabase.auth.getUser()
     if (userError || !userData.user) {
       console.error("Authentication error:", userError)
@@ -17,7 +17,6 @@ export async function getUserData() {
     console.log("Authenticated user ID:", userData.user.id)
     console.log("Authenticated user email:", userData.user.email)
 
-    // Fetch user details
     const { data: clinician, error: clinicianError } = await supabase
       .from("users")
       .select("first_name, last_name, role")
@@ -82,9 +81,8 @@ export async function getDepartments() {
   }
 }
 
-// Server action for form submission
 export async function submitAttendanceAction(formData: {
-  record_id?: string // Optional - if provided, adds to existing record
+  record_id?: string
   patientName: string
   selectedProcedures: string[]
   shift: string
@@ -125,23 +123,19 @@ export async function submitAttendanceAction(formData: {
       return { success: false, error: 'Validation failed', details: errors }
     }
 
-    
-    // Debug: Log the clinicianUserId being searched for
     console.log('Searching for clinician with auth_user_id:', formData.clinicianUserId)
 
-    // Verify clinician exists
+    // Verify clinician exists and get email for logging
     const { data: clinician, error: clinicianError } = await supabase
       .from('users')
-      .select('first_name, last_name, auth_user_id')
+      .select('first_name, last_name, auth_user_id, email, role') // ADD email and role
       .eq('auth_user_id', formData.clinicianUserId)
       .single()
 
-    // Debug: Log the query result
     console.log('Clinician query result:', { data: clinician, error: clinicianError })
     console.log(formData.record_id)
 
     if (clinicianError || !clinician) {
-      
       console.error('Clinician verification failed:', clinicianError)
       return {
         success: false,
@@ -152,10 +146,10 @@ export async function submitAttendanceAction(formData: {
       }
     }
 
-    // Verify procedures exist
+    // Verify procedures exist and get procedure names for logging
     const { data: procedureData, error: procedureError } = await supabase
       .from('procedure')
-      .select('procedure_id')
+      .select('procedure_id, name') // ADD name for logging
       .in('procedure_id', formData.selectedProcedures)
 
     if (procedureError) {
@@ -169,7 +163,6 @@ export async function submitAttendanceAction(formData: {
 
     // Check if this is adding to an existing record or creating a new one
     if (formData.record_id) {
-      // Adding to existing record - verify it exists and belongs to this clinician
       const { data: existingRecord, error: recordError } = await supabase
         .from('activity_overview')
         .select('record_id, clinician_id')
@@ -194,7 +187,6 @@ export async function submitAttendanceAction(formData: {
       created_at: new Date().toISOString()
     }
 
-    // Add record_id if this is for an existing record
     if (formData.record_id) {
       requestPayload.record_id = formData.record_id
     }
@@ -236,6 +228,21 @@ export async function submitAttendanceAction(formData: {
       return { success: false, error: 'Failed to associate procedures with request' }
     }
 
+    // ========================================
+    // ✅ LOG ACTIVITY - Request Created
+    // ========================================
+    const procedureNames = procedureData.map(p => p.name).join(', ')
+    const resources = `chair and instructor for ${procedureNames}`
+    
+    await logRequestCreated(
+      formData.clinicianUserId,
+      clinician.role, // Role ID (R01, R02, etc.)
+      clinician.email,
+      newRequestId,
+      resources
+    )
+    // ========================================
+
     // Log successful submission
     const submissionType = formData.record_id ? 'continuation' : 'new'
     console.log(`Attendance request ${newRequestId} (${submissionType}) submitted successfully by ${clinician.first_name} ${clinician.last_name}`)
@@ -265,7 +272,7 @@ export async function submitAttendanceAction(formData: {
     return {
       success: false,
       error: 'Internal server error',
-      message: 'An unexpected error occurred while processing your request'
+      message: 'An unexpected serror occurred while processing your request'
     }
   }
 }
