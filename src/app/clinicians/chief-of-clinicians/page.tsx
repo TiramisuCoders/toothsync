@@ -87,7 +87,14 @@ export default function CliniciansPage() {
   const [currentClinician, setCurrentClinician] = useState<Clinician | null>(null)
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [selectedClinician, setSelectedClinician] = useState<Clinician | null>(null)
-  const [activeTab, setActiveTab] = useState<"activities" | "attendance">("activities")
+  // const [activeTab, setActiveTab] = useState<"activities" | "attendance">("activities")
+
+  
+// Add these new state variables at the top of your component
+const [clinicianActivities, setClinicianActivities] = useState<any>(null);
+const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+const [activitiesError, setActivitiesError] = useState<string>("");
+const [selectedAcademicYearTab, setSelectedAcademicYearTab] = useState<string>("");
 
   const [addSuccessMessage, setAddSuccessMessage] = useState<string>("")
   const [addErrorMessage, setAddErrorMessage] = useState<string>("")
@@ -131,6 +138,7 @@ export default function CliniciansPage() {
     fetchClinicians()
     fetchAcademicYears()
   }, [])
+  
 
   const fetchClinicians = async () => {
     try {
@@ -163,32 +171,64 @@ export default function CliniciansPage() {
     }
   }
 
-  const [attendanceData] = useState<AttendanceRecord[]>([
-    {
-      id: 1,
-      date: "2025-05-08",
-      timeIn: "08:15 AM",
-      timeOut: "04:30 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
-  ])
+  const fetchClinicianActivities = async (clinicianId: string) => {
+  setIsLoadingActivities(true);
+  setActivitiesError("");
+  try {
+    const response = await fetch('/api/clinicians/activity_overview', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ clinician_id: clinicianId }),
+    });
 
-  const [activitiesData] = useState<Activity[]>([
-    {
-      id: "A001",
-      date: "2025-05-08",
-      procedure: "Root Canal Treatment",
-      chair: "Chair 05",
-      instructor: "Dr. Reyes",
-      patient: "Juan Dela Cruz",
-      grade: "85",
-      remarks: "Good work on canal preparation",
-      status: "Completed",
-      firstName: "Maria",
-      lastName: "Santos",
-    },
-  ])
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (result.success && result.data) {
+      setClinicianActivities(result.data);
+    } else {
+      setClinicianActivities(null);
+      setActivitiesError(result.message || 'No activities found for this clinician');
+    }
+  } catch (error) {
+    console.error('Failed to fetch clinician activities:', error);
+    setActivitiesError('Failed to load activities. Please try again.');
+    setClinicianActivities(null);
+  } finally {
+    setIsLoadingActivities(false);
+  }
+};
+
+  // const [attendanceData] = useState<AttendanceRecord[]>([
+  //   {
+  //     id: 1,
+  //     date: "2025-05-08",
+  //     timeIn: "08:15 AM",
+  //     timeOut: "04:30 PM",
+  //     sanitized: "Yes",
+  //     status: "Present",
+  //   },
+  // ])
+
+  // const [activitiesData] = useState<Activity[]>([
+  //   {
+  //     id: "A001",
+  //     date: "2025-05-08",
+  //     procedure: "Root Canal Treatment",
+  //     chair: "Chair 05",
+  //     instructor: "Dr. Reyes",
+  //     patient: "Juan Dela Cruz",
+  //     grade: "85",
+  //     remarks: "Good work on canal preparation",
+  //     status: "Completed",
+  //     firstName: "Maria",
+  //     lastName: "Santos",
+  //   },
+  // ])
 
   const handleEditClick = (clinician: Clinician) => {
     setCurrentClinician(clinician)
@@ -196,10 +236,11 @@ export default function CliniciansPage() {
   }
 
   const handleViewClick = (clinician: Clinician) => {
-    setSelectedClinician(clinician)
-    setIsViewModalOpen(true)
-  }
-
+    setSelectedClinician(clinician);
+    setIsViewModalOpen(true);
+    // Fetch activities when modal opens
+    fetchClinicianActivities(clinician.id);
+  };
   const handleUpdateClinician = (updatedClinician: Clinician) => {
     setClinicians(clinicians.map((clinician) => (clinician.id === updatedClinician.id ? updatedClinician : clinician)))
     setIsEditModalOpen(false)
@@ -828,163 +869,256 @@ export default function CliniciansPage() {
         </Dialog>
 
         {/* Clinician Records View Modal */}
-        <Dialog
-          open={isViewModalOpen}
-          onOpenChange={(open) => {
-            setIsViewModalOpen(open)
-            if (!open) {
-              setTimeout(() => setSelectedClinician(null), 100)
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-[900px] p-0 overflow-hidden rounded-lg">
-            {selectedClinician && (
-              <>
-                <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Clinician Records</DialogTitle>
-                      <p className="text-sm text-gray-500 mt-1">
-                        Viewing records for {selectedClinician.firstName} {selectedClinician.lastName} - AY 2024-2025,
-                        1st Semester
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="h-16 w-16 rounded-full bg-[#e6f7eb] flex items-center justify-center text-[#5C8E77] text-xl font-bold">
-                        {selectedClinician.firstName.charAt(0)}
-                        {selectedClinician.lastName.charAt(0)}
+<Dialog
+  open={isViewModalOpen}
+  onOpenChange={(open) => {
+    setIsViewModalOpen(open);
+    if (!open) {
+      setTimeout(() => {
+        setSelectedClinician(null);
+        setClinicianActivities(null);
+        setActivitiesError("");
+        setSelectedAcademicYearTab("");
+      }, 100);
+    }
+  }}
+>
+  <DialogContent className="sm:max-w-[1000px] p-0 overflow-hidden rounded-lg">
+    {selectedClinician && (
+      <>
+        <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-xl font-semibold text-[#5C8E77]">
+                Clinician Records
+              </DialogTitle>
+              <p className="text-sm text-gray-500 mt-1">
+                Viewing records for {selectedClinician.firstName} {selectedClinician.lastName}
+              </p>
+            </div>
+            {/* <div className="flex items-center gap-3">
+              <div className="h-16 w-16 rounded-full bg-[#e6f7eb] flex items-center justify-center text-[#5C8E77] text-xl font-bold">
+                {selectedClinician.firstName.charAt(0)}
+                {selectedClinician.lastName.charAt(0)}
+              </div>
+            </div> */}
+          </div>
+        </DialogHeader>
+        <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
+          {/* Clinician Basic Info */}
+          <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-gray-200">
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Student ID</h3>
+              <p className="text-[#333] font-medium">{selectedClinician.studentId}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Full Name</h3>
+              <p className="text-[#333] font-medium">
+                {selectedClinician.firstName} {selectedClinician.lastName}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Gender</h3>
+              <p className="text-[#333] font-medium">{selectedClinician.gender}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Year Level</h3>
+              <p className="text-[#333] font-medium">{selectedClinician.yearLevel}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Email</h3>
+              <p className="text-[#333] font-medium">{selectedClinician.email}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Contact Number</h3>
+              <p className="text-[#333] font-medium">{selectedClinician.contactNumber}</p>
+            </div>
+          </div>
+
+          {/* Loading State */}
+          {isLoadingActivities && (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#5C8E77] mx-auto mb-4"></div>
+                <p className="text-gray-500">Loading activities...</p>
+              </div>
+            </div>
+          )}
+
+          {/* Error State */}
+          {activitiesError && !isLoadingActivities && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center">
+                <svg className="h-5 w-5 text-amber-400 mr-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <p className="text-sm font-medium text-amber-800">{activitiesError}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Activities by Academic Year with Tabs */}
+          {!isLoadingActivities && clinicianActivities && clinicianActivities.academic_years.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-[#333]">
+                  Activities Overview
+                </h3>
+                <Badge className="bg-[#5C8E77]">
+                  {clinicianActivities.totalActivities} Total Activities
+                </Badge>
+              </div>
+
+              <Tabs value={selectedAcademicYearTab} onValueChange={setSelectedAcademicYearTab} className="w-full">
+                <TabsList className="grid w-full gap-2 h-15" style={{ gridTemplateColumns: `repeat(${clinicianActivities.academic_years.length}, minmax(0, 1fr))` }}>
+                  {clinicianActivities.academic_years.map((academicYear: any) => (
+                    <TabsTrigger 
+                      key={academicYear.academic_year_id} 
+                      value={academicYear.academic_year_id}
+                      className="data-[state=active]:bg-[#5C8E77] data-[state=active]:text-white"
+                    >
+                      <div className="flex flex-col items-center">
+                        <span className="font-medium">AY {academicYear.academic_year_id}</span>
+                        <span className="text-xs opacity-80">
+                          {academicYear.activityCount} {academicYear.activityCount === 1 ? 'Activity' : 'Activities'}
+                        </span>
                       </div>
-                    </div>
-                  </div>
-                </DialogHeader>
-                <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
-                  <div className="grid grid-cols-2 gap-6 mb-6">
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Student ID</h3>
-                      <p className="text-[#333] font-medium">{selectedClinician.studentId}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">First Name</h3>
-                      <p className="text-[#333] font-medium">{selectedClinician.firstName}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Last Name</h3>
-                      <p className="text-[#333] font-medium">{selectedClinician.lastName}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Gender</h3>
-                      <p className="text-[#333] font-medium">{selectedClinician.gender}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Email</h3>
-                      <p className="text-[#333] font-medium">{selectedClinician.email}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Contact Number</h3>
-                      <p className="text-[#333] font-medium">{selectedClinician.contactNumber}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Year Level</h3>
-                      <p className="text-[#333] font-medium">{selectedClinician.yearLevel}</p>
-                    </div>
-                  </div>
-                  <Tabs defaultValue="activities" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mb-4">
-                      <TabsTrigger value="activities" onClick={() => setActiveTab("activities")}>
-                        Activities
-                      </TabsTrigger>
-                      <TabsTrigger value="attendance" onClick={() => setActiveTab("attendance")}>
-                        Attendance
-                      </TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="activities" className="space-y-4">
-                      {activitiesData.length > 0 ? (
-                        activitiesData.map((activity) => (
-                          <div key={activity.id} className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-                            <div className="flex items-center justify-between mb-4">
-                              <h4 className="text-lg font-semibold text-[#333]">Activity ID: {activity.id}</h4>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+
+                {clinicianActivities.academic_years.map((academicYear: any) => (
+                  <TabsContent key={academicYear.academic_year_id} value={academicYear.academic_year_id} className="mt-4">
+                    <div className="space-y-4">
+                      {academicYear.activities.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          No activities found for this academic year.
+                        </div>
+                      ) : (
+                        academicYear.activities.map((activity: any) => (
+                          <div key={activity.activity_id} className="border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                            {/* Activity Header */}
+                            <div className="bg-[#f8f9fa] px-4 py-3 border-b border-gray-200">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <h5 className="font-semibold text-[#333]">
+                                    {activity.patientName || 'Unknown Patient'}
+                                  </h5>
+                                  <p className="text-sm text-gray-600">
+                                    {activity.patientType} • {activity.shift}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm text-gray-600">
+                                    {activity.dateStarted} - {activity.dateEnded}
+                                  </p>
+                                  <Badge variant="outline" className="mt-1">
+                                    {activity.recordCount} {activity.recordCount === 1 ? 'Session' : 'Sessions'}
+                                  </Badge>
+                                </div>
+                              </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Date</h3>
-                                <p className="text-[#333] font-medium">{activity.date}</p>
+
+                            {/* Procedures */}
+                            <div className="px-4 py-3 bg-blue-50 border-b border-gray-200">
+                              <p className="text-sm font-medium text-gray-700 mb-2">Procedures:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {activity.procedures.map((procedure: string, idx: number) => (
+                                  <Badge key={idx} variant="outline" className="bg-white">
+                                    {procedure}
+                                  </Badge>
+                                ))}
                               </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Procedure</h3>
-                                <p className="text-[#333] font-medium">{activity.procedure}</p>
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Patient</h3>
-                                <p className="text-[#333] font-medium">{activity.patient}</p>
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Chair</h3>
-                                <p className="text-[#333] font-medium">{activity.chair}</p>
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Instructor</h3>
-                                <p className="text-[#333] font-medium">{activity.instructor}</p>
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Grade</h3>
-                                <p className="text-[#333] font-medium">{activity.grade}</p>
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Status</h3>
-                                <p className="text-[#333] font-medium">{activity.status}</p>
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Remarks</h3>
-                                <p className="text-[#333] font-medium">{activity.remarks}</p>
-                              </div>
+                            </div>
+
+                            {/* All Records/Sessions */}
+                            <div className="p-4 space-y-3">
+                              {activity.allRecords.map((record: any, recordIdx: number) => (
+                                <div key={record.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <h6 className="font-medium text-[#333]">
+                                      Session {recordIdx + 1} - {record.date}
+                                    </h6>
+                                    <span className="text-sm text-gray-600">
+                                      {record.timeIn} - {record.timeOut}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-4 mb-3">
+                                    <div>
+                                      <p className="text-xs text-gray-500">Instructor</p>
+                                      <p className="text-sm font-medium text-[#333]">{record.instructorName}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-500">Chair</p>
+                                      <p className="text-sm font-medium text-[#333]">{record.chair}</p>
+                                    </div>
+                                    {record.clerkName !== "N/A" && (
+                                      <div>
+                                        <p className="text-xs text-gray-500">Clerk</p>
+                                        <p className="text-sm font-medium text-[#333]">{record.clerkName}</p>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Procedure Statuses */}
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-medium text-gray-700">Procedure Details:</p>
+                                    {record.procedureStatuses.map((procStatus: any, idx: number) => (
+                                      <div key={procStatus.ap_id || idx} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="font-medium text-sm text-[#333]">
+                                            {procStatus.procedure}
+                                          </span>
+                                          <Badge 
+                                            className={
+                                              procStatus.status === 'Approved' ? 'bg-green-500 hover:bg-green-600' :
+                                              procStatus.status === 'Pending' ? 'bg-yellow-500 hover:bg-yellow-600' :
+                                              procStatus.status === 'Rejected' ? 'bg-red-500 hover:bg-red-600' :
+                                              'bg-gray-500 hover:bg-gray-600'
+                                            }
+                                          >
+                                            {procStatus.status}
+                                          </Badge>
+                                        </div>
+                                        {procStatus.remarks && procStatus.remarks !== "No remarks" && (
+                                          <p className="text-xs text-gray-600 italic">
+                                            Remarks: {procStatus.remarks}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         ))
-                      ) : (
-                        <p className="text-sm text-gray-500">No activities found.</p>
                       )}
-                    </TabsContent>
-                    <TabsContent value="attendance" className="space-y-4">
-                      {attendanceData.length > 0 ? (
-                        attendanceData.map((attendance) => (
-                          <div key={attendance.id} className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-                            <div className="flex items-center justify-between mb-4">
-                              <h4 className="text-lg font-semibold text-[#333]">Attendance ID: {attendance.id}</h4>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Date</h3>
-                                <p className="text-[#333] font-medium">{attendance.date}</p>
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Time In</h3>
-                                <p className="text-[#333] font-medium">{attendance.timeIn}</p>
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Time Out</h3>
-                                <p className="text-[#333] font-medium">{attendance.timeOut}</p>
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Sanitized</h3>
-                                <p className="text-[#333] font-medium">{attendance.sanitized}</p>
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-medium text-gray-500">Status</h3>
-                                <p className="text-[#333] font-medium">{attendance.status}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-gray-500">No attendance records found.</p>
-                      )}
-                    </TabsContent>
-                  </Tabs>
-                </div>
-              </>
-            )}
-          </DialogContent>
-        </Dialog>
+                    </div>
+                  </TabsContent>
+                ))}
+              </Tabs>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!isLoadingActivities && clinicianActivities && clinicianActivities.academic_years.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No activities found for this clinician.</p>
+            </div>
+          )}
+
+          {!isLoadingActivities && !clinicianActivities && !activitiesError && (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No activities found for this clinician.</p>
+            </div>
+          )}
+        </div>
+      </>
+    )}
+  </DialogContent>
+</Dialog>
 
         {/* Add Clinician Modal */}
         <Dialog
