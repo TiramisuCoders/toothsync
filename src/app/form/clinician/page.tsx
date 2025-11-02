@@ -659,7 +659,7 @@ export default function ClinicianForm() {
 
       {/* New Request Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col overflow-hidden border-gray-200 rounded-xl">
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col overflow-hidden border-gray-200 rounded-xl [&>button]:hidden">
           
           {/* Sticky Header */}
           <DialogHeader className="border-b px-6 py-4 sticky top-0 z-10 bg-white">
