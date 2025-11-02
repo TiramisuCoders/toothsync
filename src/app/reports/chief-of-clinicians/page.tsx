@@ -1,3 +1,4 @@
+//app/reports/chief-of-clinicians/page.tsx
 "use client"
 
 import type React from "react"
@@ -445,32 +446,52 @@ export default function ReportsPage() {
     }
   }
 
-  const handleConfirmAddAcademicYear = () => {
-    const newId = `AY${newAcademicYear.startYear}-${String(academicYears.length + 1).padStart(3, "0")}`
-
-    // In a real application, this would make an API call
-    console.log("Adding new academic year:", {
-      id: newId,
-      academicYear: `${newAcademicYear.startYear}-${newAcademicYear.endYear}`,
-      semester: newAcademicYear.semester,
-      status: newAcademicYear.status,
+  const handleConfirmAddAcademicYear = async () => {
+  try {
+    setIsLoading(true)
+    
+    const response = await fetch("/api/academic-years", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        startYear: newAcademicYear.startYear,
+        endYear: newAcademicYear.endYear,
+        semester: newAcademicYear.semester,
+        status: newAcademicYear.status,
+      }),
     })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Failed to create academic year")
+    }
 
     toast({
       title: "Academic Year Added",
-      description: `AY ${newAcademicYear.startYear}-${newAcademicYear.endYear} (${newAcademicYear.semester} semester) has been added successfully.`,
+      description: `AY ${newAcademicYear.startYear}-${newAcademicYear.endYear} has been added successfully.`,
     })
 
     setShowAddConfirmModal(false)
     setShowAddModal(false)
-    setFormErrors({})
     setNewAcademicYear({
       startYear: new Date().getFullYear(),
       endYear: new Date().getFullYear() + 1,
       semester: "1st",
       status: "Inactive",
     })
+    
+    await fetchAcademicYears() // Refresh list
+
+  } catch (error: any) {
+    toast({
+      title: "Error",
+      description: error.message,
+      variant: "destructive",
+    })
+  } finally {
+    setIsLoading(false)
   }
+}
 
   const handleUpdateAcademicYearClick = () => {
     if (selectedAcademicYear) {
@@ -519,81 +540,7 @@ export default function ReportsPage() {
     }
   }
 
-  const handleAddAcademicYear = async () => {
-    setFormErrors({})
-
-    // Validation
-    if (!newAcademicYear.startYear) {
-      setFormErrors({ startYear: "Start year is required" })
-      return
-    }
-
-    if (newAcademicYear.startYear < 2000 || newAcademicYear.startYear > 2100) {
-      setFormErrors({ startYear: "Please enter a valid year between 2000 and 2100" })
-      return
-    }
-
-    // Check for duplicate academic year and semester combination before API call
-    const duplicate = academicYears.find(
-      (year) =>
-        year.academicYear === `${newAcademicYear.startYear}-${newAcademicYear.endYear}` &&
-        year.semester === newAcademicYear.semester,
-    )
-
-    if (duplicate) {
-      toast({
-        title: "Duplicate Entry",
-        description: `Academic Year ${newAcademicYear.startYear}-${newAcademicYear.endYear} for ${newAcademicYear.semester} semester already exists.`,
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const response = await fetch("/api/academic-years", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          academicYear: `${newAcademicYear.startYear}-${newAcademicYear.endYear}`,
-          semester: newAcademicYear.semester,
-          status: newAcademicYear.status,
-        }),
-      })
-
-      if (response.ok) {
-        const newYear = await response.json()
-        setAcademicYears((prev) => [newYear, ...prev])
-        setShowAddModal(false)
-        setNewAcademicYear({
-          startYear: new Date().getFullYear(),
-          endYear: new Date().getFullYear() + 1,
-          semester: "1st",
-          status: "Active",
-        })
-        toast({
-          title: "Academic Year Added",
-          description: `AY ${newAcademicYear.startYear}-${newAcademicYear.endYear} (${newAcademicYear.semester} semester) has been added successfully.`,
-        })
-      } else {
-        const error = await response.json()
-        setFormErrors({ general: error.error || "Failed to create academic year" })
-        toast({
-          title: "Error",
-          description: error.error || "Failed to create academic year. Please try again.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      setFormErrors({ general: "Network error. Please try again." })
-      toast({
-        title: "Error",
-        description: "Network error. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
+  
 
   const handleUpdateAcademicYear = () => {
     if (!selectedAcademicYear) return

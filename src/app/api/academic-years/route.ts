@@ -1,5 +1,12 @@
+// ============================================
+// COMPLETE FIXED VERSION
+// Replace entire file: app/api/academic-years/route.ts
+// ============================================
+
 import { type NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { createAuthenticatedSupabaseClient } from '@/lib/supabase-route'
+import { logAcademicYearCreated, logAcademicYearStatusChanged, logAcademicYearEdited } from '@/app/utils/activityLogger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,34 +18,6 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit
 
     console.log("[v0] Pagination params:", { page, limit, offset })
-    console.log("[v0] Using admin client for consistent access")
-
-    console.log("[v0] Admin client config check:", {
-      hasUrl: !!process.env.SUPABASE_URL,
-      hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      urlValue: process.env.SUPABASE_URL?.substring(0, 30) + "...",
-    })
-
-    console.log("[v0] Testing admin client connection...")
-    const { data: testData, error: testError } = await supabaseAdmin
-      .from("academic_year")
-      .select("count", { count: "exact", head: true })
-
-    if (testError) {
-      console.log("[v0] Connection test failed:", testError)
-
-      console.log("[v0] Attempting raw SQL query...")
-      const { data: sqlData, error: sqlError } = await supabaseAdmin.rpc("get_academic_years")
-
-      if (sqlError) {
-        console.log("[v0] Raw SQL also failed:", sqlError)
-        return NextResponse.json({ error: testError.message }, { status: 500 })
-      }
-
-      return NextResponse.json(sqlData || [])
-    }
-
-    console.log("[v0] Connection test successful, proceeding with query...")
 
     const { count, error: countError } = await supabaseAdmin
       .from("academic_year")
@@ -57,12 +36,6 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.log("[v0] Error fetching academic years:", error)
-      console.log("[v0] Error details:", {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-      })
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -91,39 +64,106 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const supabase = await createAuthenticatedSupabaseClient()
+  
   try {
     console.log("[v0] Starting POST /api/academic-years")
 
-    const body = await request.json()
-    const { startYear, endYear, semester, status } = body
-
-    // Validate required fields
-    if (!startYear || !endYear || !semester) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
+    if (authError || !user) {
+      console.error("[v0] Authentication failed:", authError)
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Generate ID and academic year string
-    const academicYearString = `${startYear}-${endYear}`
-    const id = `AY${startYear}-${semester === "1st" ? "001" : "002"}`
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('role, email')
+      .eq('auth_user_id', user.id)
+      .single()
 
+    if (userError) {
+      console.error("[v0] Failed to fetch user data:", userError)
+    }
+
+    const userRole = userData?.role || 'R02'
+    const userEmail = userData?.email || user.email || 'unknown@example.com'
+    const clientIp = request.headers.get('x-forwarded-for') || 
+                     request.headers.get('x-real-ip') || 
+                     undefined
+
+    // Parse and validate request
+    const body = await request.json()
+    const { startYear, endYear, semester, status, academicYear } = body
+
+    let academicYearString: string
+    
+    if (academicYear) {
+      academicYearString = academicYear
+    } else if (startYear && endYear) {
+      academicYearString = `${startYear}-${endYear}`
+    } else {
+      return NextResponse.json({ 
+        error: "Missing required fields: academicYear or startYear/endYear" 
+      }, { status: 400 })
+    }
+
+    if (!semester) {
+      return NextResponse.json({ error: "Semester is required" }, { status: 400 })
+    }
+
+    // Generate ID
+    const yearStart = academicYearString.split('-')[0]
+    let semesterCode = '001'
+    if (semester === '2nd') semesterCode = '002'
+    else if (semester === 'summer') semesterCode = '003'
+    
+    const id = `AY${yearStart}-${semesterCode}`
+
+    // Check for duplicate
+    const { data: existing } = await supabaseAdmin
+      .from("academic_year")
+      .select("id")
+      .eq("id", id)
+      .single()
+
+    if (existing) {
+      return NextResponse.json({ 
+        error: `Academic Year ${academicYearString} for ${semester} semester already exists` 
+      }, { status: 409 })
+    }
+
+    // Create academic year
     const { data, error } = await supabaseAdmin
       .from("academic_year")
       .insert({
         id,
         academic_year: academicYearString,
         semester,
-        status: status?.toLowerCase() || "active",
+        status: status?.toLowerCase() || "inactive",
         created_at: new Date().toISOString(),
       })
       .select()
       .single()
 
     if (error) {
-      console.log("[v0] Error creating academic year:", error)
+      console.error("[v0] Error creating academic year:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Transform response to match frontend interface
+    // Log the creation
+    await logAcademicYearCreated(
+      user.id,
+      userRole,
+      userEmail,
+      academicYearString,
+      clientIp
+    )
+
+    console.log(`[v0] ✅ Academic year ${academicYearString} created and logged`)
+
+    // Transform response
     const transformedData = {
       id: data.id,
       academicYear: data.academic_year,
@@ -134,32 +174,146 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(transformedData, { status: 201 })
   } catch (error) {
-    console.log("[v0] Unexpected error:", error)
+    console.error("[v0] Unexpected error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
 export async function PUT(request: NextRequest) {
+  const supabase = await createAuthenticatedSupabaseClient()
+  
   try {
     console.log("[v0] Starting PUT /api/academic-years")
 
-    const body = await request.json()
-    const { id, status } = body
-
-    if (!id || !status) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
+    if (authError || !user) {
+      console.error("[v0] Authentication failed:", authError)
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('role, email')
+      .eq('auth_user_id', user.id)
+      .single()
+
+    if (userError) {
+      console.error("[v0] Failed to fetch user data:", userError)
+    }
+
+    const userRole = userData?.role || 'R02'
+    const userEmail = userData?.email || user.email || 'unknown@example.com'
+    const clientIp = request.headers.get('x-forwarded-for') || 
+                     request.headers.get('x-real-ip') || 
+                     undefined
+
+    // Parse request
+    const body = await request.json()
+    const { id, status, academic_year, semester } = body
+
+    console.log("[v0] Update request:", { id, status, academic_year, semester })
+
+    if (!id) {
+      return NextResponse.json({ error: "Missing academic year ID" }, { status: 400 })
+    }
+
+    // Get current state BEFORE update
+    const { data: currentState, error: fetchError } = await supabaseAdmin
+      .from("academic_year")
+      .select("*")
+      .eq("id", id)
+      .single()
+
+    if (fetchError || !currentState) {
+      console.error("[v0] Academic year not found:", id)
+      return NextResponse.json({ error: "Academic year not found" }, { status: 404 })
+    }
+
+    console.log("[v0] Current state:", {
+      academic_year: currentState.academic_year,
+      semester: currentState.semester,
+      status: currentState.status
+    })
+
+    // Build update
+    const updateData: any = {}
+    
+    if (status !== undefined) {
+      updateData.status = status.toLowerCase()
+    }
+    if (academic_year) {
+      updateData.academic_year = academic_year
+    }
+    if (semester) {
+      updateData.semester = semester
+    }
+
+    console.log("[v0] Update data:", updateData)
+
+    // Update database
     const { data, error } = await supabaseAdmin
       .from("academic_year")
-      .update({ status: status.toLowerCase() })
+      .update(updateData)
       .eq("id", id)
       .select()
       .single()
 
     if (error) {
-      console.log("[v0] Error updating academic year:", error)
+      console.error("[v0] Error updating academic year:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // ========================================
+    // LOG ALL CHANGES
+    // ========================================
+    
+    // Check if academic year or semester changed
+    const yearChanged = academic_year && currentState.academic_year !== academic_year
+    const semesterChanged = semester && currentState.semester !== semester
+    const statusChanged = status !== undefined && currentState.status !== status.toLowerCase()
+
+    // Log year/semester edits
+    if (yearChanged || semesterChanged) {
+      try {
+        await logAcademicYearEdited(
+          user.id,
+          userRole,
+          userEmail,
+          currentState.academic_year,
+          academic_year || currentState.academic_year,
+          clientIp
+        )
+        console.log(`[v0] ✅ Edit logged: ${currentState.academic_year} → ${academic_year || currentState.academic_year}`)
+      } catch (logError) {
+        console.error("[v0] Failed to log edit:", logError)
+      }
+    }
+
+    // Log status changes
+    if (statusChanged) {
+      const oldStatus = currentState.status === 'active' ? 'Active' : 'Inactive'
+      const newStatus = status.toLowerCase() === 'active' ? 'Active' : 'Inactive'
+      
+      try {
+        await logAcademicYearStatusChanged(
+          user.id,
+          userRole,
+          userEmail,
+          currentState.academic_year,
+          oldStatus,
+          newStatus,
+          clientIp
+        )
+        console.log(`[v0] ✅ Status change logged: ${oldStatus} → ${newStatus}`)
+      } catch (logError) {
+        console.error("[v0] Failed to log status change:", logError)
+      }
+    }
+
+    if (!yearChanged && !semesterChanged && !statusChanged) {
+      console.log("[v0] No changes detected, nothing logged")
     }
 
     // Transform response
@@ -173,7 +327,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(transformedData)
   } catch (error) {
-    console.log("[v0] Unexpected error:", error)
+    console.error("[v0] Unexpected error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

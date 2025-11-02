@@ -1,4 +1,4 @@
-//attendance/clerk
+// app/requests/clerk/ClerkAttendance.tsx
 // CSR
 
 "use client"
@@ -95,7 +95,7 @@ export default function ClerkAttendance() {
         console.error('Response headers:', [...response.headers.entries()])
         console.error('Error result:', result)
         
-        throw new Error(result.error || `Server error (${response.status}): Failed to update sanitization`)
+        throw new Error(result.error || `Server error (${response.status}): Failed to fetch attendance records`)
       }
       setAttendanceRecords(result.data || [])
     } catch (error) {
@@ -113,6 +113,9 @@ export default function ClerkAttendance() {
   // Function to handle confirm attendance
   const handleConfirmAttendance = async (id: string) => {
     try {
+      console.log('Confirming attendance for record ID:', id)
+      
+      // Optimistically update UI
       setAttendanceRecords(prev =>
         prev.map(record =>
           record.id === id ? { ...record, status: "Confirmed" } : record
@@ -122,12 +125,14 @@ export default function ClerkAttendance() {
       const response = await fetch('/api/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
-          request_id: id
+          request_id: id  // ✅ FIXED: Send request_id (matches backend expectation)
         })
       })
 
       const result = await response.json()
+      console.log('Confirmation response:', result)
 
       if (!response.ok) {
         throw new Error(result.error || 'Failed to confirm attendance')
@@ -141,6 +146,7 @@ export default function ClerkAttendance() {
     } catch (error) {
       console.error("Failed to confirm attendance:", error)
       
+      // Revert optimistic update on error
       setAttendanceRecords(prev =>
         prev.map(record =>
           record.id === id ? { ...record, status: "Pending" } : record
@@ -149,7 +155,7 @@ export default function ClerkAttendance() {
 
       toast({
         title: "Update Failed",
-        description: "There was a problem confirming the attendance.",
+        description: error instanceof Error ? error.message : "There was a problem confirming the attendance.",
         variant: "destructive",
       })
     }
@@ -183,10 +189,10 @@ export default function ClerkAttendance() {
 
     try {
       const response = await fetch('/api/requests', {
-        method: 'POST',
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
-          action: 'delete',
           request_id: attendanceToDelete.id
         })
       })
@@ -225,12 +231,13 @@ export default function ClerkAttendance() {
     if (!clinicianToTimeout) return
 
     try {
-      const response = await fetch('/api/attendance/timeOut', {
-        method: 'POST',
+      const response = await fetch('/api/requests', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
-          action: 'timeout',
-          request_id: clinicianToTimeout.id
+          request_id: clinicianToTimeout.id,
+          action: 'timeout'
         })
       })
 
