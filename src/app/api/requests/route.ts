@@ -13,7 +13,7 @@ export async function GET() {
 
     const user = data?.user
     if (authError || !user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      return Response.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { data: userRole } = await supabase
@@ -25,7 +25,7 @@ export async function GET() {
     const allowedRoles = ['R02', 'R04']
 
     if (!allowedRoles.includes(userRole?.role)) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 })
+      return Response.json({ error: "Forbidden" }, { status: 403 })
     }
 
     // Fetch attendance records
@@ -47,8 +47,7 @@ export async function GET() {
     console.log('- Attendance query error:', err)
 
     if (err) {
-      console.log('❌ Database query failed:', err.message)
-      return Response.json({ error: 'Database error', details: err.message }, { status: 500 })
+      return Response.json({ error: "Database error", details: err.message }, { status: 500 })
     }
 
     // Transform data to match your interface
@@ -78,9 +77,13 @@ export async function POST(request: NextRequest) {
   const supabase = await createAuthenticatedSupabaseClient()
 
   try {
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
+
     if (error || !user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      return Response.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // Check if user has clerk role (R02, R04)
@@ -93,14 +96,14 @@ export async function POST(request: NextRequest) {
     const allowedRoles = ['R02', 'R04']
 
     if (!allowedRoles.includes(userRole?.role)) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 })
+      return Response.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const body = await request.json()
-    const { request_id } = body
+    const { request_id, record_id } = body
 
-    if (!request_id) {
-      return Response.json({ error: 'Missing request_id' }, { status: 400 })
+    if (!request_id && !record_id) {
+      return Response.json({ error: "Missing request_id or record_id" }, { status: 400 })
     }
 
     // ========================================
@@ -146,10 +149,10 @@ export async function POST(request: NextRequest) {
 
     const edgeFunctionUrl = `${process.env.SUPABASE_URL}/functions/v1/resource-match`
     const response = await fetch(edgeFunctionUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
       },
       body: JSON.stringify({
         reqId: request_id,
@@ -229,6 +232,21 @@ export async function POST(request: NextRequest) {
       newStatus
     }, { status: 200 })
 
+    await logRequestApproved(
+      user.id,
+      userRole?.role,
+      userEmail?.email || "unknown@example.com",
+      clinicianEmail?.email || "unknown@example.com",
+      idToProcess,
+    )
+
+    return Response.json(
+      {
+        success: true,
+        result: result,
+      },
+      { status: 200 },
+    )
   } catch (error) {
     console.error('[v0] Error in POST /api/requests:', error)
     return Response.json({
