@@ -92,6 +92,73 @@ export async function logSuccessfulLogin(
     clientIp,
   });
 }
+export async function logAcademicYearCreated(
+  userId: string,
+  roleId: string,
+  email: string,
+  year: string,
+  clientIp?: string
+) {
+  const username = email.split("@")[0];
+
+  await logActivity({
+    actionKey: "academic_year_created",
+    userId,
+    roleId,
+    placeholders: { username, year },
+    metadata: { email, academic_year: year, client_ip: clientIp },
+    clientIp,
+  });
+}
+
+export async function logAcademicYearStatusChanged(
+  userId: string,
+  roleId: string,
+  email: string,
+  year: string,
+  oldStatus: string,
+  newStatus: string,
+  clientIp?: string
+) {
+  const username = email.split("@")[0];
+
+  await logActivity({
+    actionKey: "academic_year_status_changed",
+    userId,
+    roleId,
+    placeholders: { username, year, old_status: oldStatus, new_status: newStatus },
+    metadata: { email, academic_year: year, old_status: oldStatus, new_status: newStatus, client_ip: clientIp },
+    clientIp,
+  });
+}
+export async function logAcademicYearEdited(
+  userId: string,
+  roleId: string,
+  email: string,
+  oldYear: string,
+  newYear: string,
+  clientIp?: string
+) {
+  const username = email.split("@")[0]; // ✅ Fixed: Regular quotes
+
+  await logActivity({
+    actionKey: "academic_year_edited",
+    userId,
+    roleId,
+    placeholders: {
+      username,
+      old_year: oldYear,
+      new_year: newYear,
+    },
+    metadata: {
+      email,
+      old_academic_year: oldYear,
+      new_academic_year: newYear,
+      client_ip: clientIp,
+    },
+    clientIp,
+  });
+}
 
 export async function logFailedLogin(
   email: string,
