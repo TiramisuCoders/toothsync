@@ -7,7 +7,6 @@ import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
-import { supabase }from "@/lib/supabase"
 import { loginAction } from "@/app/login/actions"
 
 export default function ChiefOfClinicianLoginPage() {
@@ -31,7 +30,6 @@ export default function ChiefOfClinicianLoginPage() {
     return () => clearInterval(interval)
   }, [])
 
-
   const triggerShakeAnimation = () => {
     setIsShaking(true)
     setTimeout(() => setIsShaking(false), 600)
@@ -42,7 +40,7 @@ export default function ChiefOfClinicianLoginPage() {
     
         startTransition(async () => {
           // Pass "R04" as the allowed role for chief of clinicians login
-          const { error } = await loginAction(email, password)
+          const { error } = await loginAction(email, password, "R04")
     
           if (error) {
             setErrorMessage(error.message)
@@ -194,6 +192,8 @@ export default function ChiefOfClinicianLoginPage() {
               Sign in
             </button>
 
+            
+
             <button
               type="button"
               onClick={handleBackToRoleSelection}
@@ -203,10 +203,6 @@ export default function ChiefOfClinicianLoginPage() {
             </button>
           </form>
 
-          {/* Footer */}
-          <div className="mt-8 text-center">
-            <p className="text-xs text-gray-500">Academic Year 2024–2025</p>
-          </div>
         </div>
       </div>
 

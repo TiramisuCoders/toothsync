@@ -1,30 +1,26 @@
 "use client"
 
+
 import { X, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+
 
 interface TicketFailureModalProps {
   isOpen: boolean
   onClose: () => void
+  onRetry: () => void
   errorMessage?: string
-  onRetry?: () => void | Promise<void>
 }
+
 
 export function TicketFailureModal({
   isOpen,
   onClose,
-  errorMessage = "An unexpected error occurred while submitting your ticket. Please try again.",
   onRetry,
+  errorMessage = "An unexpected error occurred while submitting your ticket. Please try again.",
 }: TicketFailureModalProps) {
   if (!isOpen) return null
 
-  const handleRetry = async () => {
-    if (onRetry) {
-      await onRetry()
-    }
-    // Optionally close the modal after retry
-    // onClose()
-  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -41,16 +37,18 @@ export function TicketFailureModal({
           </div>
         </div>
 
+
         {/* Content */}
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Submission Failed</h2>
           <p className="text-gray-600 text-sm leading-relaxed">{errorMessage}</p>
         </div>
 
+
         {/* Action Buttons */}
         <div className="space-y-3">
           <Button
-            onClick={handleRetry}
+            onClick={onRetry}
             className="w-full bg-red-600 hover:bg-red-700 text-white py-3 text-base font-medium"
           >
             Try Again
@@ -67,3 +65,6 @@ export function TicketFailureModal({
     </div>
   )
 }
+
+
+

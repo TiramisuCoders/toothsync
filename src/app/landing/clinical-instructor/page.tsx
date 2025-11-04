@@ -6,7 +6,6 @@ import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, X } from "lucide-react"
-import { supabase }from "@/lib/supabase"
 import { loginAction } from "@/app/login/actions"
 
 export default function InstructorLoginPage() {
@@ -29,7 +28,6 @@ export default function InstructorLoginPage() {
     }, 4000)
     return () => clearInterval(interval)
   }, [])
-
 
   const triggerShakeAnimation = () => {
     setIsShaking(true)
@@ -192,6 +190,19 @@ export default function InstructorLoginPage() {
               Sign in
             </button>
 
+            <div className="text-center">
+              <p className="text-sm text-gray-600">
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => router.push("/landing/signup/clinical-instructor")}
+                  className="text-emerald-600 hover:text-emerald-700 font-medium hover:underline"
+                >
+                  Sign up here
+                </button>
+              </p>
+            </div>
+
             <button
               type="button"
               onClick={handleBackToRoleSelection}
@@ -201,10 +212,6 @@ export default function InstructorLoginPage() {
             </button>
           </form>
 
-          {/* Footer */}
-          <div className="mt-8 text-center">
-            <p className="text-xs text-gray-500">Academic Year 2024–2025</p>
-          </div>
         </div>
       </div>
 

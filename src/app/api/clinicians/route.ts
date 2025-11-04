@@ -17,11 +17,13 @@ const parseEnrollmentStatus = (status: string): string => {
   return "Not Enrolled" // Default fallback
 }
 
-// Helper to parse year level string (if needed, otherwise just return as is)
+// Helper to parse year level string
 const parseYearLevel = (yearLevel: string): string => {
-  // This helper might be simplified if yearLevel is always stored exactly as received
-  if (yearLevel.includes("5th")) return "5th Year"
-  if (yearLevel.includes("6th")) return "6th Year"
+  if (yearLevel.includes("1st") || yearLevel.includes("1")) return "1st Year"
+  if (yearLevel.includes("2nd") || yearLevel.includes("2")) return "2nd Year"
+  if (yearLevel.includes("3rd") || yearLevel.includes("3")) return "3rd Year"
+  if (yearLevel.includes("4th") || yearLevel.includes("4")) return "4th Year"
+  if (yearLevel.includes("5th") || yearLevel.includes("5")) return "5th Year"
   return yearLevel // Fallback for other values
 }
 
@@ -32,6 +34,22 @@ const generatePassword = (firstName: string, lastName: string, contactNumber: st
   return `${firstInitial}${lastInitial}${lastFourDigits}`
 }
 
+const getAcademicYearStatus = async (academicYearId: string): Promise<string> => {
+  try {
+    const { data, error } = await supabaseAdmin.from("academic_year").select("status").eq("id", academicYearId).single()
+
+    if (error) {
+      console.error("Error fetching academic year status:", error)
+      return "inactive" // Default to inactive on error
+    }
+
+    return data?.status || "inactive"
+  } catch (error) {
+    console.error("Exception fetching academic year status:", error)
+    return "inactive" // Default to inactive on error
+  }
+}
+
 // GET /api/clinicians - Fetch all clinicians
 export async function GET() {
   try {
@@ -39,7 +57,7 @@ export async function GET() {
     const { data: cliniciansData, error: cliniciansError } = await supabaseAdmin
       .from("clinicians")
       .select(
-        `user_id, student_id, enrollment_status, year_level, section, users(first_name, last_name, email, sex, contact_number)`,
+        `user_id, student_id, enrollment_status, year_level, users(first_name, last_name, email, sex, contact_number)`,
       )
       .order("user_id", { ascending: true })
 
@@ -63,7 +81,6 @@ export async function GET() {
         email: c.users?.email || "",
         contactNumber: c.users?.contact_number || "",
         yearLevel: c.year_level || "", // Now from public.clinicians
-        section: c.section || "", // Now from public.clinicians
       }
     })
 
@@ -85,13 +102,13 @@ export async function POST(req: Request) {
       email,
       contactNumber,
       yearLevel, // Now handled in clinicians table
-      section, // Now handled in clinicians table
       status,
       studentId,
+      academicYearId, // Added academicYearId parameter
     } = await req.json()
 
     // Basic validation for fields that are required
-    if (!firstName || !lastName || !email || !gender || !status || !studentId) {
+    if (!firstName || !lastName || !email || !gender || !status || !studentId || !academicYearId) {
       return NextResponse.json({ message: "Missing required fields" }, { status: 400 })
     }
 
@@ -101,6 +118,9 @@ export async function POST(req: Request) {
         { status: 400 },
       )
     }
+
+    const academicYearStatus = await getAcademicYearStatus(academicYearId)
+    console.log(`Academic year status: ${academicYearStatus}`)
 
     // 1. Get or Create Auth User
     let authUserId: string | null = null
@@ -162,6 +182,8 @@ export async function POST(req: Request) {
       contact_number: contactNumber || null,
     }
 
+    let actualUserId: string | null = null
+
     const { data: existingUser, error: fetchUserError } = await supabaseAdmin
       .from("users")
       .select("auth_user_id")
@@ -175,77 +197,139 @@ export async function POST(req: Request) {
     }
 
     if (existingUser) {
-      // User exists, update it
-      const { error: updateUserError } = await supabaseAdmin
+      // User exists, update it and get the user_id
+      const { data: updatedUser, error: updateUserError } = await supabaseAdmin
         .from("users")
         .update(userPayload)
         .eq("auth_user_id", authUserId)
+        .select("auth_user_id")
+        .single()
       if (updateUserError) {
         console.error("Error updating user in public.users:", updateUserError)
         return NextResponse.json({ message: `Failed to update user: ${updateUserError.message}` }, { status: 500 })
       }
-      console.log(`Successfully updated user ${firstName} ${lastName} in public.users`)
+      actualUserId = updatedUser.auth_user_id
+      console.log(`Successfully updated user ${firstName} ${lastName} in public.users with ID: ${actualUserId}`)
     } else {
-      // User does not exist, insert it
-      const { error: insertUserError } = await supabaseAdmin.from("users").insert([userPayload])
+      // User does not exist, insert it and get the user_id
+      const { data: insertedUser, error: insertUserError } = await supabaseAdmin
+        .from("users")
+        .insert([userPayload])
+        .select("auth_user_id")
+        .single()
       if (insertUserError) {
         console.error("Error inserting user into public.users:", insertUserError)
         return NextResponse.json({ message: `Failed to insert user: ${insertUserError.message}` }, { status: 500 })
       }
-      console.log(`Successfully inserted user ${firstName} ${lastName} into public.users`)
+      actualUserId = insertedUser.auth_user_id
+      console.log(`Successfully inserted user ${firstName} ${lastName} into public.users with ID: ${actualUserId}`)
     }
 
-    // 3. Insert/Update into public.clinicians table
-    const clinicianPayload = {
-      user_id: authUserId,
+    if (!actualUserId) {
+      return NextResponse.json({ message: "Failed to obtain user ID from users table." }, { status: 500 })
+    }
+
+    // 3. Insert/Update into clinicians table (removed section field)
+    const cliniciansPayload: any = {
+      user_id: actualUserId,
       student_id: studentId,
+      year_level: parseYearLevel(yearLevel),
       enrollment_status: parseEnrollmentStatus(status),
-      year_level: parseYearLevel(yearLevel), // Year level now stored in clinicians table
-      section: section, // Section now stored in clinicians table
       updated_at: new Date().toISOString(),
     }
 
     const { data: existingClinician, error: fetchClinicianError } = await supabaseAdmin
       .from("clinicians")
       .select("user_id")
-      .eq("user_id", authUserId)
+      .eq("user_id", actualUserId)
       .single()
 
     if (fetchClinicianError && fetchClinicianError.code !== "PGRST116") {
-      console.error("Error checking existing clinician:", fetchClinicianError)
+      console.error("Error checking existing clinician in clinicians:", fetchClinicianError)
       return NextResponse.json({ message: `Database error: ${fetchClinicianError.message}` }, { status: 500 })
     }
 
     if (existingClinician) {
-      // Clinician exists, update it
+      // Update existing clinician
       const { error: updateClinicianError } = await supabaseAdmin
         .from("clinicians")
-        .update(clinicianPayload)
-        .eq("user_id", authUserId)
+        .update(cliniciansPayload)
+        .eq("user_id", actualUserId)
       if (updateClinicianError) {
-        console.error("Error updating clinician:", updateClinicianError)
+        console.error("Error updating clinician in clinicians:", updateClinicianError)
         return NextResponse.json(
           { message: `Failed to update clinician: ${updateClinicianError.message}` },
           { status: 500 },
         )
       }
-      console.log(`Successfully updated clinician ${firstName} ${lastName}`)
     } else {
-      // Clinician does not exist, insert it
-      const { error: insertClinicianError } = await supabaseAdmin.from("clinicians").insert([clinicianPayload])
+      // Insert new clinician
+      const { error: insertClinicianError } = await supabaseAdmin.from("clinicians").insert([cliniciansPayload])
       if (insertClinicianError) {
-        console.error("Error inserting clinician:", insertClinicianError)
+        console.error("Error inserting clinician into clinicians:", insertClinicianError)
         return NextResponse.json(
           { message: `Failed to insert clinician: ${insertClinicianError.message}` },
           { status: 500 },
         )
       }
-      console.log(`Successfully inserted clinician ${firstName} ${lastName}`)
     }
 
-    // No longer interacting with public.clinician_records or academic_year for clinician details
+    // 4. Insert/Update into clinician_records table (removed section field)
+    const clinicianRecordsPayload = {
+      user_id: actualUserId,
+      student_id: studentId,
+      year_level: parseYearLevel(yearLevel),
+      academic_year_id: academicYearId,
+    }
 
-    return NextResponse.json({ message: "Clinician added/updated successfully!" }, { status: 200 })
+    const { data: existingRecord, error: fetchRecordError } = await supabaseAdmin
+      .from("clinician_records")
+      .select("user_id")
+      .eq("user_id", actualUserId)
+      .eq("academic_year_id", academicYearId)
+      .single()
+
+    if (fetchRecordError && fetchRecordError.code !== "PGRST116") {
+      console.error("Error checking existing record in clinician_records:", fetchRecordError)
+      return NextResponse.json({ message: `Database error: ${fetchRecordError.message}` }, { status: 500 })
+    }
+
+    if (existingRecord) {
+      // Update existing record
+      const { error: updateRecordError } = await supabaseAdmin
+        .from("clinician_records")
+        .update(clinicianRecordsPayload)
+        .eq("user_id", actualUserId)
+        .eq("academic_year_id", academicYearId)
+      if (updateRecordError) {
+        console.error("Error updating record in clinician_records:", updateRecordError)
+        return NextResponse.json(
+          { message: `Failed to update clinician record: ${updateRecordError.message}` },
+          { status: 500 },
+        )
+      }
+    } else {
+      // Insert new record
+      const { error: insertRecordError } = await supabaseAdmin
+        .from("clinician_records")
+        .insert([clinicianRecordsPayload])
+      if (insertRecordError) {
+        console.error("Error inserting record into clinician_records:", insertRecordError)
+        return NextResponse.json(
+          { message: `Failed to insert clinician record: ${insertRecordError.message}` },
+          { status: 500 },
+        )
+      }
+    }
+
+    console.log(`Successfully inserted clinician ${firstName} ${lastName} into both clinicians and clinician_records`)
+    return NextResponse.json(
+      {
+        message: "Clinician added successfully!",
+        academicYearStatus: academicYearStatus,
+      },
+      { status: 200 },
+    )
   } catch (error: any) {
     console.error("Unexpected error in POST /api/clinicians:", error)
     return NextResponse.json({ message: "Internal server error", error: error.message }, { status: 500 })

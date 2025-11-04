@@ -9,35 +9,30 @@ const parseSex = (gender: string): "Male" | "Female" | "Other" => {
   return "Other"
 }
 
-// Helper to parse status for instructors
-const parseStatus = (status: string): string => {
-  return status
-}
-
-// Helper function to generate password using the pattern: first letter of first name + first letter of last name + last 4 digits of contact number
+// Helper function to generate password
 const generatePassword = (firstName: string, lastName: string, contactNumber: string): string => {
   const firstInitial = firstName.charAt(0).toUpperCase()
   const lastInitial = lastName.charAt(0).toUpperCase()
-  const lastFourDigits = contactNumber.replace(/\D/g, "").slice(-4) // Remove non-digits and get last 4
+  const lastFourDigits = contactNumber.replace(/\D/g, "").slice(-4)
   return `${firstInitial}${lastInitial}${lastFourDigits}`
 }
 
-// GET /api/instructors - Fetch all instructors with their specializations (OPTIMIZED)
+// GET /api/instructors - Fetch all instructors with their department specializations
 export async function GET() {
   try {
     if (!supabaseAdmin) {
-      console.error("Supabase admin client not available - missing environment variables")
+      console.error("Supabase admin client not available")
       return NextResponse.json(
         {
           message: "Database Configuration Required",
-          error:
-            "Server-side environment variables are missing. Please add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to your v0 Project Settings (gear icon → Project Settings → Environment Variables).",
+          error: "Server-side environment variables are missing.",
         },
         { status: 500 },
       )
     }
 
-    const { data: testData, error: testError } = await supabaseAdmin
+    // Test connection
+    const { error: testError } = await supabaseAdmin
       .from("instructors")
       .select("instructor_id")
       .limit(1)
@@ -47,15 +42,34 @@ export async function GET() {
       return NextResponse.json(
         {
           message: "Database Connection Failed",
-          error: `Cannot connect to database: ${testError.message}. Please check your Supabase configuration and Row Level Security policies.`,
+          error: `Cannot connect to database: ${testError.message}`,
         },
         { status: 500 },
       )
     }
 
+    // Fetch all departments
+    const { data: allDepartments, error: departmentsError } = await supabaseAdmin
+      .from("departments")
+      .select("id, name")
+
+    if (departmentsError) {
+      console.error("Error fetching departments:", departmentsError)
+      return NextResponse.json(
+        { message: "Error fetching departments", error: departmentsError.message },
+        { status: 500 },
+      )
+    }
+
+    const departmentMap = new Map()
+    allDepartments?.forEach((dept: any) => {
+      departmentMap.set(dept.id, dept.name)
+    })
+
+    // Fetch all procedures for each department
     const { data: allProcedures, error: proceduresError } = await supabaseAdmin
       .from("procedure")
-      .select("procedure_id, name")
+      .select("procedure_id, name, department")
 
     if (proceduresError) {
       console.error("Error fetching procedures:", proceduresError)
@@ -65,11 +79,16 @@ export async function GET() {
       )
     }
 
-    const procedureMap = new Map()
+    // Group procedures by department
+    const proceduresByDepartment = new Map()
     allProcedures?.forEach((proc: any) => {
-      procedureMap.set(proc.procedure_id, proc.name)
+      if (!proceduresByDepartment.has(proc.department)) {
+        proceduresByDepartment.set(proc.department, [])
+      }
+      proceduresByDepartment.get(proc.department).push(proc.name)
     })
 
+    // Fetch instructors
     const { data: instructorsData, error: instructorsError } = await supabaseAdmin
       .from("instructors")
       .select("instructor_id, user_id, status")
@@ -82,6 +101,7 @@ export async function GET() {
       )
     }
 
+    // Fetch users
     const userIds = instructorsData?.map((instructor: any) => instructor.user_id) || []
     const { data: usersData, error: usersError } = await supabaseAdmin
       .from("users")
@@ -90,7 +110,10 @@ export async function GET() {
 
     if (usersError) {
       console.error("Error fetching users data:", usersError)
-      return NextResponse.json({ message: "Error fetching users data", error: usersError.message }, { status: 500 })
+      return NextResponse.json(
+        { message: "Error fetching users data", error: usersError.message },
+        { status: 500 },
+      )
     }
 
     const userMap = new Map()
@@ -98,10 +121,11 @@ export async function GET() {
       userMap.set(user.auth_user_id, user)
     })
 
+    // Fetch specializations (departments)
     const instructorIds = instructorsData?.map((instructor: any) => instructor.instructor_id) || []
     const { data: allSpecializations, error: specializationsError } = await supabaseAdmin
       .from("Instructors_Specialization")
-      .select("instructor_id, specialized_procedure")
+      .select("instructor_id, department")
       .in("instructor_id", instructorIds)
 
     if (specializationsError) {
@@ -112,22 +136,27 @@ export async function GET() {
       )
     }
 
+    // Group specializations by instructor
     const specializationsByInstructor = new Map()
     allSpecializations?.forEach((spec: any) => {
       if (!specializationsByInstructor.has(spec.instructor_id)) {
         specializationsByInstructor.set(spec.instructor_id, [])
       }
-      specializationsByInstructor.get(spec.instructor_id).push(spec.specialized_procedure)
+      specializationsByInstructor.get(spec.instructor_id).push(spec.department)
     })
 
+    // Build response with all procedures from specialized departments
     const instructors =
       instructorsData?.map((instructor: any) => {
         const userData = userMap.get(instructor.user_id)
-        const procedureIds = specializationsByInstructor.get(instructor.instructor_id) || []
+        const departmentIds = specializationsByInstructor.get(instructor.instructor_id) || []
 
-        const specializations = procedureIds
-          .map((id: string) => procedureMap.get(id))
-          .filter((name: string) => name !== undefined)
+        // Get all procedures from the departments this instructor specializes in
+        const allProceduresForInstructor: string[] = []
+        departmentIds.forEach((deptId: string) => {
+          const procedures = proceduresByDepartment.get(deptId) || []
+          allProceduresForInstructor.push(...procedures)
+        })
 
         return {
           id: instructor.instructor_id.toString(),
@@ -137,7 +166,8 @@ export async function GET() {
           status: instructor.status || "Not Available",
           email: userData?.email || "",
           contactNumber: userData?.contact_number || "",
-          expertise: specializations,
+          expertise: allProceduresForInstructor, // All procedures from their departments
+          departments: departmentIds.map((id: string) => departmentMap.get(id)).filter(Boolean), // Department names
           archived: instructor.status === "Archived",
         }
       }) || []
@@ -145,7 +175,10 @@ export async function GET() {
     return NextResponse.json(instructors, { status: 200 })
   } catch (error: any) {
     console.error("Unexpected error in GET /api/instructors:", error)
-    return NextResponse.json({ message: "Internal server error", error: error.message }, { status: 500 })
+    return NextResponse.json(
+      { message: "Internal server error", error: error.message },
+      { status: 500 },
+    )
   }
 }
 
@@ -156,8 +189,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           message: "Database Configuration Required",
-          error:
-            "Server-side environment variables are missing. Please add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to your v0 Project Settings.",
+          error: "Server-side environment variables are missing.",
         },
         { status: 500 },
       )
@@ -167,7 +199,7 @@ export async function POST(req: Request) {
 
     if (!firstName || !lastName || !email || !gender || !status || !contactNumber) {
       return NextResponse.json(
-        { message: "Missing required fields (including contact number for password generation)" },
+        { message: "Missing required fields" },
         { status: 400 },
       )
     }
@@ -175,11 +207,11 @@ export async function POST(req: Request) {
     let authUserId: string | null = null
 
     const generatedPassword = generatePassword(firstName, lastName, contactNumber)
-    console.log(`[v0] Generated password for ${firstName} ${lastName}: ${generatedPassword}`)
+    console.log(`Generated password for ${firstName} ${lastName}: ${generatedPassword}`)
 
     const { data: newAuthUserData, error: newAuthUserError } = await supabaseAdmin.auth.admin.createUser({
       email,
-      password: generatedPassword, // Use generated password instead of tempPassword
+      password: generatedPassword,
       email_confirm: true,
     })
 
@@ -271,16 +303,21 @@ export async function POST(req: Request) {
       )
     }
 
+    // Handle expertise as procedure names - map them to departments
     if (expertise && expertise.length > 0) {
       const { data: proceduresData } = await supabaseAdmin
         .from("procedure")
-        .select("procedure_id, name")
+        .select("department")
         .in("name", expertise)
 
       if (proceduresData && proceduresData.length > 0) {
-        const specializationPayload = proceduresData.map((procedure: any) => ({
+        // Get unique departments
+        const uniqueDepartments = [...new Set(proceduresData.map((p: any) => p.department).filter(Boolean))]
+        
+        const specializationPayload = uniqueDepartments.map((deptId) => ({
           instructor_id: instructorId,
-          specialized_procedure: procedure.procedure_id,
+          department: deptId,
+          ci_dept_id: `${instructorId}_${deptId}`,
         }))
 
         const { error: insertSpecializationError } = await supabaseAdmin
@@ -307,8 +344,7 @@ export async function PUT(req: Request) {
       return NextResponse.json(
         {
           message: "Database Configuration Required",
-          error:
-            "Server-side environment variables are missing. Please add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to your v0 Project Settings.",
+          error: "Server-side environment variables are missing.",
         },
         { status: 500 },
       )
@@ -361,13 +397,17 @@ export async function PUT(req: Request) {
       if (expertise.length > 0) {
         const { data: proceduresData } = await supabaseAdmin
           .from("procedure")
-          .select("procedure_id, name")
+          .select("department")
           .in("name", expertise)
 
         if (proceduresData && proceduresData.length > 0) {
-          const specializationPayload = proceduresData.map((procedure: any) => ({
+          // Get unique departments
+          const uniqueDepartments = [...new Set(proceduresData.map((p: any) => p.department).filter(Boolean))]
+          
+          const specializationPayload = uniqueDepartments.map((deptId) => ({
             instructor_id: Number.parseInt(id),
-            specialized_procedure: procedure.procedure_id,
+            department: deptId,
+            ci_dept_id: `${id}_${deptId}`,
           }))
 
           await supabaseAdmin.from("Instructors_Specialization").insert(specializationPayload)

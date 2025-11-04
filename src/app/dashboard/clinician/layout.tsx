@@ -1,16 +1,16 @@
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { RoleBasedSidebar } from "@/components/sidebar/RoleBasedSidebar"
 import { Header } from "@/components/layouts/header"
-import React from "react"
+import type React from "react"
 
 export default function ClinicianLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarProvider>
+    <div className="flex">
       <RoleBasedSidebar role="clinician" />
-      <SidebarInset>
+
+      <div className="flex-1 sm:ml-64 w-full pt-16">
         <Header />
-        {children}
-      </SidebarInset>
-    </SidebarProvider>
+        <main className="bg-[#f9f9f9] min-h-screen">{children}</main>
+      </div>
+    </div>
   )
 }
