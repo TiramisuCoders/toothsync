@@ -978,7 +978,7 @@ const [selectedAcademicYearTab, setSelectedAcademicYearTab] = useState<string>("
                       className="data-[state=active]:bg-[#5C8E77] data-[state=active]:text-white"
                     >
                       <div className="flex flex-col items-center">
-                        <span className="font-medium">AY {academicYear.academic_year_id}</span>
+                        <span className="font-medium">{academicYear.academic_year_id}</span>
                         <span className="text-xs opacity-80">
                           {academicYear.activityCount} {academicYear.activityCount === 1 ? 'Activity' : 'Activities'}
                         </span>

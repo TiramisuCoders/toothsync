@@ -21,7 +21,6 @@ export async function GET(request: NextRequest) {
         user_id,
         student_id,
         year_level,
-        section,
         academic_year_id,
         created_at,
         clinicians!clinician_records_user_id_fkey(
@@ -43,10 +42,6 @@ export async function GET(request: NextRequest) {
 
     if (yearLevel && yearLevel !== "all") {
       query = query.eq("year_level", yearLevel)
-    }
-
-    if (section && section !== "all") {
-      query = query.eq("section", section)
     }
 
     // Searching across joined tables requires a different approach
@@ -72,7 +67,6 @@ export async function GET(request: NextRequest) {
         firstName: record.clinicians?.users?.first_name || "",
         lastName: record.clinicians?.users?.last_name || "",
         year: record.year_level,
-        section: record.section,
         sex: record.clinicians?.users?.sex || "Other",
         academicYearId: record.academic_year_id,
         createdAt: record.created_at,

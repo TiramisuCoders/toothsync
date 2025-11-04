@@ -1,379 +1,200 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function GET() {
-  const supabase = await createSupabaseServerClient()
-  
+  const start = performance.now();
+  const supabase = await createSupabaseServerClient();
+
   try {
-    const { data, error: authError } = await supabase.auth.getUser()
-    
-    const user = data?.user
-    if (authError || !user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    
-    // Get user role info
+    // 🔑 Auth
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user)
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+    // 🧑 Role info
     const { data: userRole, error: roleError } = await supabase
-      .from('users')
-      .select('first_name, last_name, auth_user_id, role')
-      .eq('auth_user_id', user.id)
-      .single()
+      .from("users")
+      .select("first_name, last_name, auth_user_id, role")
+      .eq("auth_user_id", user.id)
+      .single();
 
-    if (roleError || !userRole) {
-      return Response.json({ error: 'User not found' }, { status: 404 })
+    if (roleError || !userRole)
+      return Response.json({ error: "User not found" }, { status: 404 });
+
+    const today = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Manila",
+    });
+
+    // ⚙️ Run heavy queries *in parallel*
+    const [recordsRes, countsRes, distRes] = await Promise.all([
+      supabase.rpc("get_activity_overview_dashboard", {
+        p_role: userRole.role,
+        p_user_id: userRole.auth_user_id,
+        p_date: today
+      }),
+      supabase.rpc("get_dashboard_counts", {
+        p_user_id: user.id,
+        p_role: userRole.role,
+      }),
+      supabase.rpc("get_clinician_distribution", { p_date: today }),
+    ]);
+
+    // 🧱 Handle errors centrally
+    if (recordsRes.error || countsRes.error || distRes.error) {
+      console.error("RPC error(s):", {
+        recordsErr: recordsRes.error,
+        countsErr: countsRes.error,
+        distErr: distRes.error,
+      });
+      return Response.json(
+        { error: "Database error", details: "One or more RPC calls failed" },
+        { status: 500 }
+      );
     }
 
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-    const startOfDay = `${today}T00:00:00.000Z`
-    const endOfDay = `${today}T23:59:59.999Z`
+    console.log("Raw records from RPC:", recordsRes.data);
 
-    // Build base query - FIXED: Corrected all foreign key relationships
-    let query = supabase
-    .from("activity_records")
-    .select(`
-      record_id,
-      time_in,
-      time_out,
-      id,
-      instructor_id,
-      chair_id,
-      request_id,
-      activities!activity_records_record_id_fkey(
-        status
-      ),
-      instructors!activity_records_instructor_id_fkey(
-        instructor_id,
-        users!instructors_user_id_fkey(
-          auth_user_id,
-          first_name,
-          last_name
-        )
-      ),
-      chair!Activity_Records_chair_id_fkey(
-        chair_name
-      ),
-      request!activity_records_request_id_fkey(
-        patient_name,
-        is_sanitized,
-        shift,
-        clinician_id,
-        users!request_clinician_id_fkey(
-          auth_user_id,
-          first_name,
-          last_name
-        )
-      ),
-      activity_procedures(
-        status,
-        remarks,
-        procedure(
-          name
-        )
-      )
-    `)
-    .order("time_in", { ascending: false })
-    .gte("time_in", startOfDay)
-    .lte("time_in", endOfDay);  
+    // 🎨 Group activities by activity_id and aggregate procedures
+    const activityMap = new Map();
 
-    switch (userRole.role) {
-      case 'R01': // Clinician - filter by clinician_id in request
-        query = query.eq("request.clinician_id", userRole.auth_user_id);
-        break
+    recordsRes.data?.forEach((r) => {
+      const activityId = r.activity_id;
 
-      case 'R02': // Clerk
-        break
-
-      case 'R03': // Instructor - filter by instructor_id
-        const { data: instructorData } = await supabase
-          .from("instructors")
-          .select("instructor_id")
-          .eq("user_id", userRole.auth_user_id)
-          .single()
-        
-        if (instructorData) {
-          query = query.eq("instructor_id", instructorData.instructor_id);
-        }
-        break
-
-      case 'R04': // Admin
-        break
-
-      default:
-        return Response.json({ error: 'Invalid role' }, { status: 403 })
-    }
-
-    const { data: records, error: recordsErr } = await query
-
-    if (recordsErr) {
-      console.error('Database query failed:', recordsErr)
-      return Response.json({ 
-        error: 'Database error', 
-        details: recordsErr.message 
-      }, { status: 500 })
-    }
-
-    const { count: todayCount } = await supabase
-    .from("activity_records")
-    .select("id, request!inner(clinician_id)", { count: "exact" })
-    .gte("time_in", startOfDay)
-    .lte("time_in", endOfDay)
-    .eq("request.clinician_id", userRole.auth_user_id);
-
-    const { count: todayTotalActivities1st } = await supabase
-    .from("activity_records")
-    .select("id, request!inner(shift)", { count: "exact" })
-    .gte("time_in", startOfDay)
-    .lte("time_in", endOfDay)
-    .eq("request.shift", "1st");
-
-    const { count: todayTotalActivities2nd } = await supabase
-    .from("activity_records")
-    .select("id, request!inner(shift)", { count: "exact" })
-    .gte("time_in", startOfDay)
-    .lte("time_in", endOfDay)
-    .eq("request.shift", "2nd");
-
-    const { count: availableChair1st, error: chairError1st } = await supabase
-      .from("chair_availability")
-      .select("chair_id", { count: "exact" })
-      .gte("date", startOfDay)
-      .lte("date", endOfDay)
-      .eq("is_occupied", false)
-      .eq("shift", "1st");
-
-    if (chairError1st) {
-      console.error("Chair count error:", chairError1st)
-    }
-
-    const { count: availableChair2nd, error: chairError2nd } = await supabase
-      .from("chair_availability")
-      .select("chair_id", { count: "exact" })
-      .gte("date", startOfDay)
-      .lte("date", endOfDay)
-      .eq("is_occupied", false)
-      .eq("shift", "2nd");
-
-    if (chairError2nd) {
-      console.error("Chair count error:", chairError2nd)
-    }
-
-    const { count: instructorsOnDuty1st, error: instructorError1st } = await supabase
-      .from("instructors_availability_record")
-      .select("instructor_id", { count: "exact" })
-      .eq("date", today)
-      .eq("shift", "1st");
-
-    if (instructorError1st) {
-      console.error("Instructor count error:", instructorError1st)
-    }
-
-    const { count: instructorsOnDuty2nd, error: instructorError2nd } = await supabase
-      .from("instructors_availability_record")
-      .select("instructor_id", { count: "exact" })
-      .eq("date", today)
-      .eq("shift", "2nd");
-
-    if (instructorError2nd) {
-      console.error("Instructor count error:", instructorError2nd)
-    }
-
-    const { count: request1st, error: requestErr1st } = await supabase
-      .from("request")
-      .select("request_id", { count: "exact" })
-      .gte("created_at", startOfDay)
-      .lte("created_at", endOfDay)
-      .eq("shift", "1st")
-      .eq("status", "Pending");
-
-    if (requestErr1st) {
-      console.error("Request count error:", requestErr1st)
-    }
-
-    const { count: request2nd, error: requestErr2nd } = await supabase
-      .from("request")
-      .select("request_id", { count: "exact" })
-      .gte("created_at", startOfDay)
-      .lte("created_at", endOfDay)
-      .eq("shift", "2nd")
-      .eq("status", "Confirmed");
-
-    if (requestErr2nd) {
-      console.error("Request count error:", requestErr2nd)
-    }
-
-    // Get instructor_id for filtering (only for instructors)
-    const { data: currentInstructor } = await supabase
-      .from("instructors")
-      .select("instructor_id")
-      .eq("user_id", userRole.auth_user_id)
-      .maybeSingle()
-
-    let assignedClinicians1st = null
-    let assignedClinicians2nd = null
-    let gradedClinicians = null
-    let ungradedClinicians = null
-
-    // Only fetch instructor-specific counts if user is an instructor
-    if (currentInstructor?.instructor_id) {
-      const { count: count1st, error: assignedCliniciansErr1st } = await supabase
-        .from("activity_records")
-        .select("id, request!inner(shift)", { count: "exact" })
-        .gte("time_in", startOfDay)
-        .lte("time_in", endOfDay)
-        .eq("request.shift", "1st")
-        .eq("instructor_id", currentInstructor.instructor_id);
-
-      assignedClinicians1st = count1st
-
-      if (assignedCliniciansErr1st) {
-        console.error("Assigned Clinicians count error:", assignedCliniciansErr1st)
+      if (!activityMap.has(activityId)) {
+        // First time seeing this activity
+        activityMap.set(activityId, {
+          id: r.activity_id,  // activity_records.id
+          record_id: r.record_id,
+          clinicianName: r.clinician || "",
+          patientName: r.patient_name || "",
+          patientType: r.patient_type || "",
+          instructorName: r.instructor || "",
+          overall_status: r.overall_status || "",
+          instructorId: r.instructor_id,
+          chair: r.chair,
+          date: r.date || today,  // ADDED: Include date
+          timeIn: r.time_in
+            ? new Date(r.time_in).toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+                timeZone: "Asia/Manila",
+              })
+            : null,
+          timeOut: r.time_out
+            ? new Date(r.time_out).toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+                timeZone: "Asia/Manila",
+              })
+            : null,
+          procedures: [],
+          procedureDetails: [],
+          statuses: [], // Track all procedure statuses
+          // ADDED: allRecords structure to match Records.tsx pattern
+          allRecords: [],
+        });
       }
 
-      const { count: count2nd, error: assignedCliniciansErr2nd } = await supabase
-        .from("activity_records")
-        .select("id, request!inner(shift)", { count: "exact" })
-        .gte("time_in", startOfDay)
-        .lte("time_in", endOfDay)
-        .eq("request.shift", "2nd")
-        .eq("instructor_id", currentInstructor.instructor_id);
+      // Add procedure to this activity
+      const activity = activityMap.get(activityId);
+      if (r.procedure_name && !activity.procedures.includes(r.procedure_name)) {
+        activity.procedures.push(r.procedure_name);
+        activity.procedureDetails.push({
+          ap_id: r.ap_id,  // CRITICAL: Include ap_id
+          name: r.procedure_name,
+          status: r.status,
+          remarks: r.remarks || "",
+        });
+        activity.statuses.push(r.status);
+      }
+    });
 
-      assignedClinicians2nd = count2nd
+    // Convert map to array and determine overall status
+    const transformedRecords = Array.from(activityMap.values()).map(activity => {
+      // 🔄 CRITICAL FIX: Sort procedures alphabetically for consistent ordering
+      // This ensures procedures always appear in the same order
+      const sortedIndices = activity.procedures
+        .map((name, index) => ({ name, index }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(item => item.index);
 
-      if (assignedCliniciansErr2nd) {
-        console.error("Assigned Clinicians count error:", assignedCliniciansErr2nd)
+      // Reorder arrays based on sorted indices
+      const sortedProcedures = sortedIndices.map(i => activity.procedures[i]);
+      const sortedProcedureDetails = sortedIndices.map(i => activity.procedureDetails[i]);
+      const sortedStatuses = sortedIndices.map(i => activity.statuses[i]);
+
+      // Determine overall activity status:
+      // - If ANY procedure is "Cancelled", activity is "Cancelled"
+      // - If ALL procedures are "Completed", activity is "Completed"
+      // - Otherwise, activity is "In Progress"
+      let overallStatus = "In Progress";
+      
+      if (sortedStatuses.includes("Cancelled")) {
+        overallStatus = "Cancelled";
+      } else if (sortedStatuses.every(s => s === "Completed")) {
+        overallStatus = "Completed";
       }
 
-      const { count: countGraded, error: gradedCliniciansErr } = await supabase
-        .from("activity_records")
-        .select("id, activities!inner(status)", { count: "exact" })
-        .gte("time_in", startOfDay)
-        .lte("time_in", endOfDay)
-        .eq("activities.status", "Completed")
-        .eq("instructor_id", currentInstructor.instructor_id);
+      // ADDED: Build allRecords array with procedureStatuses (sorted)
+      // This matches the Records.tsx structure
+      const allRecords = [{
+        id: activity.record_id,
+        date: activity.date,
+        timeIn: activity.timeIn,
+        timeOut: activity.timeOut,
+        instructorName: activity.instructorName,
+        chair: activity.chair,
+        procedureStatuses: sortedProcedureDetails.map(p => ({
+          ap_id: p.ap_id,  // CRITICAL: Include ap_id here
+          procedure: p.name,
+          status: p.status,
+          remarks: p.remarks || ""
+        }))
+      }];
 
-      gradedClinicians = countGraded
-
-      if (gradedCliniciansErr) {
-        console.error("Graded Clinicians count error:", gradedCliniciansErr)
-      }
-
-      const { count: countUngraded, error: ungradedCliniciansErr } = await supabase
-        .from("activity_records")
-        .select("id, activities!inner(status)", { count: "exact" })
-        .gte("time_in", startOfDay)
-        .lte("time_in", endOfDay)
-        .eq("activities.status", "In Progress")
-        .eq("instructor_id", currentInstructor.instructor_id);
-
-      ungradedClinicians = countUngraded
-
-      if (ungradedCliniciansErr) {
-        console.error("Ungraded Clinicians count error:", ungradedCliniciansErr)
-      }
-    }
-
-    const { data: clinicianDistribution, error: clinicianDistributionErr } = await supabase
-      .from("instructors_availability_record")
-      .select(`
-        instructor_id,
-        date,
-        shift,
-        assigned_clinicians,
-        instructors(
-          user_id,
-          users!instructors_user_id_fkey(
-            auth_user_id,
-            first_name,
-            last_name
-          )
-        )
-      `)
-      .eq("date", today)
-      .order("shift", { ascending: true })
-      .order("instructor_id", { ascending: true })
-
-    if (clinicianDistributionErr) {
-      console.error("Error fetching clinician distribution:", clinicianDistributionErr)
-    }
-
-    const transformedClinicianDistribution = clinicianDistribution?.map(item => ({
-      instructor_id: item.instructor_id,
-      instructor_name: `${item.instructors?.users?.first_name || ""} ${item.instructors?.users?.last_name || ""}`.trim(),
-      date: item.date,
-      shift: item.shift,
-      assigned_clinicians: item.assigned_clinicians
-    }))
-
-    // Transform records for frontend
-    const transformedRecords = records?.map(r => {
-      const procedureDetails = r.activity_procedures?.map(ap => ({
-        name: ap.procedure?.name,
-        remarks: ap.remarks,
-        status: ap.status
-      })).filter(p => p.name) || []
+      // Remove the temporary statuses array
+      const { statuses, procedures, procedureDetails, ...activityWithoutStatuses } = activity;
       
       return {
-        id: r.record_id,
-        patientName: r.request?.patient_name,
-        procedures: r.activity_procedures?.map(ap => ap.procedure?.name).filter(Boolean) || [],
-        procedureDetails: procedureDetails,
-        status: r.activities?.status,
-        timeIn: r.time_in
-          ? new Date(r.time_in).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-              timeZone: "Asia/Manila",
-            })
-          : null,
-        timeOut: r.time_out
-          ? new Date(r.time_out).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-              timeZone: "Asia/Manila",
-            })
-          : null,
-        chair: r.chair?.chair_name,
-        sanitized: r.request?.is_sanitized ? "Yes" : "No",
-
-        // clinician details (from request table)
-        clinicianId: r.request?.clinician_id,
-        clinicianName: `${r.request?.users?.first_name || ""} ${r.request?.users?.last_name || ""}`.trim(),
-
-        // instructor details
-        instructorId: r.instructors?.users?.auth_user_id || null,
-        instructorName: `${r.instructors?.users?.first_name || ""} ${r.instructors?.users?.last_name || ""}`.trim(),
+        ...activityWithoutStatuses,
+        procedures: sortedProcedures,  // ✅ Sorted procedures
+        procedureDetails: sortedProcedureDetails,  // ✅ Sorted procedure details
+        status: overallStatus,
+        allRecords,  // ✅ Sorted allRecords
       };
-    }) || []
-  
-    return Response.json({ 
-      success: true, 
+    });
+
+    const transformedClinicianDistribution =
+      distRes.data?.map((item) => ({
+        instructor_id: item.instructor_id,
+        instructor_name: item.instructor_name,
+        date: item.date,
+        shift: item.shift,
+        assigned_clinicians: item.assigned_clinicians,
+      })) ?? [];
+
+    // ⏱ Measure and log
+    const end = performance.now();
+    console.log(`⏰ API execution time: ${(end - start).toFixed(2)} ms`);
+    console.log("✅ Grouped activities with sorted procedures:", transformedRecords);
+    if (transformedRecords[0]) {
+      console.log("📋 Sample procedures order:", transformedRecords[0].procedures);
+    }
+
+    return Response.json({
+      success: true,
       data: transformedRecords,
       distribution: transformedClinicianDistribution,
-      todayCount,
-      availableChair1st, 
-      availableChair2nd,
-      instructorsOnDuty1st,
-      instructorsOnDuty2nd,
-      assignedClinicians1st, 
-      assignedClinicians2nd,
-      gradedClinicians, 
-      ungradedClinicians,
-      todayTotalActivities1st,
-      todayTotalActivities2nd,
-      request1st,
-      request2nd,
+      dashboard: countsRes.data,
       user: {
         id: user.id,
         role: userRole.role,
-        name: `${userRole.first_name} ${userRole.last_name}`
+        name: `${userRole.first_name} ${userRole.last_name}`,
       },
-    })
-    
+    });
   } catch (error) {
-    console.error('Error in GET /api/dashboard:', error)
-    return Response.json({ 
-      error: 'Internal server error' 
-    }, { status: 500 })
+    console.error("Error in GET /api/dashboard:", error);
+    return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }

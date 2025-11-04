@@ -14,9 +14,10 @@ import { Toaster } from "@/components/ui/toaster"
 import ArchiveConfirmationModal from "@/components/modals/archive-record-modal"
 import GradingModal from "@/components/modals/grading-modal"
 import UnarchiveConfirmationModal from "@/components/modals/unarchive-record-modal"
+import ViewActModal from "@/components/modals/view-activity-modal"
 
 export interface ProcedureStatus {
-  ap_id: string  // ADDED: activity_procedures.ap_id
+  ap_id: string  
   procedure: string
   status: string
   remarks: string
@@ -913,142 +914,12 @@ export default function UnifiedActivitiesRecords() {
                 )}
               </CardContent>
             </Card>
-    
-      {/* View Modal (for Clinicians viewing completed activities) */}
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="sm:max-w-[800px] max-h-[90vh] p-0 overflow-hidden rounded-lg">
-          {selectedActivity && (
-            <>
-              <DialogHeader className="bg-white px-6 py-5 border-b border-gray-200">
-                <DialogTitle className="text-2xl text-[#5C8E77]">
-                  {selectedActivity.id}
-                </DialogTitle>
-              </DialogHeader>
-
-              <div className="px-6 py-5 max-h-[calc(90vh-180px)] overflow-y-auto">
-                {/* Activity Header Info */}
-                <div className="grid grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <p className="text-sm text-gray-600 font-medium mb-1">Patient Name</p>
-                    <p className="text-base font-semibold text-gray-900">{selectedActivity.patientName}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 font-medium mb-1">Patient Type</p>
-                    <p className="text-base font-semibold text-gray-900">{selectedActivity.patientType}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 font-medium mb-1">Date Started</p>
-                    <p className="text-base font-semibold text-gray-900">{selectedActivity.dateStarted}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 font-medium mb-1">Date Ended</p>
-                    <p className="text-base font-semibold text-gray-900">{selectedActivity.dateEnded}</p>
-                  </div>
-                </div>
-
-                {/* Records Timeline */}
-                <div className="space-y-4">
-                  {selectedActivity.allRecords && selectedActivity.allRecords.length > 0 ? (
-                    selectedActivity.allRecords.map((record, recordIndex) => (
-                      <div
-                        key={recordIndex}
-                        className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm"
-                      >
-                        {/* Date Badge */}
-                        <div className="inline-block ml-4 mt-4">
-                          <div className="bg-[#5C8E77] text-white px-4 py-1.5 rounded-md font-semibold text-sm">
-                            {record.date}
-                          </div>
-                        </div>
-
-                        {/* Session Details */}
-                        <div className="px-6 py-4">
-                          <div className="grid grid-cols-2 gap-x-8 gap-y-3 mb-4">
-                            <div>
-                              <p className="text-sm text-gray-600 font-medium mb-0.5">Instructor</p>
-                              <p className="text-base font-semibold text-gray-900">{record.instructorName}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-gray-600 font-medium mb-0.5">Chair</p>
-                              <p className="text-base font-semibold text-gray-900">{record.chair}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-gray-600 font-medium mb-0.5">Time In</p>
-                              <p className="text-base font-semibold text-gray-900">{record.timeIn}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-gray-600 font-medium mb-0.5">Time Out</p>
-                              <p className="text-base font-semibold text-gray-900">{record.timeOut}</p>
-                            </div>
-                          </div>
-
-                          {/* Procedures Table */}
-                          <div className="mt-4">
-                            <div className="overflow-hidden border border-gray-200 rounded-md">
-                              <table className="w-full">
-                                <thead className="bg-gray-50">
-                                  <tr>
-                                    <th className="px-4 py-2.5 text-left text-sm font-semibold text-gray-700 border-b border-gray-200">
-                                      Procedure
-                                    </th>
-                                    <th className="px-4 py-2.5 text-left text-sm font-semibold text-gray-700 border-b border-gray-200">
-                                      Status
-                                    </th>
-                                    <th className="px-4 py-2.5 text-left text-sm font-semibold text-gray-700 border-b border-gray-200">
-                                      Remarks
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                  {record.procedureStatuses && record.procedureStatuses.length > 0 ? (
-                                    record.procedureStatuses.map((procStatus, idx) => (
-                                      <tr key={idx}>
-                                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                                          {procStatus.procedure}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                          <Badge
-                                            className={
-                                              procStatus.status === "Completed"
-                                                ? "bg-green-100 text-green-800 hover:bg-green-100"
-                                                : procStatus.status === "In Progress"
-                                                  ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
-                                                  : "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
-                                            }
-                                          >
-                                            {procStatus.status}
-                                          </Badge>
-                                        </td>
-                                        <td className="px-4 py-3 text-sm text-gray-700">
-                                          {procStatus.remarks}
-                                        </td>
-                                      </tr>
-                                    ))
-                                  ) : (
-                                    <tr>
-                                      <td colSpan={3} className="px-4 py-3 text-sm text-gray-500 text-center">
-                                        No procedure data available
-                                      </td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      No records available for this activity
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+ 
+      <ViewActModal
+        isOpen={isViewModalOpen}
+        onClose={() => setIsViewModalOpen(false)}
+        currentActivity={selectedActivity}
+      />
 
       {/* Modals */}
       {canEdit && (

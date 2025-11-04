@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (fetchError || !currentRequest) {
-      console.error('[v0] Request not found:', request_id)
+      console.error('Request not found:', request_id)
       return Response.json({ error: 'Request not found' }, { status: 404 })
     }
 

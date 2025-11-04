@@ -12,15 +12,19 @@ import {
   ArrowUpDown,
   RockingChair,
   ArchiveRestore,
-  Pencil,
+  Eye,
+  AlertTriangle,
+  RefreshCw,
+  FileText,
+  Clock,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { toast } from "@/hooks/use-toast"
 import ArchiveConfirmationModal from "@/components/modals/archive-record-modal"
-import GradingModal from "@/components/modals/grading-modal"
 import UnarchiveConfirmationModal from "@/components/modals/unarchive-record-modal"
+import ViewActModal from "@/components/modals/view-activity-modal"
 
 // Font configuration
 const poppinsFont = {
@@ -49,6 +53,7 @@ interface Activity {
   instructorName: string
   instructorId: string
   chair: string
+  overall_status:string
   procedures: string[]
   procedureDetails: ProcedureDetail[]
   status: string
@@ -81,6 +86,11 @@ type DashboardSummary = {
   instructorsOnDuty2nd: number
   todayTotalActivities1st: number
   todayTotalActivities2nd: number
+  totalIncidents: number
+  pendingIncidents:number
+  inProgressIncidents: number
+  resolvedIncidents: number
+  cancelledIncidents: number
 }
 
 export default function ChiefOfCliniciansPage() {
@@ -94,6 +104,8 @@ export default function ChiefOfCliniciansPage() {
   const [loading, setLoading] = useState(true)
   const [clinicianDistribution, setClinicianDistribution] = useState<ClinicianDistribution[]>([])
   const [adminInfo, setAdminInfo] = useState<AdminInfo | null>(null)
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null)
   const [summary, setSummary] = useState<DashboardSummary>({
     todayCount: 0,
     availableChair1st: 0,
@@ -101,7 +113,12 @@ export default function ChiefOfCliniciansPage() {
     instructorsOnDuty1st: 0,
     instructorsOnDuty2nd: 0,
     todayTotalActivities1st: 0,
-    todayTotalActivities2nd: 0
+    todayTotalActivities2nd: 0,
+    totalIncidents: 0,
+    pendingIncidents:0,
+    inProgressIncidents: 0,
+    resolvedIncidents: 0,
+    cancelledIncidents: 0,
   })
   const [activities, setActivities] = useState<Activity[]>([])
 
@@ -490,7 +507,7 @@ export default function ChiefOfCliniciansPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-gray-500">Shift 1</p>
-                    <h3 className="text-3xl font-bold mt-1 text-gray-800">
+                    <h3 className="text-2xl font-bold mt-1 text-gray-800">
                       {summary.todayTotalActivities1st}
                     </h3>
                   </div>
@@ -498,7 +515,7 @@ export default function ChiefOfCliniciansPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-gray-500">Shift 2</p>
-                    <h3 className="text-3xl font-bold mt-1 text-gray-800">
+                    <h3 className="text-2xl font-bold mt-1 text-gray-800">
                       {summary.todayTotalActivities2nd}
                     </h3>
                   </div>
@@ -519,7 +536,7 @@ export default function ChiefOfCliniciansPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-gray-500">Shift 1</p>
-                    <h3 className="text-3xl font-bold mt-1 text-gray-800">
+                    <h3 className="text-2xl font-bold mt-1 text-gray-800">
                       {summary.instructorsOnDuty1st}
                     </h3>
                   </div>
@@ -527,7 +544,7 @@ export default function ChiefOfCliniciansPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-gray-500">Shift 2</p>
-                    <h3 className="text-3xl font-bold mt-1 text-gray-800">
+                    <h3 className="text-2xl font-bold mt-1 text-gray-800">
                       {summary.instructorsOnDuty2nd}
                     </h3>
                   </div>
@@ -546,7 +563,7 @@ export default function ChiefOfCliniciansPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-gray-500">Shift 1</p>
-                    <h3 className="text-3xl font-bold mt-1 text-gray-800">
+                    <h3 className="text-2xl font-bold mt-1 text-gray-800">
                       {summary.availableChair1st}
                     </h3>
                   </div>
@@ -554,7 +571,7 @@ export default function ChiefOfCliniciansPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-gray-500">Shift 2</p>
-                    <h3 className="text-3xl font-bold mt-1 text-gray-800">
+                    <h3 className="text-2xl font-bold mt-1 text-gray-800">
                       {summary.availableChair2nd}
                     </h3>
                   </div>
@@ -566,6 +583,87 @@ export default function ChiefOfCliniciansPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="bg-white border border-gray-200 shadow-sm mb-6">
+  {/* Header */}
+  <CardHeader className="pb-4">
+    <div className="flex items-center justify-between">
+      <CardTitle className="text-xl font-semibold text-[#333]">Incident Summary</CardTitle>
+      {/* Optional: Add a small note or icon here */}
+    </div>
+  </CardHeader>
+
+  {/* Body */}
+  <CardContent className="p-3 space-y-6">
+    {/* Grid of Summary Cards */}
+    <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+      {/* Total */}
+      <Card className="bg-white border border-gray-200 shadow-sm">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Total Incidents</p>
+              <p className="text-3xl font-bold text-gray-900">{summary.totalIncidents}</p>
+            </div>
+            <FileText className="h-8 w-8 text-gray-400" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pending */}
+      <Card className="bg-yellow-50 border border-yellow-200 shadow-sm">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-yellow-700">Pending</p>
+              <p className="text-3xl font-bold text-yellow-900">{summary.pendingIncidents}</p>
+            </div>
+            <Clock className="h-8 w-8 text-yellow-500" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* In Progress */}
+      <Card className="bg-blue-50 border border-blue-200 shadow-sm">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-blue-700">In Progress</p>
+              <p className="text-3xl font-bold text-blue-900">{summary.inProgressIncidents}</p>
+            </div>
+            <RefreshCw className="h-8 w-8 text-blue-500" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Resolved */}
+      <Card className="bg-emerald-50 border border-emerald-200 shadow-sm">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-emerald-700">Resolved</p>
+              <p className="text-3xl font-bold text-emerald-900">{summary.resolvedIncidents}</p>
+            </div>
+            <AlertTriangle className="h-8 w-8 text-emerald-500" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Cancelled */}
+      <Card className="bg-gray-50 border border-gray-200 shadow-sm">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-700">Cancelled</p>
+              <p className="text-3xl font-bold text-gray-900">{summary.cancelledIncidents}</p>
+            </div>
+            <AlertTriangle className="h-8 w-8 text-gray-400" />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  </CardContent>
+</Card>
 
         {/* Instructor-Clinician Distribution */}
         <Card className="bg-white border border-gray-200 shadow-sm mb-6">
@@ -670,6 +768,7 @@ export default function ChiefOfCliniciansPage() {
           </CardContent>
         </Card>
 
+
         {/* Activities Table */}
         <Card className="bg-white border border-gray-200 shadow-sm mb-6">
           <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
@@ -725,7 +824,7 @@ export default function ChiefOfCliniciansPage() {
                           <div className="space-y-1">
                             {activity.procedures.map((proc, index) => (
                               <div key={index} className="text-sm">
-                                • {proc}
+                                {proc}
                               </div>
                             ))}
                           </div>
@@ -736,15 +835,15 @@ export default function ChiefOfCliniciansPage() {
                       <TableCell>
                         <div
                           className={`px-3 py-1 rounded-full text-sm inline-flex items-center justify-center font-medium ${getStatusColor(
-                            activity.status,
+                            activity.overall_status,
                           )}`}
                         >
-                          {activity.status}
+                          {activity.overall_status}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {activity.status !== "Cancelled" && (
+                          {activity.overall_status !== "Cancelled" && (
                             <Button
                               size="sm"
                               variant="ghost"
@@ -757,10 +856,10 @@ export default function ChiefOfCliniciansPage() {
                               }}
                               title="View/Grade Activity"
                             >
-                              <Pencil className="h-4 w-4" />
+                              <Eye className="h-4 w-4" />
                             </Button>
                           )}
-                          {activity.status === "In Progress" && (
+                          {activity.overall_status === "In Progress" && (
                             <Button
                               size="icon"
                               variant="ghost"
@@ -805,12 +904,10 @@ export default function ChiefOfCliniciansPage() {
           activity={currentActivity}
         />
         
-        <GradingModal
+        <ViewActModal
           isOpen={isGradeModalOpen}
           onClose={() => setIsGradeModalOpen(false)}
           currentActivity={currentActivity}
-          onProcedureChange={handleProcedureGradeChange}
-          onSave={handleSaveGrades}
         />
         
         <UnarchiveConfirmationModal
@@ -819,6 +916,9 @@ export default function ChiefOfCliniciansPage() {
           onConfirm={handleUnarchive}
           activity={currentActivity}
         />
+
+
+        
 
         {/* Commented code for New Activity Modal preserved below */}
         {/* <Dialog open={isModalOpen} onOpenChange={handleModalClose}>

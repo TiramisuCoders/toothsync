@@ -15,10 +15,10 @@ export async function GET(request: NextRequest) {
 
     const supabase = supabaseAdmin
 
-    let countQuery = supabase.from("fact_activity_history").select("*", { count: "exact", head: true })
+    let countQuery = supabase.from("activity_overview").select("*", { count: "exact", head: true })
 
     let query = supabase
-      .from("fact_activity_history")
+      .from("activity_overview")
       .select("*")
       .order("activity_date", { ascending: false })
       .range(offset, offset + limit - 1)
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (search && search.trim()) {
-      const searchFilter = `clinician_name.ilike.%${search}%,instructor.ilike.%${search}%,procedure_name.ilike.%${search}%`
+      const searchFilter = `clinician.ilike.%${search}%,instructor.ilike.%${search}%,procedure_name.ilike.%${search}%`
       query = query.or(searchFilter)
       countQuery = countQuery.or(searchFilter)
     }
@@ -51,13 +51,13 @@ export async function GET(request: NextRequest) {
 
     const transformedData =
       data?.map((record, index) => ({
-        id: `${record.act_id}-${offset + index}`, // Ensure unique keys
-        firstName: record.clinician_name?.split(" ")[0] || "",
-        lastName: record.clinician_name?.split(" ").slice(1).join(" ") || "",
+        id: `${record.activity_id}-${offset + index}`, // Ensure unique keys
+        firstName: record.clinician?.split(" ")[0] || "",
+        lastName: record.clinician?.split(" ").slice(1).join(" ") || "",
         chair: record.chair || "",
         instructor: record.instructor || "",
         procedure: record.procedure_name || "",
-        grade: record.grade || "",
+        remarks: record.remarks || "",
         date: record.activity_date,
         academicYear: record.academic_year || "",
         semester: record.semester || "",
