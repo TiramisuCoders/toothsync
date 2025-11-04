@@ -224,7 +224,7 @@ export default function NewTicket() {
 
   const handleViewTickets = () => {
     setShowSuccessModal(false)
-    router.push("/support/my-tickets")
+    router.push("/incident-management/my-tickets")
   }
 
   const handleFailureClose = () => {

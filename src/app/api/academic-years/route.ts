@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const { data: academicYears, error } = await supabaseAdmin
       .from("academic_year")
       .select("*")
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: true })
       .range(offset, offset + limit - 1)
 
     if (error) {

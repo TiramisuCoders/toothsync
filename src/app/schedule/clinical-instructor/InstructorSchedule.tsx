@@ -6,18 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, Clock, Plus, Trash2, Users, Sun, Sunset, Moon, Search, Filter, CalendarRange } from "lucide-react"
+import { Calendar, Clock, Plus, Trash2, Users, Sun, Sunset, Search, Filter } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Label } from "@/components/ui/label"
-import AddScheduleModal from "@/components/modals/add-schedule-modal"
-import BulkScheduleModal from "@/components/modals/BulkScheduleModal"
-
+import UnifiedScheduleModal from "@/components/modals/add-schedule-modal"
 
 interface ScheduleRecord {
   id: string
@@ -30,8 +23,7 @@ interface ScheduleRecord {
 export default function InstructorSchedulePage() {
   const [scheduleRecords, setScheduleRecords] = useState<ScheduleRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isAddingSchedule, setIsAddingSchedule] = useState(false)
-  const [isBulkAdding, setIsBulkAdding] = useState(false)
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("this-week")
   const [customDateFilter, setCustomDateFilter] = useState({
     startDate: "",
@@ -47,7 +39,7 @@ export default function InstructorSchedulePage() {
   const fetchScheduleRecords = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/api/schedule')
+      const response = await fetch("/api/schedule")
       const result = await response.json()
 
       if (result.success) {
@@ -60,7 +52,7 @@ export default function InstructorSchedulePage() {
         })
       }
     } catch (error) {
-      console.error('Error fetching schedule:', error)
+      console.error("Error fetching schedule:", error)
       toast({
         title: "Error",
         description: "Failed to load schedule data",
@@ -71,21 +63,21 @@ export default function InstructorSchedulePage() {
     }
   }
 
-  const handleAddSchedule = async (data: { date: string; shift: string }) => {
+  const handleAddSingleSchedule = async (data: { date: string; shift: string }) => {
     if (!data.date || !data.shift) {
       toast({
         title: "Validation Error",
         description: "Please fill in all fields",
         variant: "destructive",
       })
-      return
+      throw new Error("Validation failed")
     }
 
     try {
-      const response = await fetch('/api/schedule', {
-        method: 'POST',
+      const response = await fetch("/api/schedule", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(data),
       })
@@ -97,7 +89,6 @@ export default function InstructorSchedulePage() {
           title: "Success",
           description: "Schedule added successfully",
         })
-        setIsAddingSchedule(false)
         fetchScheduleRecords()
       } else {
         toast({
@@ -105,14 +96,16 @@ export default function InstructorSchedulePage() {
           description: result.error || "Failed to add schedule",
           variant: "destructive",
         })
+        throw new Error(result.error)
       }
     } catch (error) {
-      console.error('Error adding schedule:', error)
+      console.error("Error adding schedule:", error)
       toast({
         title: "Error",
         description: "Failed to add schedule",
         variant: "destructive",
       })
+      throw error
     }
   }
 
@@ -123,15 +116,15 @@ export default function InstructorSchedulePage() {
     shift: string
   }) => {
     try {
-      const response = await fetch('/api/schedule/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/schedule/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           startDate: data.startDate,
           endDate: data.endDate,
           daysOfWeek: data.daysOfWeek,
-          shift: data.shift
-        })
+          shift: data.shift,
+        }),
       })
 
       const result = await response.json()
@@ -141,7 +134,6 @@ export default function InstructorSchedulePage() {
           title: "Success",
           description: result.message || `Created ${result.created} schedules successfully`,
         })
-        setIsBulkAdding(false)
         fetchScheduleRecords()
       } else {
         toast({
@@ -149,25 +141,27 @@ export default function InstructorSchedulePage() {
           description: result.error || "Failed to create schedules",
           variant: "destructive",
         })
+        throw new Error(result.error)
       }
     } catch (error) {
-      console.error('Error creating bulk schedules:', error)
+      console.error("Error creating bulk schedules:", error)
       toast({
         title: "Error",
         description: "Failed to create schedules",
         variant: "destructive",
       })
+      throw error
     }
   }
 
   const handleDeleteSchedule = async (scheduleId: string) => {
-    if (!confirm('Are you sure you want to delete this schedule?')) {
+    if (!confirm("Are you sure you want to delete this schedule?")) {
       return
     }
 
     try {
       const response = await fetch(`/api/schedule?id=${scheduleId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       })
 
       const result = await response.json()
@@ -186,7 +180,7 @@ export default function InstructorSchedulePage() {
         })
       }
     } catch (error) {
-      console.error('Error deleting schedule:', error)
+      console.error("Error deleting schedule:", error)
       toast({
         title: "Error",
         description: "Failed to delete schedule",
@@ -203,8 +197,6 @@ export default function InstructorSchedulePage() {
       case "Afternoon":
       case "2nd":
         return <Sunset className="h-4 w-4" />
-      case "Evening":
-        return <Moon className="h-4 w-4" />
       default:
         return <Clock className="h-4 w-4" />
     }
@@ -218,8 +210,6 @@ export default function InstructorSchedulePage() {
       case "Afternoon":
       case "2nd":
         return "12:00 PM - 5:00 PM"
-      case "Evening":
-        return "5:00 PM - 9:00 PM"
       default:
         return ""
     }
@@ -229,12 +219,10 @@ export default function InstructorSchedulePage() {
     switch (shift) {
       case "Morning":
       case "1st":
-        return "bg-amber-100 text-amber-800"
+        return "bg-blue-100 text-blue-800"
       case "Afternoon":
       case "2nd":
-        return "bg-orange-100 text-orange-800"
-      case "Evening":
-        return "bg-indigo-100 text-indigo-800"
+        return "bg-blue-100 text-blue-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -251,47 +239,45 @@ export default function InstructorSchedulePage() {
     }
   }
 
-  // Get current week's start and end dates
   const getWeekBounds = () => {
     const now = new Date()
     const dayOfWeek = now.getDay()
     const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-    
+
     const weekStart = new Date(now)
     weekStart.setDate(now.getDate() + diffToMonday)
     weekStart.setHours(0, 0, 0, 0)
-    
+
     const weekEnd = new Date(weekStart)
     weekEnd.setDate(weekStart.getDate() + 6)
     weekEnd.setHours(23, 59, 59, 999)
-    
+
     return { weekStart, weekEnd }
   }
 
-  // Filter schedules by category
   const filteredSchedules = useMemo(() => {
     const now = new Date()
     now.setHours(0, 0, 0, 0)
     const { weekStart, weekEnd } = getWeekBounds()
 
-    const thisWeek = scheduleRecords.filter(record => {
+    const thisWeek = scheduleRecords.filter((record) => {
       const recordDate = new Date(record.date)
       return recordDate >= weekStart && recordDate <= weekEnd
     })
 
-    const upcoming = scheduleRecords.filter(record => {
+    const upcoming = scheduleRecords.filter((record) => {
       const recordDate = new Date(record.date)
       return recordDate > weekEnd
     })
 
-    const past = scheduleRecords.filter(record => {
+    const past = scheduleRecords.filter((record) => {
       const recordDate = new Date(record.date)
       return recordDate < weekStart
     })
 
-    const custom = scheduleRecords.filter(record => {
+    const custom = scheduleRecords.filter((record) => {
       if (!customDateFilter.startDate && !customDateFilter.endDate) return false
-      
+
       const recordDate = new Date(record.date)
       const start = customDateFilter.startDate ? new Date(customDateFilter.startDate) : null
       const end = customDateFilter.endDate ? new Date(customDateFilter.endDate) : null
@@ -336,27 +322,26 @@ export default function InstructorSchedulePage() {
   const renderScheduleCard = (record: ScheduleRecord) => (
     <div
       key={record.id}
-      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
+      className="flex items-center justify-between p-4 bg-white rounded-lg hover:bg-gray-50 transition-colors border border-gray-200"
     >
       <div className="flex items-center gap-6">
-        <div className="flex flex-col items-center bg-white px-3 py-2 rounded-md border border-gray-200">
-          <span className="text-2xl font-bold">
-            {new Date(record.date).getDate()}
-          </span>
-          <span className="text-xs text-muted-foreground uppercase">
-            {new Date(record.date).toLocaleDateString('en-US', { weekday: 'short' })}
+        <div className="flex flex-col items-center bg-[#5C8E77] text-white px-3 py-2 rounded-md">
+          <span className="text-2xl font-bold">{new Date(record.date).getDate()}</span>
+          <span className="text-xs font-medium uppercase">
+            {new Date(record.date).toLocaleDateString("en-US", { weekday: "short" })}
           </span>
         </div>
-        
+
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             {getShiftIcon(record.shift)}
-            <span className="font-semibold">{getShiftLabel(record.shift)}</span>
-            <Badge className={getShiftColor(record.shift)}>{getShiftTime(record.shift)}</Badge>
+            <span className="font-semibold text-gray-900">{getShiftLabel(record.shift)}</span>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
             <Users className="h-4 w-4" />
-            <span>{record.assignedClinicians} clinician{record.assignedClinicians !== 1 ? 's' : ''} assigned</span>
+            <span>
+              {record.assignedClinicians} clinician{record.assignedClinicians !== 1 ? "s" : ""} assigned
+            </span>
           </div>
         </div>
       </div>
@@ -376,42 +361,33 @@ export default function InstructorSchedulePage() {
     if (schedules.length === 0) {
       return (
         <div className="text-center py-12">
-          <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">{emptyMessage}</p>
+          <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600">{emptyMessage}</p>
         </div>
       )
     }
 
-    return (
-      <div className="space-y-3">
-        {schedules.map(renderScheduleCard)}
-      </div>
-    )
+    return <div className="space-y-3">{schedules.map(renderScheduleCard)}</div>
   }
 
   const { weekStart, weekEnd } = getWeekBounds()
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Schedule Management</h1>
-          <p className="text-muted-foreground">Manage your clinical instruction schedule</p>
+          <h1 className="text-2xl font-semibold text-gray-800">Schedule</h1>
         </div>
         <div className="flex gap-2">
           <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
             <PopoverTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" className="border-gray-300 text-gray-700 bg-transparent">
                 <Filter className="h-4 w-4 mr-2" />
                 Custom Date Filter
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80">
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-sm">Filter by Date Range</h4>
-                  <p className="text-sm text-muted-foreground">Select a custom date range to view schedules</p>
-                </div>
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <Label htmlFor="start-date">Start Date</Label>
@@ -433,10 +409,14 @@ export default function InstructorSchedulePage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={clearCustomFilter} className="flex-1">
+                  <Button
+                    variant="outline"
+                    onClick={clearCustomFilter}
+                    className="flex-1 border-gray-300 bg-transparent"
+                  >
                     Clear
                   </Button>
-                  <Button onClick={applyCustomFilter} className="flex-1">
+                  <Button onClick={applyCustomFilter} className="flex-1 bg-[#5C8E77] hover:bg-[#406E58] text-white">
                     <Search className="h-4 w-4 mr-2" />
                     Apply
                   </Button>
@@ -444,27 +424,18 @@ export default function InstructorSchedulePage() {
               </div>
             </PopoverContent>
           </Popover>
-          <Button variant="outline" onClick={() => setIsBulkAdding(true)}>
-            <CalendarRange className="h-4 w-4 mr-2" />
-            Bulk Add
-          </Button>
-          <Button onClick={() => setIsAddingSchedule(true)}>
+          <Button onClick={() => setIsScheduleModalOpen(true)} className="bg-[#5C8E77] hover:bg-[#406E58] text-white">
             <Plus className="h-4 w-4 mr-2" />
             Add Schedule
           </Button>
         </div>
       </div>
 
-      <AddScheduleModal
-        open={isAddingSchedule}
-        onOpenChange={setIsAddingSchedule}
-        onSubmit={handleAddSchedule}
-      />
-
-      <BulkScheduleModal
-        open={isBulkAdding}
-        onOpenChange={setIsBulkAdding}
-        onSubmit={handleBulkAddSchedule}
+      <UnifiedScheduleModal
+        open={isScheduleModalOpen}
+        onOpenChange={setIsScheduleModalOpen}
+        onSubmitSingle={handleAddSingleSchedule}
+        onSubmitBulk={handleBulkAddSchedule}
       />
 
       {isLoading ? (
@@ -472,37 +443,45 @@ export default function InstructorSchedulePage() {
           <CardContent className="py-12">
             <div className="flex items-center justify-center">
               <div className="text-center">
-                <Clock className="h-8 w-8 animate-spin mx-auto mb-2 text-muted-foreground" />
-                <p className="text-muted-foreground">Loading schedule...</p>
+                <Clock className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-400" />
+                <p className="text-gray-600">Loading schedule...</p>
               </div>
             </div>
           </CardContent>
         </Card>
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid grid-cols-4">
             <TabsTrigger value="this-week">
               This Week
               {filteredSchedules.thisWeek.length > 0 && (
-                <Badge variant="secondary" className="ml-2">{filteredSchedules.thisWeek.length}</Badge>
+                <Badge variant="secondary" className="ml-2">
+                  {filteredSchedules.thisWeek.length}
+                </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="upcoming">
               Upcoming
               {filteredSchedules.upcoming.length > 0 && (
-                <Badge variant="secondary" className="ml-2">{filteredSchedules.upcoming.length}</Badge>
+                <Badge variant="secondary" className="ml-2">
+                  {filteredSchedules.upcoming.length}
+                </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="past">
               Past
               {filteredSchedules.past.length > 0 && (
-                <Badge variant="secondary" className="ml-2">{filteredSchedules.past.length}</Badge>
+                <Badge variant="secondary" className="ml-2">
+                  {filteredSchedules.past.length}
+                </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="custom" disabled={filteredSchedules.custom.length === 0}>
               Custom Filter
               {filteredSchedules.custom.length > 0 && (
-                <Badge variant="secondary" className="ml-2">{filteredSchedules.custom.length}</Badge>
+                <Badge variant="secondary" className="ml-2">
+                  {filteredSchedules.custom.length}
+                </Badge>
               )}
             </TabsTrigger>
           </TabsList>
@@ -510,69 +489,66 @@ export default function InstructorSchedulePage() {
           <TabsContent value="this-week">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-[#5C8E77]">
                   <Calendar className="h-5 w-5" />
                   This Week
                 </CardTitle>
-                <CardDescription>
-                  {weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                <CardDescription className="text-gray-600">
+                  {weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} -{" "}
+                  {weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                {renderScheduleList(filteredSchedules.thisWeek, "No schedules for this week")}
-              </CardContent>
+              <CardContent>{renderScheduleList(filteredSchedules.thisWeek, "No schedules for this week")}</CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="upcoming">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-[#5C8E77]">
                   <Calendar className="h-5 w-5" />
                   Upcoming Schedules
                 </CardTitle>
-                <CardDescription>
-                  Schedules after {weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                <CardDescription className="text-gray-600">
+                  Schedules after{" "}
+                  {weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                {renderScheduleList(filteredSchedules.upcoming, "No upcoming schedules")}
-              </CardContent>
+              <CardContent>{renderScheduleList(filteredSchedules.upcoming, "No upcoming schedules")}</CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="past">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-[#5C8E77]">
                   <Calendar className="h-5 w-5" />
                   Past Schedules
                 </CardTitle>
-                <CardDescription>
-                  Schedules before {weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                <CardDescription className="text-gray-600">
+                  Schedules before{" "}
+                  {weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                {renderScheduleList(filteredSchedules.past, "No past schedules")}
-              </CardContent>
+              <CardContent>{renderScheduleList(filteredSchedules.past, "No past schedules")}</CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="custom">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-[#5C8E77]">
                   <Search className="h-5 w-5" />
                   Custom Date Range
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-gray-600">
                   {customDateFilter.startDate && customDateFilter.endDate
-                    ? `${new Date(customDateFilter.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${new Date(customDateFilter.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                    ? `${new Date(customDateFilter.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} - ${new Date(customDateFilter.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
                     : customDateFilter.startDate
-                    ? `From ${new Date(customDateFilter.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-                    : customDateFilter.endDate
-                    ? `Until ${new Date(customDateFilter.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-                    : "No date range selected"}
+                      ? `From ${new Date(customDateFilter.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                      : customDateFilter.endDate
+                        ? `Until ${new Date(customDateFilter.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                        : "No date range selected"}
                 </CardDescription>
               </CardHeader>
               <CardContent>

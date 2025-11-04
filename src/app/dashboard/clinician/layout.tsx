@@ -9,7 +9,7 @@ export default function ClinicianLayout({ children }: { children: React.ReactNod
 
       <div className="flex-1 sm:ml-64 w-full pt-16">
         <Header />
-        <main className="bg-[#f9f9f9] min-h-screen p-6">{children}</main>
+        <main className="bg-[#f9f9f9] min-h-screen">{children}</main>
       </div>
     </div>
   )

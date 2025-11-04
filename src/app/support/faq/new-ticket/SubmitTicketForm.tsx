@@ -1,52 +1,104 @@
-// app/incident-management/new-ticket/NewTicket.tsx
+// app/support/faq/new-ticket/SubmitTicketForm.tsx
 "use client"
 
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import Image from "next/image"
 import { X, Paperclip } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { TicketSuccessModal } from "@/components/modals/ticket-success-modal"
-import { TicketFailureModal } from "@/components/modals/ticket-failure-modal"
+import { TicketSuccessModal } from "@/components/modals/support-faq/ticket-success-modal" 
+import { TicketFailureModal } from "@/components/modals/support-faq/ticket-failure-modal"   
+import { useToast } from "@/hooks/use-toast"
+import { createBrowserClient } from "@supabase/ssr"
 
-export default function NewTicket() {
-  const router = useRouter()
-  const [formData, setFormData] = useState({
+// API paths use the root-level path structure for Next.js API routes
+const API_GET_URL_BASE = '/api/support/SubmitTicketForm'; 
+const API_POST_URL = '/api/support/SubmitTicketForm'; 
+
+const INITIAL_FORM_DATA = {
     title: "",
     affectedModule: "",
     category: "",
     description: "",
-    reportedBy: "",
+    reportedBy: "", // Will be populated from actual user
     attachments: null as File[] | null,
-  })
+};
+
+export default function SubmitTicketForm() {
+  const router = useRouter()
+  const { toast } = useToast()
+  const [formData, setFormData] = useState(INITIAL_FORM_DATA)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showFailureModal, setShowFailureModal] = useState(false)
   const [ticketNumber, setTicketNumber] = useState("")
   const [submissionDate, setSubmissionDate] = useState("")
   const [errorMessage, setErrorMessage] = useState("")
 
-  // Fetched data from database
   const [modules, setModules] = useState<Array<{ module_id: string; module_name: string }>>([])
   const [issueTypes, setIssueTypes] = useState<Array<{ issue_type_id: string; issue_type_name: string }>>([])
   const [isLoadingModules, setIsLoadingModules] = useState(true)
   const [isLoadingIssueTypes, setIsLoadingIssueTypes] = useState(false)
   const [selectedModuleId, setSelectedModuleId] = useState("")
+  const [isLoadingUser, setIsLoadingUser] = useState(true)
 
-  const backgroundImages = ["/images/landing-page/school-1.png", "/images/landing-page/school-2.png"]
+  // Initialize Supabase client
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
-  // Fetch modules on component mount
+  // --- Fetch Current User ---
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        setIsLoadingUser(true)
+        const { data: { user }, error } = await supabase.auth.getUser()
+        
+        if (error) {
+          console.error('Error fetching user:', error)
+          toast({ 
+            title: "Authentication Error", 
+            description: "Could not fetch user information. Please log in again.", 
+            variant: "destructive" 
+          })
+          return
+        }
+
+        if (user?.email) {
+          console.log('✅ Logged in user:', user.email)
+          setFormData(prev => ({
+            ...prev,
+            reportedBy: user.email || ""
+          }))
+        } else {
+          console.warn('⚠️ No user email found')
+          toast({ 
+            title: "Warning", 
+            description: "User email not found. Please ensure you are logged in.", 
+            variant: "destructive" 
+          })
+        }
+      } catch (error) {
+        console.error('Error in fetchCurrentUser:', error)
+      } finally {
+        setIsLoadingUser(false)
+      }
+    }
+
+    fetchCurrentUser()
+  }, [])
+
+  // --- Data Fetching ---
+
   useEffect(() => {
     fetchModules()
   }, [])
 
-  // Fetch issue types when module changes
   useEffect(() => {
     if (selectedModuleId) {
       fetchIssueTypes(selectedModuleId)
@@ -55,50 +107,19 @@ export default function NewTicket() {
     }
   }, [selectedModuleId])
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % backgroundImages.length)
-    }, 4000)
-
-    return () => clearInterval(interval)
-  }, [])
-
   const fetchModules = async () => {
     try {
       setIsLoadingModules(true)
-      console.log('🔄 Fetching modules from:', '/api/incident-management/NewTickets?action=modules')
-      
-      const response = await fetch('/api/incident-management/NewTickets?action=modules', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        cache: 'no-store'
-      })
-      
-      console.log('📡 Response status:', response.status, response.statusText)
-      
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('❌ Response not OK:', errorText)
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
-      }
-
+      const response = await fetch(`${API_GET_URL_BASE}?action=modules`, { cache: 'no-store' }) 
       const result = await response.json()
-      console.log('📦 Response data:', result)
-
       if (result.success && result.modules) {
         setModules(result.modules)
-        console.log('✅ Fetched modules:', result.modules.length, 'modules')
       } else {
-        console.error('❌ Failed to fetch modules:', result.error || 'Unknown error')
         setModules([])
       }
     } catch (error) {
-      console.error('💥 Error fetching modules:', error)
       setModules([])
-      // Show error to user
-      alert('Failed to load modules. Please check console for details.')
+      toast({ title: "Error", description: "Failed to load modules.", variant: "destructive" })
     } finally {
       setIsLoadingModules(false)
     }
@@ -107,14 +128,11 @@ export default function NewTicket() {
   const fetchIssueTypes = async (moduleId: string) => {
     try {
       setIsLoadingIssueTypes(true)
-      const response = await fetch(`/api/incident-management/NewTickets?action=issue_types&module_id=${moduleId}`)
+      const response = await fetch(`${API_GET_URL_BASE}?action=issue_types&module_id=${moduleId}`) 
       const result = await response.json()
 
       if (response.ok && result.success) {
         setIssueTypes(result.issueTypes || [])
-        console.log('✅ Fetched issue types:', result.issueTypes)
-      } else {
-        console.error('Failed to fetch issue types:', result.error)
       }
     } catch (error) {
       console.error('Error fetching issue types:', error)
@@ -122,6 +140,8 @@ export default function NewTicket() {
       setIsLoadingIssueTypes(false)
     }
   }
+  
+  // --- Form Logic ---
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
@@ -130,10 +150,9 @@ export default function NewTicket() {
       ...(field === "affectedModule" ? { category: "" } : {}),
     }))
 
-    // When module changes, update selectedModuleId to fetch issue types
     if (field === "affectedModule") {
-      const mod = modules.find(m => m.module_name === value)
-      setSelectedModuleId(mod?.module_id || "")
+      const module = modules.find(m => m.module_name === value)
+      setSelectedModuleId(module?.module_id || "")
     }
   }
 
@@ -153,9 +172,6 @@ export default function NewTicket() {
     setErrorMessage("")
 
     try {
-      console.log("📝 Submitting ticket...", formData)
-
-      // Prepare form data for submission
       const submitFormData = new FormData()
       submitFormData.append('title', formData.title)
       submitFormData.append('affectedModule', formData.affectedModule)
@@ -163,15 +179,13 @@ export default function NewTicket() {
       submitFormData.append('description', formData.description)
       submitFormData.append('reportedBy', formData.reportedBy)
 
-      // Add files if any
       if (formData.attachments && formData.attachments.length > 0) {
         formData.attachments.forEach((file) => {
           submitFormData.append('files', file)
         })
       }
 
-      // Submit ticket with attachments to the unified route
-      const response = await fetch('/api/incident-management/NewTickets', {
+      const response = await fetch(API_POST_URL, {
         method: 'POST',
         body: submitFormData,
       })
@@ -182,34 +196,14 @@ export default function NewTicket() {
         throw new Error(result.error || result.details || 'Failed to submit ticket')
       }
 
-      console.log("✅ Ticket created:", result)
-
-      if (result.attachmentsUploaded > 0) {
-        console.log(`✅ Uploaded ${result.attachmentsUploaded} attachment(s)`)
-      }
-
-      if (result.attachmentErrors && result.attachmentErrors.length > 0) {
-        console.warn("⚠️ Some attachments failed to upload:", result.attachmentErrors)
-      }
-
-      // Set success data from API response
       setTicketNumber(result.ticketNumber)
       setSubmissionDate(result.submissionDate)
       setShowSuccessModal(true)
 
-      // Reset form
-      setFormData({
-        title: "",
-        affectedModule: "",
-        category: "",
-        description: "",
-        reportedBy: "",
-        attachments: null,
-      })
+      setFormData(INITIAL_FORM_DATA)
       setSelectedModuleId("")
 
     } catch (error) {
-      console.error("❌ Ticket submission failed:", error)
       setErrorMessage(error instanceof Error ? error.message : "Unable to submit your ticket at this time. Please try again.")
       setShowFailureModal(true)
     } finally {
@@ -217,15 +211,10 @@ export default function NewTicket() {
     }
   }
 
-  const handleSuccessClose = () => {
-    setShowSuccessModal(false)
-    router.push("/")
-  }
-
-  const handleViewTickets = () => {
-    setShowSuccessModal(false)
-    router.push("/incident-management/my-tickets")
-  }
+const handleSuccessClose = () => {
+  setShowSuccessModal(false)
+  router.push("/support/faq/my-ticket") 
+}
 
   const handleFailureClose = () => {
     setShowFailureModal(false)
@@ -238,49 +227,33 @@ export default function NewTicket() {
   const isFormValid = () => {
     return formData.title && formData.affectedModule && formData.category && formData.description && formData.reportedBy
   }
-
+  
+  // --- Rendering ---
+  
   return (
-    <div className="relative min-h-screen overflow-hidden font-poppins m-0 p-0">
-      {/* Background Carousel */}
-      <div className="fixed inset-0 z-0 -top-0">
-        {backgroundImages.map((image, index) => (
-          <div
-            key={index}
-            className={`absolute inset-0 transition-opacity duration-1000 ${
-              index === currentImageIndex ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            <Image
-              src={image || "/placeholder.svg"}
-              alt={`Background ${index + 1}`}
-              fill
-              className="object-cover"
-              priority={index === 0}
-            />
-            <div className="absolute inset-0 bg-emerald-600/60" />
-          </div>
-        ))}
+    <div className="p-8 bg-white rounded-lg shadow-lg w-full max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="border-b border-gray-200 pb-4 mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Submit Support Ticket</h1>
+        {/* Button directs back to the FAQ/Help page */}
+        <Button onClick={() => router.push("/support/faq")} variant="ghost" aria-label="Close form">
+          <X className="w-5 h-5 text-gray-500" />
+        </Button>
       </div>
 
-      {/* Foreground Content */}
-      <div className="relative z-10 min-h-screen flex items-center justify-center p-4 pt-0">
-        <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden mt-4">
-          {/* Header */}
-          <div className="bg-emerald-700 text-white p-6 relative">
-            <button
-              onClick={() => router.back()}
-              className="absolute top-4 right-4 text-white hover:text-gray-200 transition-colors"
-              aria-label="Close form"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <h1 className="text-2xl font-bold mb-2">Submit Support Ticket</h1>
-            <p className="text-emerald-100">Please provide details about the issue you're experiencing</p>
+      {/* Loading State */}
+      {isLoadingUser ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading user information...</p>
           </div>
-
+        </div>
+      ) : (
+        <>
           {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-6">
-            {/* Ticket Title */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* 1. Ticket Title */}
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
                 1. Ticket Title <span className="text-red-500">*</span>
@@ -296,7 +269,7 @@ export default function NewTicket() {
               />
             </div>
 
-            {/* Affected Module */}
+            {/* 2. Affected Module */}
             <div>
               <label htmlFor="module" className="block text-sm font-medium text-gray-700 mb-2">
                 2. Affected Module <span className="text-red-500">*</span>
@@ -319,7 +292,7 @@ export default function NewTicket() {
               </Select>
             </div>
 
-            {/* Category */}
+            {/* 3. Category */}
             <div>
               <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
                 3. Category / Issue Type <span className="text-red-500">*</span>
@@ -346,7 +319,7 @@ export default function NewTicket() {
               </Select>
             </div>
 
-            {/* Description */}
+            {/* 4. Description */}
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
                 4. Description <span className="text-red-500">*</span>
@@ -361,23 +334,29 @@ export default function NewTicket() {
               />
             </div>
 
-            {/* Reported by */}
+            {/* 5. Reported by (Pre-filled with actual user) */}
             <div>
               <label htmlFor="reportedBy" className="block text-sm font-medium text-gray-700 mb-2">
-                5. Reported by <span className="text-red-500">*</span>
+                5. Reported by (Email) <span className="text-red-500">*</span>
               </label>
               <Input
                 id="reportedBy"
                 type="email"
-                placeholder="Enter your email address"
+                placeholder="Your email address"
                 value={formData.reportedBy}
                 onChange={(e) => handleInputChange("reportedBy", e.target.value)}
-                className="w-full"
+                className="w-full bg-gray-100 text-gray-600 cursor-not-allowed"
                 required
+                readOnly={true}
               />
+              {formData.reportedBy && (
+                <p className="mt-1 text-xs text-gray-500">
+                  This is your registered account email
+                </p>
+              )}
             </div>
 
-            {/* Attachments */}
+            {/* 6. Attachments */}
             <div>
               <label htmlFor="attachments" className="block text-sm font-medium text-gray-700 mb-2">
                 6. Attachments (Optional)
@@ -414,19 +393,17 @@ export default function NewTicket() {
               </Button>
             </div>
           </form>
-        </div>
-      </div>
-
-      {/* Success Modal */}
+        </>
+      )}
+      
+      {/* Modals */}
       <TicketSuccessModal
         isOpen={showSuccessModal}
         onClose={handleSuccessClose}
-        onViewTickets={handleViewTickets}
         ticketNumber={ticketNumber}
         submissionDate={submissionDate}
       />
 
-      {/* Failure Modal */}
       <TicketFailureModal
         isOpen={showFailureModal}
         onClose={handleFailureClose}

@@ -1,6 +1,6 @@
 // app/api/support/MyTickets/route.ts
 import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server"
 
 function getSupabaseClient() {
   return createClient(
@@ -19,9 +19,10 @@ export async function GET(request: NextRequest) {
   const supabase = getSupabaseClient();
   const { searchParams } = new URL(request.url);
   const ticketNum = searchParams.get('ticket_num');
+  const userEmail = searchParams.get('user_email');
 
   try {
-    console.log('🔥 Fetching ticket:', ticketNum);
+    console.log('🔥 Fetching ticket:', ticketNum, 'for user:', userEmail);
 
     if (!ticketNum) {
       return NextResponse.json({ 
@@ -30,7 +31,13 @@ export async function GET(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Fetch single ticket by ticket number
+    if (!userEmail) {
+      return NextResponse.json({ 
+        error: 'User email is required', 
+        success: false 
+      }, { status: 400 });
+    }
+
     const { data: ticketData, error } = await supabase
       .from('incident')
       .select(`
@@ -50,70 +57,93 @@ export async function GET(request: NextRequest) {
         description,
         submitted_at,
         updated_at,
-        resolved_at,
-        closed_at
+        resolved_at
       `)
       .eq('ticket_num', ticketNum)
       .single();
 
-    if (error || !ticketData) {
-      console.error('❌ Ticket not found:', error);
+    if (error) {
+      console.error('❌ Error fetching ticket:', error);
       return NextResponse.json({ 
         error: 'Ticket not found', 
+        details: error.message,
         success: false 
       }, { status: 404 });
     }
 
-    console.log(`✅ Found ticket:`, ticketData.ticket_num);
+    if (!ticketData) {
+      console.log('❌ No ticket found');
+      return NextResponse.json({ 
+        error: 'Ticket not found',
+        success: false 
+      }, { status: 404 });
+    }
 
-    // Fetch related data
-    const { data: moduleData } = await supabase
-      .from('affected_module')
-      .select('module_name')
-      .eq('module_id', ticketData.module_id)
-      .single();
+    if (ticketData.reporter_email.toLowerCase() !== userEmail.trim().toLowerCase()) {
+      console.log('❌ Email mismatch - Access denied');
+      return NextResponse.json({ 
+        error: 'Email does not match the ticket reporter. Please check your email and try again.',
+        success: false 
+      }, { status: 403 });
+    }
 
-    const { data: issueTypeData } = await supabase
-      .from('issue_type')
-      .select('issue_type_name')
-      .eq('issue_type_id', ticketData.issue_type_id)
-      .single();
+    console.log('✅ Email verified - Fetching related data');
 
-    const { data: severityData } = await supabase
-      .from('severity_level')
-      .select('name')
-      .eq('severity_id', ticketData.severity_id)
-      .single();
+    const [moduleRes, issueTypeRes, severityRes, notesRes, attachmentsRes] = await Promise.all([
+      supabase.from('affected_module').select('module_id, module_name').eq('module_id', ticketData.module_id).single(),
+      supabase.from('issue_type').select('issue_type_id, issue_type_name').eq('issue_type_id', ticketData.issue_type_id).single(),
+      supabase.from('severity_level').select('severity_id, name').eq('severity_id', ticketData.severity_id).single(),
+      supabase.from('incident_note').select('*').eq('incident_id', ticketData.incident_id).order('created_at', { ascending: false }),
+      supabase.from('incident_attachment').select('*').eq('incident_id', ticketData.incident_id).order('uploaded_at', { ascending: false })
+    ]);
 
-    // Fetch notes
-    const { data: notesData } = await supabase
-      .from('incident_note')
-      .select('note_id, incident_id, author_user_id, body, note_type, created_at')
-      .eq('incident_id', ticketData.incident_id)
-      .order('created_at', { ascending: false });
+    // Get unique author user IDs from notes
+    const authorUserIds = [...new Set((notesRes.data || [])
+      .map(note => note.author_user_id)
+      .filter(id => id && id !== 'system')
+    )];
 
-    // Fetch attachments
-    const { data: attachmentsData } = await supabase
-      .from('incident_attachment')
-      .select('attachment_id, incident_id, file_name, file_size, file_type, storage_url, uploaded_by_user_id, uploaded_at')
-      .eq('incident_id', ticketData.incident_id)
-      .order('uploaded_at', { ascending: false });
+    // Fetch user info for all authors
+    const usersMap = new Map();
+    if (authorUserIds.length > 0) {
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('auth_user_id, first_name, last_name, email')
+        .in('auth_user_id', authorUserIds);
+      
+      (usersData || []).forEach(user => {
+        usersMap.set(user.auth_user_id, user);
+      });
+    }
 
-    // Transform notes to match expected interface
-    const transformedNotes = (notesData || []).map(note => ({
-      note_id: note.note_id,
-      incident_id: note.incident_id,
-      author_user_id: note.author_user_id,
-      author_name: 'User',
-      author_email: ticketData.reporter_email,
-      body: note.body,
-      created_at: note.created_at,
-      visibility: note.note_type === 'internal' ? 'internal' : 'public',
-      is_system: note.note_type === 'system' || note.note_type === 'status_change'
-    }));
+    // Transform notes with author info
+    const notes = (notesRes.data || []).map(note => {
+      let authorName = 'User';
+      let authorEmail = ticketData.reporter_email;
 
-    // Transform attachments to match expected interface
-    const transformedAttachments = (attachmentsData || []).map(att => ({
+      if (note.author_user_id === 'system') {
+        authorName = 'System';
+        authorEmail = 'system';
+      } else if (note.author_user_id && usersMap.has(note.author_user_id)) {
+        const user = usersMap.get(note.author_user_id);
+        authorName = `${user.first_name} ${user.last_name}`.trim() || user.email;
+        authorEmail = user.email;
+      }
+
+      return {
+        note_id: note.note_id,
+        incident_id: note.incident_id,
+        author_user_id: note.author_user_id,
+        author_name: authorName,
+        author_email: authorEmail,
+        body: note.body,
+        created_at: note.created_at,
+        visibility: note.note_type === 'internal' ? 'internal' : 'public',
+        is_system: note.note_type === 'system' || note.note_type === 'status_change'
+      };
+    });
+
+    const attachments = (attachmentsRes.data || []).map(att => ({
       attachment_id: att.attachment_id,
       incident_id: att.incident_id,
       file_name: att.file_name,
@@ -124,7 +154,6 @@ export async function GET(request: NextRequest) {
       uploaded_at: att.uploaded_at
     }));
 
-    // Transform data
     const transformedTicket = {
       incident_id: ticketData.incident_id,
       ticket_num: ticketData.ticket_num,
@@ -132,13 +161,13 @@ export async function GET(request: NextRequest) {
       reporter_user_id: ticketData.reporter_user_id,
       reporter_email: ticketData.reporter_email,
       assigned_user_id: ticketData.assignee_user_id,
-      assigned_user_name: ticketData.assignee_user_email?.split('@')[0] || 'Unassigned',
+      assigned_user_name: ticketData.assignee_user_email || 'Unassigned',
       affected_module_id: ticketData.module_id,
-      affected_module_name: moduleData?.module_name || 'N/A',
+      affected_module_name: moduleRes.data?.module_name || 'N/A',
       issue_type_id: ticketData.issue_type_id,
-      issue_type_name: issueTypeData?.issue_type_name || 'N/A',
+      issue_type_name: issueTypeRes.data?.issue_type_name || 'N/A',
       severity_id: ticketData.severity_id,
-      severity_name: severityData?.name || 'N/A',
+      severity_name: severityRes.data?.name || 'N/A',
       derived_severity_score: ticketData.derived_severity_score,
       status: ticketData.status,
       priority: ticketData.priority,
@@ -146,9 +175,11 @@ export async function GET(request: NextRequest) {
       submitted_at: ticketData.submitted_at,
       updated_at: ticketData.updated_at,
       resolved_at: ticketData.resolved_at,
-      notes: transformedNotes,
-      attachments: transformedAttachments
+      notes,
+      attachments
     };
+
+    console.log('✅ Ticket fetched successfully');
 
     return NextResponse.json({ 
       success: true, 
@@ -156,7 +187,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('💥 Error in my-tickets GET:', error);
+    console.error('💥 Error in MyTickets GET:', error);
     return NextResponse.json({ 
       error: 'Internal server error', 
       details: error instanceof Error ? error.message : 'Unknown error',
@@ -170,9 +201,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { incident_id, status, note_body, note_type } = body;
+    const { incident_id, status, note_body, note_type, author_user_id } = body;
 
-    console.log('🔥 Updating ticket:', { incident_id, status, note_body, note_type });
+    console.log('📝 Updating ticket:', incident_id);
 
     if (!incident_id) {
       return NextResponse.json({ 
@@ -181,83 +212,95 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Fetch ticket data first
-    const { data: ticketData, error: fetchError } = await supabase
+    // Check if ticket is already finalized (Resolved or Cancelled)
+    const { data: currentTicket, error: fetchError } = await supabase
       .from('incident')
-      .select('*')
+      .select('status')
       .eq('incident_id', incident_id)
       .single();
 
-    if (fetchError || !ticketData) {
+    if (fetchError || !currentTicket) {
       console.error('❌ Error fetching ticket:', fetchError);
       return NextResponse.json({ 
         error: 'Ticket not found', 
-        details: fetchError?.message,
         success: false 
       }, { status: 404 });
     }
 
-    let updated = false;
+    // Block updates to finalized tickets
+    if (currentTicket.status === 'Resolved' || currentTicket.status === 'Cancelled') {
+      console.log('❌ Attempt to modify finalized ticket');
+      return NextResponse.json({ 
+        error: `Cannot modify ${currentTicket.status.toLowerCase()} tickets`, 
+        success: false 
+      }, { status: 403 });
+    }
 
-    // Update ticket status if provided and different
-    if (status && status !== ticketData.status) {
-      const updateData: any = {
-        status,
-        updated_at: new Date().toISOString()
-      };
+    const hasStatusChange = !!status;
+    const hasNote = note_body && note_body.trim();
 
-      // Set resolved_at if status is Resolved
-      if (status === 'Resolved' && ticketData.status !== 'Resolved') {
-        updateData.resolved_at = new Date().toISOString();
-      }
+    // Validate: if changing status, note is required
+    if (hasStatusChange && !hasNote) {
+      return NextResponse.json({ 
+        error: 'A note is required when changing the status', 
+        success: false 
+      }, { status: 400 });
+    }
 
+    // Update status if provided
+    if (status) {
       const { error: updateError } = await supabase
         .from('incident')
-        .update(updateData)
+        .update({ 
+          status,
+          updated_at: new Date().toISOString(),
+          ...(status === 'Resolved' ? { resolved_at: new Date().toISOString() } : {})
+        })
         .eq('incident_id', incident_id);
 
       if (updateError) {
-        console.error('❌ Error updating ticket status:', updateError);
+        console.error('❌ Error updating status:', updateError);
         return NextResponse.json({ 
-          error: 'Failed to update ticket status', 
+          error: 'Failed to update status', 
           details: updateError.message,
           success: false 
         }, { status: 500 });
       }
 
-      updated = true;
-      console.log('✅ Status updated to:', status);
-
       // Add system note for status change
-      const statusChangeNote = {
+      await supabase.from('incident_note').insert({
         incident_id,
-        author_user_id: ticketData.reporter_user_id,
-        body: `Status changed to ${status}`,
+        author_user_id: 'system',
+        body: `Status changed to: ${status}`,
         note_type: 'status_change',
         created_at: new Date().toISOString()
-      };
+      });
+    } else if (hasNote) {
+      // If only adding a note (no status change), still update the timestamp
+      const { error: updateError } = await supabase
+        .from('incident')
+        .update({ 
+          updated_at: new Date().toISOString()
+        })
+        .eq('incident_id', incident_id);
 
-      await supabase
-        .from('incident_note')
-        .insert(statusChangeNote);
+      if (updateError) {
+        console.error('❌ Error updating timestamp:', updateError);
+      }
     }
 
-    // Add user note if provided
-    if (note_body && note_body.trim()) {
-      const noteData = {
-        incident_id,
-        author_user_id: ticketData.reporter_user_id,
-        body: note_body.trim(),
-        note_type: note_type || 'comment',
-        created_at: new Date().toISOString()
-      };
-
-      console.log('📝 Inserting note:', noteData);
-
-      const { error: noteError, data: noteResult } = await supabase
+    // Add note if provided
+    if (hasNote) {
+      const { error: noteError } = await supabase
         .from('incident_note')
-        .insert(noteData)
-        .select();
+        .insert({
+          incident_id,
+          // Use provided author_user_id if available, otherwise use 'user' for external access
+          author_user_id: author_user_id || 'user',
+          body: note_body.trim(),
+          note_type: note_type || 'comment',
+          created_at: new Date().toISOString()
+        });
 
       if (noteError) {
         console.error('❌ Error adding note:', noteError);
@@ -267,23 +310,7 @@ export async function PATCH(request: NextRequest) {
           success: false 
         }, { status: 500 });
       }
-
-      console.log('✅ Note added:', noteResult);
-      updated = true;
     }
-
-    if (!updated) {
-      return NextResponse.json({ 
-        error: 'No changes to update', 
-        success: false 
-      }, { status: 400 });
-    }
-
-    // Update the updated_at timestamp
-    await supabase
-      .from('incident')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('incident_id', incident_id);
 
     console.log('✅ Ticket updated successfully');
 
@@ -293,7 +320,7 @@ export async function PATCH(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('💥 Error in my-tickets PATCH:', error);
+    console.error('💥 Error in MyTickets PATCH:', error);
     return NextResponse.json({ 
       error: 'Internal server error', 
       details: error instanceof Error ? error.message : 'Unknown error',
@@ -311,190 +338,85 @@ export async function POST(request: NextRequest) {
     const incident_id = formData.get('incident_id') as string;
     const uploaded_by_user_id = formData.get('uploaded_by_user_id') as string;
 
-    console.log('🔥 Uploading attachment:', { 
-      filename: file?.name, 
-      incident_id,
-      size: file?.size 
-    });
+    console.log('📎 Uploading attachment for ticket:', incident_id);
 
-    if (!file || !incident_id || !uploaded_by_user_id) {
+    if (!file || !incident_id) {
       return NextResponse.json({ 
-        error: 'Missing required fields', 
+        error: 'File and incident ID are required', 
         success: false 
       }, { status: 400 });
     }
 
-    // Validate file size (10MB limit)
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      return NextResponse.json({ 
-        error: 'File size exceeds 10MB limit', 
-        success: false 
-      }, { status: 400 });
-    }
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
 
-    // Generate unique filename
     const timestamp = Date.now();
-    const sanitizedFilename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const storagePath = `${incident_id}/${timestamp}-${sanitizedFilename}`;
+    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const uniqueFileName = `${timestamp}_${sanitizedFileName}`;
+    const storagePath = `incident-attachments/${incident_id}/${uniqueFileName}`;
 
-    // Convert File to ArrayBuffer then to Buffer
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase
       .storage
-      .from('attachments') // Changed from 'incident-attachments' to 'attachments'
+      .from('attachments')
       .upload(storagePath, buffer, {
         contentType: file.type,
         upsert: false
       });
 
     if (uploadError) {
-      console.error('❌ Storage upload error:', uploadError);
+      console.error('❌ Error uploading file:', uploadError);
       return NextResponse.json({ 
-        error: 'Failed to upload file to storage', 
+        error: 'Failed to upload file', 
         details: uploadError.message,
         success: false 
       }, { status: 500 });
     }
 
-    // Get public URL
     const { data: urlData } = supabase
       .storage
-      .from('attachments') // Changed from 'incident-attachments' to 'attachments'
+      .from('attachments')
       .getPublicUrl(storagePath);
 
-    const storage_url = urlData.publicUrl;
-
-    console.log('✅ File uploaded to storage:', storage_url);
-
-    // Insert attachment record into database
-    const { data: attachmentData, error: dbError } = await supabase
+    const { error: dbError } = await supabase
       .from('incident_attachment')
       .insert({
         incident_id,
         file_name: file.name,
         file_size: file.size,
         file_type: file.type,
-        storage_url,
-        uploaded_by_user_id,
+        storage_url: urlData.publicUrl,
+        // Use provided user_id or default to 'user' for external access
+        uploaded_by_user_id: uploaded_by_user_id || 'user',
         uploaded_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+      });
 
     if (dbError) {
-      console.error('❌ Database insert error:', dbError);
+      console.error('❌ Error saving attachment metadata:', dbError);
+      await supabase.storage.from('attachments').remove([storagePath]);
       
-      // Clean up uploaded file if DB insert fails
-      await supabase.storage
-        .from('incident-attachments')
-        .remove([storagePath]);
-
       return NextResponse.json({ 
-        error: 'Failed to save attachment record', 
+        error: 'Failed to save attachment metadata', 
         details: dbError.message,
         success: false 
       }, { status: 500 });
     }
 
-    console.log('✅ Attachment saved to database:', attachmentData);
-
-    // Update incident updated_at timestamp
+    // Update incident timestamp
     await supabase
       .from('incident')
       .update({ updated_at: new Date().toISOString() })
       .eq('incident_id', incident_id);
 
-    return NextResponse.json({ 
-      success: true,
-      attachment: attachmentData,
-      message: 'File uploaded successfully'
-    });
-
-  } catch (error) {
-    console.error('💥 Error in attachment upload:', error);
-    return NextResponse.json({ 
-      error: 'Internal server error', 
-      details: error instanceof Error ? error.message : 'Unknown error',
-      success: false 
-    }, { status: 500 });
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  const supabase = getSupabaseClient();
-
-  try {
-    const { searchParams } = new URL(request.url);
-    const attachment_id = searchParams.get('attachment_id');
-
-    console.log('🔥 Deleting attachment:', attachment_id);
-
-    if (!attachment_id) {
-      return NextResponse.json({ 
-        error: 'Attachment ID is required', 
-        success: false 
-      }, { status: 400 });
-    }
-
-    // Get attachment record first
-    const { data: attachment, error: fetchError } = await supabase
-      .from('incident_attachment')
-      .select('*')
-      .eq('attachment_id', attachment_id)
-      .single();
-
-    if (fetchError || !attachment) {
-      return NextResponse.json({ 
-        error: 'Attachment not found', 
-        success: false 
-      }, { status: 404 });
-    }
-
-    // Extract storage path from URL
-    const urlParts = attachment.storage_url.split('/incident-attachments/');
-    const storagePath = urlParts[1] || null;
-
-    // Delete from storage
-    if (storagePath) {
-      const { error: storageError } = await supabase
-        .storage
-        .from('incident-attachments')
-        .remove([storagePath]);
-
-      if (storageError) {
-        console.error('⚠️ Storage deletion warning:', storageError);
-        // Continue even if storage delete fails
-      }
-    }
-
-    // Delete from database
-    const { error: deleteError } = await supabase
-      .from('incident_attachment')
-      .delete()
-      .eq('attachment_id', attachment_id);
-
-    if (deleteError) {
-      console.error('❌ Database deletion error:', deleteError);
-      return NextResponse.json({ 
-        error: 'Failed to delete attachment', 
-        details: deleteError.message,
-        success: false 
-      }, { status: 500 });
-    }
-
-    console.log('✅ Attachment deleted successfully');
+    console.log('✅ Attachment uploaded successfully');
 
     return NextResponse.json({ 
       success: true,
-      message: 'Attachment deleted successfully'
+      message: 'File uploaded successfully',
+      url: urlData.publicUrl
     });
 
   } catch (error) {
-    console.error('💥 Error in attachment deletion:', error);
+    console.error('💥 Error in MyTickets POST:', error);
     return NextResponse.json({ 
       error: 'Internal server error', 
       details: error instanceof Error ? error.message : 'Unknown error',

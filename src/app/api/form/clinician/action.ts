@@ -166,7 +166,7 @@ export async function submitAttendanceAction(formData: {
       const { data: existingRecord, error: recordError } = await supabase
         .from('activity_overview')
         .select('record_id, clinician_id')
-        .eq('record_id', formData.record_id)
+        .eq('activity_id', formData.record_id)
         .eq('clinician_id', formData.clinicianUserId)
 
       if (recordError || !existingRecord) {

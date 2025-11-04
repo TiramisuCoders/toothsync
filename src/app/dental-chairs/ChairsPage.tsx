@@ -6,11 +6,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle, ChevronLeft, ChevronRight, Pencil } from "lucide-react"
+import { ChevronLeft, ChevronRight, Pencil } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useToast } from "@/hooks/use-toast"
 import { getDepartments } from "@/app/api/form/clinician/action"
 
 interface Chair {
@@ -28,37 +36,25 @@ interface Procedure {
   name: string
 }
 
-
 type ChairStatus = "Available" | "Occupied" | "Under Maintenance"
 type FilterType = "all" | "available" | "occupied" | "maintenance"
-type UserRole = 'R01' | 'R02' | 'R04' // Clinician, Clerk, Admin
+type UserRole = "R01" | "R02" | "R04" // Clinician, Clerk, Admin
 
 const getStatusBadge = (status: ChairStatus) => {
   switch (status) {
     case "Available":
-      return (
-        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-          Available
-        </Badge>
-      )
+      return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Available</Badge>
     case "Occupied":
-      return (
-        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-          Occupied
-        </Badge>
-      )
+      return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Occupied</Badge>
     case "Under Maintenance":
-      return (
-        <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
-          Under Maintenance
-        </Badge>
-      )
+      return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Under Maintenance</Badge>
     default:
       return <Badge variant="outline">—</Badge>
   }
 }
 
 export default function ChairsPage() {
+  const { toast } = useToast()
   const [activeFilter, setActiveFilter] = useState<FilterType>("all")
   const [chairs, setChairs] = useState<Chair[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -68,9 +64,10 @@ export default function ChairsPage() {
   const [userRole, setUserRole] = useState<UserRole | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [currentChair, setCurrentChair] = useState<Chair | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [updating, setUpdating] = useState<boolean>(false)
   const [dentalProcedures, setProcedures] = useState<Procedure[]>([])
+  const [updateType, setUpdateType] = useState<"overall" | "shift">("overall")
+  const [selectedShift, setSelectedShift] = useState<"Shift 1" | "Shift 2" | "">("")
 
   useEffect(() => {
     fetchChairs()
@@ -80,7 +77,7 @@ export default function ChairsPage() {
     try {
       setLoading(true)
       setError(null)
-      console.log("🔍 Fetching chairs from clinician side...")
+      console.log("🪑 Fetching chairs from clinician side...")
 
       const response = await fetch("/api/dental-chairs", {
         method: "GET",
@@ -96,7 +93,7 @@ export default function ChairsPage() {
       console.log("- Response body:", raw)
 
       if (raw.success) {
-        setUserRole(raw.userRole) 
+        setUserRole(raw.userRole)
         console.log(userRole)
       }
 
@@ -110,18 +107,25 @@ export default function ChairsPage() {
 
       // Normalize data
       const normalized: Chair[] = (payload as any[]).map((c, i) => {
-        const status = (c?.status === "Available" || c?.status === "Occupied" || c?.status === "Under Maintenance") 
-          ? c.status 
-          : "Available"
-        
-        const shift1Status = (c?.shift1_status === "Available" || c?.shift1_status === "Occupied" || c?.shift1_status === "Under Maintenance") 
-          ? c.shift1_status 
-          : "Available"
-          
-        const shift2Status = (c?.shift2_status === "Available" || c?.shift2_status === "Occupied" || c?.shift2_status === "Under Maintenance") 
-          ? c.shift2_status 
-          : "Available"
-        
+        const status =
+          c?.status === "Available" || c?.status === "Occupied" || c?.status === "Under Maintenance"
+            ? c.status
+            : "Available"
+
+        const shift1Status =
+          c?.shift1_status === "Available" ||
+          c?.shift1_status === "Occupied" ||
+          c?.shift1_status === "Under Maintenance"
+            ? c.shift1_status
+            : "Available"
+
+        const shift2Status =
+          c?.shift2_status === "Available" ||
+          c?.shift2_status === "Occupied" ||
+          c?.shift2_status === "Under Maintenance"
+            ? c.shift2_status
+            : "Available"
+
         return {
           id: String(c?.id ?? c?.chair_id ?? `chair-${i + 1}`),
           chair_name: c?.chair_name,
@@ -133,12 +137,12 @@ export default function ChairsPage() {
         }
       })
 
-      const { error: procedureError, departmentData: departmentData } = await getDepartments()
-              if (procedureError) {
-                console.error("Error fetching procedures:", procedureError)
-              } else {
-                setProcedures(departmentData)
-              }
+      const { error: procedureError, departmentData } = await getDepartments()
+      if (procedureError) {
+        console.error("Error fetching procedures:", procedureError)
+      } else {
+        setProcedures(departmentData)
+      }
 
       setChairs(normalized)
     } catch (err) {
@@ -151,25 +155,45 @@ export default function ChairsPage() {
 
   const handleEditClick = (chair: Chair) => {
     setCurrentChair({ ...chair })
+    setUpdateType("overall")
+    setSelectedShift("")
     setIsEditModalOpen(true)
   }
 
-  const handleUpdateChair = async (updatedChair: Chair) => {
+  const handleUpdateChair = async () => {
+    if (!currentChair) return
+
     try {
       setUpdating(true)
       setError(null)
 
-      console.log("🔄 Updating chair:", updatedChair)
+      console.log("🔄 Updating chair:", currentChair)
+      console.log("Update type:", updateType)
+      console.log("Selected shift:", selectedShift)
+
+      let payload: any = {
+        chairId: currentChair.id,
+        procedures: currentChair.procedures,
+      }
+
+      // Overall status update (affects chair.is_active)
+      if (updateType === "overall") {
+        payload.status = currentChair.status
+        // Do NOT include shift for overall updates
+      } 
+      // Shift-specific update (affects chair_availability)
+      else if (updateType === "shift" && selectedShift) {
+        payload.status = currentChair.status
+        payload.shift = selectedShift
+      }
+
+      console.log("Sending payload:", payload)
 
       const response = await fetch("/api/dental-chairs", {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chairId: updatedChair.id,
-          status: updatedChair.status,
-          procedures: updatedChair.procedures,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const result = await response.json()
@@ -178,17 +202,25 @@ export default function ChairsPage() {
         throw new Error(result.error || "Failed to update chair")
       }
 
-      // Update local state
-      setChairs((prev) => prev.map((c) => (c.id === updatedChair.id ? updatedChair : c)))
+      // Refresh the chairs data to get the latest state
+      await fetchChairs()
       setIsEditModalOpen(false)
-      setSuccessMessage("Chair updated successfully!")
+      setUpdateType("overall")
+      setSelectedShift("")
       
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccessMessage(null), 3000)
-
+      toast({
+        title: "Success",
+        description: "Chair updated successfully!",
+      })
     } catch (err) {
       console.error("Error updating chair:", err)
-      setError(err instanceof Error ? err.message : "Failed to update chair")
+      const errorMessage = err instanceof Error ? err.message : "Failed to update chair"
+      setError(errorMessage)
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
     } finally {
       setUpdating(false)
     }
@@ -206,11 +238,9 @@ export default function ChairsPage() {
     }
 
     const targetStatus = statusMap[activeFilter as Exclude<FilterType, "all">]
-    
+
     // Filter if either shift matches the status OR if overall status matches
-    return chair.shift1_status === targetStatus || 
-           chair.shift2_status === targetStatus ||
-           chair.status === targetStatus
+    return chair.shift1_status === targetStatus || chair.shift2_status === targetStatus || chair.status === targetStatus
   })
 
   const filterOptions: { value: FilterType; label: string }[] = [
@@ -219,10 +249,10 @@ export default function ChairsPage() {
     { value: "occupied", label: "Occupied" },
     { value: "maintenance", label: "Under Maintenance" },
   ]
-   // Determine if user can edit (only instructors)
-  const isChief = userRole === 'R04'
-  const isClerk = userRole === 'R02'
-  const isClinician = userRole === 'R01'
+  // Determine if user can edit (only instructors)
+  const isChief = userRole === "R04"
+  const isClerk = userRole === "R02"
+  const isClinician = userRole === "R01"
 
   if (loading) {
     return (
@@ -247,26 +277,12 @@ export default function ChairsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Success Alert */}
-      {successMessage && (
-        <Alert className="mb-6 bg-green-50 border-green-200">
-          <CheckCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-800">
-            {successMessage}
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Error Alert */}
       {error && (
         <Alert className="mb-6 bg-red-50 border-red-200">
           <AlertDescription className="text-red-800">
             {error}
-            <Button
-              variant="link"
-              className="p-0 h-auto ml-2 text-red-600"
-              onClick={fetchChairs}
-            >
+            <Button variant="link" className="p-0 h-auto ml-2 text-red-600" onClick={fetchChairs}>
               Try again
             </Button>
           </AlertDescription>
@@ -275,9 +291,7 @@ export default function ChairsPage() {
 
       <div className="mb-6">
         {/* Header */}
-        <h1 className="text-xl font-semibold text-[#333] mb-3">
-          List of Chairs
-        </h1>
+        <h1 className="text-xl font-semibold text-[#333] mb-3">List of Chairs</h1>
 
         {/* Filters + Legend (same row) */}
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -288,11 +302,7 @@ export default function ChairsPage() {
                 key={filter.value}
                 variant={activeFilter === filter.value ? "default" : "ghost"}
                 size="sm"
-                className={
-                  activeFilter === filter.value
-                    ? "bg-[#5C8E77] hover:bg-[#406E58]"
-                    : ""
-                }
+                className={activeFilter === filter.value ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
                 onClick={() => setActiveFilter(filter.value)}
               >
                 {filter.label}
@@ -329,9 +339,7 @@ export default function ChairsPage() {
                 <TableHead className="font-semibold py-3">Shift 1</TableHead>
                 <TableHead className="font-semibold py-3">Shift 2</TableHead>
                 <TableHead className="font-semibold py-3">Overall Status</TableHead>
-                { isChief && (
-                  <TableHead className="font-semibold py-3">Action</TableHead>
-                )}
+                {isChief && <TableHead className="font-semibold py-3">Action</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -356,32 +364,26 @@ export default function ChairsPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="py-3">
-                      {getStatusBadge(chair.shift1_status)}
-                    </TableCell>
-                    <TableCell className="py-3">
-                      {getStatusBadge(chair.shift2_status)}
-                    </TableCell>
-                    <TableCell className="py-3">
-                      {getStatusBadge(chair.status)}
-                    </TableCell>
+                    <TableCell className="py-3">{getStatusBadge(chair.shift1_status)}</TableCell>
+                    <TableCell className="py-3">{getStatusBadge(chair.shift2_status)}</TableCell>
+                    <TableCell className="py-3">{getStatusBadge(chair.status)}</TableCell>
                     {isChief && (
                       <TableCell>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-[#5C8E77] hover:bg-[#e6f7eb]"
-                        onClick={() => handleEditClick(chair)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-[#5C8E77] hover:bg-[#e6f7eb]"
+                          onClick={() => handleEditClick(chair)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
                     )}
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12 text-gray-500">
+                  <TableCell colSpan={6} className="text-center py-12 text-gray-500">
                     No chairs found matching the selected filter.
                   </TableCell>
                 </TableRow>
@@ -394,10 +396,7 @@ export default function ChairsPage() {
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">Show</span>
-                <Select
-                  value={itemsPerPage.toString()}
-                  onValueChange={(value) => setItemsPerPage(Number(value))}
-                >
+                <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(Number(value))}>
                   <SelectTrigger className="w-[70px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -409,7 +408,7 @@ export default function ChairsPage() {
                 </Select>
                 <span className="text-sm text-gray-600">entries</span>
               </div>
-              
+
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">
                   Showing {startIndex + 1} to {Math.min(endIndex, chairs.length)} of {chairs.length}
@@ -418,15 +417,15 @@ export default function ChairsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                     disabled={currentPage === 1}
                     className="h-8 w-8 p-0"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  
+
                   {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter(page => {
+                    .filter((page) => {
                       if (totalPages <= 7) return true
                       if (page === 1 || page === totalPages) return true
                       if (Math.abs(page - currentPage) <= 1) return true
@@ -434,26 +433,22 @@ export default function ChairsPage() {
                     })
                     .map((page, index, array) => (
                       <div key={page} className="flex items-center">
-                        {index > 0 && array[index - 1] !== page - 1 && (
-                          <span className="px-2 text-gray-400">...</span>
-                        )}
+                        {index > 0 && array[index - 1] !== page - 1 && <span className="px-2 text-gray-400">...</span>}
                         <Button
                           variant={currentPage === page ? "default" : "outline"}
                           size="sm"
                           onClick={() => setCurrentPage(page)}
-                          className={`h-8 w-8 p-0 ${
-                            currentPage === page ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""
-                          }`}
+                          className={`h-8 w-8 p-0 ${currentPage === page ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}`}
                         >
                           {page}
                         </Button>
                       </div>
                     ))}
-                  
+
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                     disabled={currentPage === totalPages}
                     className="h-8 w-8 p-0"
                   >
@@ -466,7 +461,7 @@ export default function ChairsPage() {
         </CardContent>
       </Card>
 
-       {/* Edit Chair Modal */}
+      {/* Edit Chair Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
           {currentChair && (
@@ -474,71 +469,103 @@ export default function ChairsPage() {
               <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
                 <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Edit Dental Chair</DialogTitle>
                 <DialogDescription className="text-gray-500">
-                  Update status and procedures for Chair 
-                  {currentChair.chair_name && ` (${currentChair.chair_name})`}
+                  Update status and procedures for {currentChair.chair_name}
                 </DialogDescription>
               </DialogHeader>
 
               <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
                 <div className="space-y-4">
-                  {/* Chair Status */}
+                  {/* Update Type Selection */}
+                  <div className="space-y-2">
+                    <Label className="text-[#333]">Update Type</Label>
+                    <Select
+                      value={updateType}
+                      onValueChange={(value: "overall" | "shift") => {
+                        setUpdateType(value)
+                        if (value === "overall") {
+                          setSelectedShift("")
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="border-gray-300">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="overall">Overall Chair Status (Both Shifts)</SelectItem>
+                        <SelectItem value="shift">Specific Shift Status</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">
+                      {updateType === "overall" 
+                        ? "This will affect the chair's maintenance status for all shifts"
+                        : "This will update availability for a specific shift only"}
+                    </p>
+                  </div>
+
+                  {/* Shift Selection (only for shift-specific updates) */}
+                  {updateType === "shift" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-shift" className="text-[#333]">
+                        Select Shift
+                      </Label>
+                      <Select
+                        value={selectedShift}
+                        onValueChange={(value: "Shift 1" | "Shift 2") => setSelectedShift(value)}
+                      >
+                        <SelectTrigger id="edit-shift" className="border-gray-300">
+                          <SelectValue placeholder="Choose a shift..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Shift 1">Shift 1</SelectItem>
+                          <SelectItem value="Shift 2">Shift 2</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Status Selection */}
                   <div className="space-y-2">
                     <Label htmlFor="edit-status" className="text-[#333]">
-                      Chair Status
+                      {updateType === "overall" ? "Overall Status" : selectedShift ? `${selectedShift} Status` : "Status"}
                     </Label>
                     <Select
                       value={currentChair.status}
                       onValueChange={(value: Chair["status"]) =>
-                        setCurrentChair((prev) => prev ? {
-                          ...prev,
-                          status: value,
-                          student: value !== "Occupied" ? null : prev.student,
-                        } : prev)
+                        setCurrentChair((prev) => prev ? { ...prev, status: value } : prev)
                       }
+                      disabled={updateType === "shift" && !selectedShift}
                     >
                       <SelectTrigger id="edit-status" className="border-gray-300">
-                        <SelectValue placeholder={currentChair.status} />
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Available">Available</SelectItem>
-                        <SelectItem value="Occupied">Occupied</SelectItem>
-                        <SelectItem value="Under Maintenance">Under Maintenance</SelectItem>
+                        {updateType === "overall" ? (
+                          <>
+                            <SelectItem value="Available">Available</SelectItem>
+                            <SelectItem value="Under Maintenance">Under Maintenance</SelectItem>
+                          </>
+                        ) : (
+                          <>
+                            <SelectItem value="Available">Available</SelectItem>
+                            <SelectItem value="Occupied">Occupied</SelectItem>
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
+                    {updateType === "overall" && (
+                      <p className="text-xs text-gray-500">
+                        "Under Maintenance" will make the chair unavailable for all shifts
+                      </p>
+                    )}
                   </div>
 
-                  {/* {currentChair.status === "Occupied" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-student" className="text-[#333]">
-                        Assigned Student
-                      </Label>
-                      <Select
-                        value={currentChair.student ?? ""}
-                        onValueChange={(value: string) =>
-                          setCurrentChair((prev) => prev ? { ...prev, student: value } : prev)
-                        }
-                      >
-                        <SelectTrigger id="edit-student" className="border-gray-300">
-                          <SelectValue placeholder="Select student" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Maria Santos">Maria Santos</SelectItem>
-                          <SelectItem value="John Dela Cruz">John Dela Cruz</SelectItem>
-                          <SelectItem value="Anna Lim">Anna Lim</SelectItem>
-                          <SelectItem value="Mark Aquino">Mark Aquino</SelectItem>
-                          <SelectItem value="Sarah Garcia">Sarah Garcia</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )} */}
-
-                  <div className="space-y-3">
+                  {/* Procedures Section */}
+                  <div className="space-y-3 pt-4 border-t border-gray-200">
                     <Label className="text-[#333]">Allowed Procedures</Label>
                     <p className="text-sm text-gray-500">
-                      Select the dental procedures that can be performed on this chair. The system will only assign
-                      students to chairs that support their required procedure.
+                      Select the dental procedures that can be performed on this chair.
                     </p>
-                    <div className="grid grid-cols-2 gap-2 mt-2 max-h-48 overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-2 mt-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
                       {dentalProcedures.map((procedure) => (
                         <div key={procedure.id} className="flex items-center space-x-2">
                           <Checkbox
@@ -546,14 +573,13 @@ export default function ChairsPage() {
                             checked={currentChair.procedures?.includes(procedure.name) || false}
                             onCheckedChange={(checked) => {
                               const currentProcedures = currentChair.procedures || []
-                              const updatedProcedures =
-                                checked
-                                  ? [...currentProcedures, procedure.name]
-                                  : currentProcedures.filter((p) => p !== procedure.name)
-                              setCurrentChair((prev) => prev ? { ...prev, procedures: updatedProcedures } : prev)
+                              const updatedProcedures = checked
+                                ? [...currentProcedures, procedure.name]
+                                : currentProcedures.filter((p) => p !== procedure.name)
+                              setCurrentChair((prev) => (prev ? { ...prev, procedures: updatedProcedures } : prev))
                             }}
                           />
-                          <Label htmlFor={`edit-procedure-${procedure.id}`} className="text-sm font-normal">
+                          <Label htmlFor={`edit-procedure-${procedure.id}`} className="text-sm font-normal cursor-pointer">
                             {procedure.name}
                           </Label>
                         </div>
@@ -564,9 +590,13 @@ export default function ChairsPage() {
               </div>
 
               <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setIsEditModalOpen(false)} 
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditModalOpen(false)
+                    setUpdateType("overall")
+                    setSelectedShift("")
+                  }}
                   className="border-gray-300"
                   disabled={updating}
                 >
@@ -574,8 +604,8 @@ export default function ChairsPage() {
                 </Button>
                 <Button
                   className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-                  onClick={() => currentChair && handleUpdateChair(currentChair)}
-                  disabled={updating}
+                  onClick={handleUpdateChair}
+                  disabled={updating || (updateType === "shift" && !selectedShift)}
                 >
                   {updating ? "Updating..." : "Update Chair"}
                 </Button>

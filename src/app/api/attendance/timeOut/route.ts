@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       .eq('auth_user_id', user.id)
       .single()
     
-    if (userRole?.role !== 'R02') {
+    if (userRole?.role !== 'R02' && userRole?.role !== 'R01' ) {
       return Response.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
         .update({ 
           time_out: currentTime
         })
-        .eq('record_id', record_id)
+        .eq('id', record_id)
         .select();
 
         console.log("⏱ Debug Timeout:");

@@ -1,6 +1,4 @@
 // app/requests/clerk/ClerkAttendance.tsx
-// CSR
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -51,30 +49,30 @@ export default function ClerkAttendance() {
 
   // Fetch attendance records on component mount
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession()
+    // const checkSession = async () => {
+    //   try {
+    //     const { data: { session }, error } = await supabase.auth.getSession()
         
-        console.log('🔍 Client session check:')
-        console.log('- Session exists:', !!session)
-        console.log('- User ID:', session?.user?.id)
-        console.log('- Access token exists:', !!session?.access_token)
-        console.log('- Session error:', error)
+    //     console.log('🔍 Client session check:')
+    //     console.log('- Session exists:', !!session)
+    //     console.log('- User ID:', session?.user?.id)
+    //     console.log('- Access token exists:', !!session?.access_token)
+    //     console.log('- Session error:', error)
         
-        console.log('- Document cookies:', document.cookie)
-      } catch (err) {
-        console.error('❌ Session check failed:', err)
-      }
-    }
+    //     console.log('- Document cookies:', document.cookie)
+    //   } catch (err) {
+    //     console.error('❌ Session check failed:', err)
+    //   }
+    // }
     
-    checkSession()
+    // checkSession()
     fetchAttendanceRecords()
   }, [])
 
   const fetchAttendanceRecords = async () => {
     try {
       setLoading(true)
-      console.log('🔍 Fetching from client...')
+      // console.log('🔍 Fetching from client...')
       
       const response = await fetch('/api/requests', {
         method: 'GET',
@@ -84,25 +82,25 @@ export default function ClerkAttendance() {
         }
       })
       
-      console.log('- Response status:', response.status)
-      console.log('- Response ok:', response.ok)
+      // console.log('- Response status:', response.status)
+      // console.log('- Response ok:', response.ok)
       
       const result = await response.json()
       console.log('- Response body:', result)
 
-      if (!response.ok) {
-        console.error('Response status:', response.status)
-        console.error('Response headers:', [...response.headers.entries()])
-        console.error('Error result:', result)
-        
-        throw new Error(result.error || `Server error (${response.status}): Failed to fetch attendance records`)
-      }
+        if (!response.ok) {
+          // console.error('Response status:', response.status)
+          // console.error('Response headers:', [...response.headers.entries()])
+          // console.error('Error result:', result)
+          
+          throw new Error(result.error || `Server error (${response.status}): Failed to update sanitization`)
+        }
       setAttendanceRecords(result.data || [])
     } catch (error) {
       console.error('❌ Client error:', error)
       toast({
         title: "Fetch Failed",
-        description: error.message,
+        description: "Fetch failed",
         variant: "destructive",
       })
     } finally {
@@ -135,7 +133,9 @@ export default function ClerkAttendance() {
       console.log('Confirmation response:', result)
 
       if (!response.ok) {
+        alert(result.message || 'Something went wrong')
         throw new Error(result.error || 'Failed to confirm attendance')
+        return
       }
 
       toast({
@@ -348,20 +348,26 @@ export default function ClerkAttendance() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-gray-500">Loading attendance records...</div>
+      <div className="p-6 max-w-2xl mx-auto">
+        <Card className="shadow-sm border border-gray-200">
+          <CardContent className="p-6 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-8 h-8 border-4 border-[#5C8E77] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+              <p className="text-gray-600">Loading list of requests...</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Attendance Table */}
-      <Card className="bg-white border border-gray-200 shadow-sm">
-        <CardHeader className="pb-4 border-b border-gray-200">
-          <div className="flex flex-col gap-4">
+
+      <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-xl font-semibold text-[#333]">Requests</CardTitle>
+                    <h1 className="text-xl font-semibold text-[#333] mb-3"> Requests </h1>
+
               
               {/* Date Filter */}
               <div className="flex items-center gap-2">
@@ -415,11 +421,14 @@ export default function ClerkAttendance() {
               </Button>
             </div>
           </div>
-        </CardHeader>
+
+
+      {/* Attendance Table */}
+      <Card className="bg-white border border-gray-200 shadow-sm">
         <CardContent className="p-0">
           <Table>
-            <TableHeader className="bg-white border-b border-gray-200">
-              <TableRow className="hover:bg-white border-b-0">
+            <TableHeader>
+              <TableRow className="bg-gray-50">
                 <TableHead className="font-medium text-[#333]">Attendance ID</TableHead>
                 <TableHead className="font-medium text-[#333]">First Name</TableHead>
                 <TableHead className="font-medium text-[#333]">Last Name</TableHead>

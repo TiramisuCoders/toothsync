@@ -18,6 +18,11 @@ export function FeedbackFailureModal({
 }: FeedbackFailureModalProps) {
   if (!isOpen) return null
 
+  const handleCloseFailure = () => {
+    // This is the clean closure action that directs the user back to the ticket list.
+    onClose();
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl relative">
@@ -36,21 +41,18 @@ export function FeedbackFailureModal({
         {/* Content */}
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Feedback Submission Failed</h2>
-          <p className="text-gray-600 text-sm leading-relaxed">{errorMessage}</p>
+          {/* 🔴 Removed instructional text and block elements */}
+          <p className="text-gray-600 text-sm leading-relaxed">
+            {errorMessage}
+          </p>
         </div>
 
         {/* Action Buttons */}
         <div className="space-y-3">
+          {/* 🟢 Keep only the primary Close button */}
           <Button
-            onClick={onRetry}
+            onClick={handleCloseFailure}
             className="w-full bg-red-600 hover:bg-red-700 text-white py-3 text-base font-medium"
-          >
-            Try Again
-          </Button>
-          <Button
-            onClick={onClose}
-            variant="outline"
-            className="w-full border-red-600 text-red-600 hover:bg-red-50 py-3 text-base font-medium bg-transparent"
           >
             Close
           </Button>
