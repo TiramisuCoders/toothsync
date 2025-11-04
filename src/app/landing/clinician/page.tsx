@@ -202,10 +202,6 @@ export default function ClinicianLoginPage() {
             </button>
           </form>
 
-          {/* Footer */}
-          <div className="mt-8 text-center">
-            <p className="text-xs text-gray-500">Academic Year 2024–2025</p>
-          </div>
         </div>
       </div>
 

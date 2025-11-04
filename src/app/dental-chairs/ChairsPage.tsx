@@ -310,21 +310,6 @@ export default function ChairsPage() {
             ))}
           </div>
 
-          {/* Legend (right side) */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-[#5C8E77]" />
-              <span className="text-xs text-gray-500">Available</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-blue-600" />
-              <span className="text-xs text-gray-500">Occupied</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-red-600" />
-              <span className="text-xs text-gray-500">Under Maintenance</span>
-            </div>
-          </div>
         </div>
       </div>
 

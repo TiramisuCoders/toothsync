@@ -97,7 +97,7 @@ export default function FAQPage() {
           </div>
           <div className="flex items-center text-sm text-gray-600">
             <Mail className="h-4 w-4 mr-3 text-[#5C8E77]" />
-            <span>support@deocampo.edu.ph</span>
+            <span>toothsync.helpdesk@gmail.com</span>
           </div>
           <div className="flex items-center text-sm text-gray-600">
             <Clock className="h-4 w-4 mr-3 text-[#5C8E77]" />
@@ -106,13 +106,14 @@ export default function FAQPage() {
         </div>
         <div className="flex gap-4">
           <a
-            href="/incident/new-ticket"
+            // 🟢 CORRECTED LINK: Points to the new ticket form path within the logged-in section
+            href="/support/faq/new-ticket"
             className="flex-1 bg-[#5C8E77] text-white px-4 py-2 rounded-lg hover:bg-[#406E58] transition-colors text-center"
           >
             Submit Support Ticket
           </a>
           <a
-            href="/incident/my-tickets"
+            href="/support/faq/my-ticket"
             className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-center"
           >
             View My Tickets

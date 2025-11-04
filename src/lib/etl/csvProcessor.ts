@@ -1,3 +1,5 @@
+// lib/etl/csvProcessor.ts - FIXED VERSION
+
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 interface CSVRow {
@@ -45,6 +47,10 @@ function parseEnrollmentStatus(status: string): 'Enrolled' | 'Not Enrolled' {
 
 function parseYearLevel(yearLevel: string): string {
   const normalized = yearLevel.toLowerCase().trim()
+  if (normalized.includes('1')) return '1st Year'
+  if (normalized.includes('2')) return '2nd Year'
+  if (normalized.includes('3')) return '3rd Year'
+  if (normalized.includes('4')) return '4th Year'
   if (normalized.includes('5')) return '5th Year'
   if (normalized.includes('6')) return '6th Year'
   return '5th Year'
@@ -52,9 +58,7 @@ function parseYearLevel(yearLevel: string): string {
 
 async function getOrCreateAuthUser(email: string, password: string): Promise<{ authUserId: string | null; createdNew: boolean }> {
   try {
-    // Try to list users and find existing one
     const { data: users } = await supabaseAdmin.auth.admin.listUsers()
-    
     const existingUser = users?.users?.find(u => u.email === email)
     
     if (existingUser) {
@@ -62,7 +66,6 @@ async function getOrCreateAuthUser(email: string, password: string): Promise<{ a
       return { authUserId: existingUser.id, createdNew: false }
     }
 
-    // Create new user
     const { data: newUser, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -98,10 +101,9 @@ export async function processClinicianCSV(
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
-    const rowNum = i + 2 // Account for header row
+    const rowNum = i + 2
 
     try {
-      // Extract and clean data
       const studentId = row['Student ID']?.trim()
       const firstName = row['First Name']?.trim()
       const lastName = row['Last Name']?.trim()
@@ -110,9 +112,8 @@ export async function processClinicianCSV(
       const enrollmentStatus = row['Status']?.trim()
       const yearLevelRaw = row['Year Level']?.trim()
       const contactNumber = row['Contact Number']?.trim()
-      const section = row['Section']?.trim()
+      const section = row['Section']?.trim() // Still read it from CSV
 
-      // Validate required fields
       if (!studentId || !firstName || !lastName || !email || !gender || !enrollmentStatus || !contactNumber) {
         const error = `Row ${rowNum}: Missing required data`
         console.error(error)
@@ -121,7 +122,6 @@ export async function processClinicianCSV(
         continue
       }
 
-      // Parse and format data
       const parsedGender = parseSex(gender)
       const parsedYearLevel = parseYearLevel(yearLevelRaw)
       const parsedEnrollmentStatus = parseEnrollmentStatus(enrollmentStatus)
@@ -130,7 +130,6 @@ export async function processClinicianCSV(
       console.log(`Row ${rowNum}: Processing ${firstName} ${lastName} (${email})`)
       console.log(`Generated password: ${generatedPassword}`)
 
-      // Get or create auth user
       const { authUserId, createdNew } = await getOrCreateAuthUser(email, generatedPassword)
 
       if (!authUserId) {
@@ -141,7 +140,7 @@ export async function processClinicianCSV(
         continue
       }
 
-      // 1. Handle public.users table (Insert or Update)
+      // 1. Handle public.users table
       const userPayload = {
         auth_user_id: authUserId,
         first_name: firstName,
@@ -184,13 +183,13 @@ export async function processClinicianCSV(
         continue
       }
 
-      // 2. Handle clinicians table
+      // 2. Handle clinicians table - REMOVED SECTION FIELD
       const clinicianPayload = {
         user_id: authUserId,
         student_id: studentId,
         enrollment_status: parsedEnrollmentStatus,
         year_level: parsedYearLevel,
-        section: section || null,
+        // section REMOVED - table doesn't have this column
         academic_year_id: academicYearId,
         updated_at: new Date().toISOString(),
       }
@@ -227,13 +226,13 @@ export async function processClinicianCSV(
         continue
       }
 
-      // 3. Handle clinician_records table
+      // 3. Handle clinician_records table - REMOVED SECTION FIELD
       const clinicianRecordPayload = {
         user_id: authUserId,
         academic_year_id: academicYearId,
         student_id: studentId,
         year_level: parsedYearLevel,
-        section: section || null,
+        // section REMOVED - table doesn't have this column
         created_at: new Date().toISOString(),
       }
 

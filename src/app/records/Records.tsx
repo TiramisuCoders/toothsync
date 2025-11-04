@@ -694,9 +694,12 @@ export default function UnifiedActivitiesRecords() {
             <TableRow>
               <TableHead className="font-semibold">Activity ID</TableHead>
             { (isInstructor || isChief) && (
-              <TableHead className="font-semibold">Clinician Name</TableHead>
+              <TableHead className="font-semibold">Clinician</TableHead>
             )}
-              <TableHead className="font-semibold">Patient Name</TableHead>
+              <TableHead className="font-semibold">Patient</TableHead>
+              { (isClinician || isChief) && (
+              <TableHead className="font-semibold">Instructor</TableHead>
+            )}
               <TableHead className="font-semibold">Procedure</TableHead>
               <TableHead className="font-semibold">Start Date</TableHead>
               <TableHead className="font-semibold">End Date</TableHead>
@@ -751,6 +754,7 @@ export default function UnifiedActivitiesRecords() {
                           <TableCell>{highlightText(activity.clinicianName || '', searchQuery)}</TableCell>
                         )}
                         <TableCell>{highlightText(activity.patientName || '', searchQuery)}</TableCell>
+                        <TableCell>{highlightText(activity.instructorName || '', searchQuery)}</TableCell>
                         <TableCell>
                           {activity.procedures && activity.procedures.length > 0 ? (
                             <div className="space-y-1">

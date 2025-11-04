@@ -1,6 +1,6 @@
-// app/api/support/MyTickets/route.ts
+// app/api/support/user-tickets/route.ts
 import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server";
 
 function getSupabaseClient() {
   return createClient(
@@ -18,18 +18,10 @@ function getSupabaseClient() {
 export async function GET(request: NextRequest) {
   const supabase = getSupabaseClient();
   const { searchParams } = new URL(request.url);
-  const ticketNum = searchParams.get('ticket_num');
   const userEmail = searchParams.get('user_email');
 
   try {
-    console.log('🔥 Fetching ticket:', ticketNum, 'for user:', userEmail);
-
-    if (!ticketNum) {
-      return NextResponse.json({ 
-        error: 'Ticket number is required', 
-        success: false 
-      }, { status: 400 });
-    }
+    console.log('🔥 Fetching tickets for user:', userEmail);
 
     if (!userEmail) {
       return NextResponse.json({ 
@@ -38,7 +30,8 @@ export async function GET(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const { data: ticketData, error } = await supabase
+    // Fetch all tickets for this user
+    const { data: ticketsData, error } = await supabase
       .from('incident')
       .select(`
         incident_id,
@@ -59,42 +52,40 @@ export async function GET(request: NextRequest) {
         updated_at,
         resolved_at
       `)
-      .eq('ticket_num', ticketNum)
-      .single();
+      .eq('reporter_email', userEmail)
+      .order('submitted_at', { ascending: false });
 
     if (error) {
-      console.error('❌ Error fetching ticket:', error);
+      console.error('❌ Error fetching tickets:', error);
       return NextResponse.json({ 
-        error: 'Ticket not found', 
+        error: 'Failed to fetch tickets', 
         details: error.message,
         success: false 
-      }, { status: 404 });
+      }, { status: 500 });
     }
 
-    if (!ticketData) {
-      console.log('❌ No ticket found');
+    if (!ticketsData || ticketsData.length === 0) {
+      console.log('✅ No tickets found for user');
       return NextResponse.json({ 
-        error: 'Ticket not found',
-        success: false 
-      }, { status: 404 });
+        success: true, 
+        tickets: []
+      });
     }
 
-    if (ticketData.reporter_email.toLowerCase() !== userEmail.trim().toLowerCase()) {
-      console.log('❌ Email mismatch - Access denied');
-      return NextResponse.json({ 
-        error: 'Email does not match the ticket reporter. Please check your email and try again.',
-        success: false 
-      }, { status: 403 });
-    }
+    console.log(`✅ Found ${ticketsData.length} tickets for user`);
 
-    console.log('✅ Email verified - Fetching related data');
+    // Fetch all related data in parallel
+    const moduleIds = [...new Set(ticketsData.map(t => t.module_id))];
+    const issueTypeIds = [...new Set(ticketsData.map(t => t.issue_type_id))];
+    const severityIds = [...new Set(ticketsData.map(t => t.severity_id))];
+    const incidentIds = ticketsData.map(t => t.incident_id);
 
-    const [moduleRes, issueTypeRes, severityRes, notesRes, attachmentsRes] = await Promise.all([
-      supabase.from('affected_module').select('module_id, module_name').eq('module_id', ticketData.module_id).single(),
-      supabase.from('issue_type').select('issue_type_id, issue_type_name').eq('issue_type_id', ticketData.issue_type_id).single(),
-      supabase.from('severity_level').select('severity_id, name').eq('severity_id', ticketData.severity_id).single(),
-      supabase.from('incident_note').select('*').eq('incident_id', ticketData.incident_id).order('created_at', { ascending: false }),
-      supabase.from('incident_attachment').select('*').eq('incident_id', ticketData.incident_id).order('uploaded_at', { ascending: false })
+    const [modulesRes, issueTypesRes, severitiesRes, notesRes, attachmentsRes] = await Promise.all([
+      supabase.from('affected_module').select('module_id, module_name').in('module_id', moduleIds),
+      supabase.from('issue_type').select('issue_type_id, issue_type_name').in('issue_type_id', issueTypeIds),
+      supabase.from('severity_level').select('severity_id, name').in('severity_id', severityIds),
+      supabase.from('incident_note').select('*').in('incident_id', incidentIds).order('created_at', { ascending: false }),
+      supabase.from('incident_attachment').select('*').in('incident_id', incidentIds).order('uploaded_at', { ascending: false })
     ]);
 
     // Get unique author user IDs from notes
@@ -116,78 +107,100 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Transform notes with author info
-    const notes = (notesRes.data || []).map(note => {
-      let authorName = 'User';
-      let authorEmail = ticketData.reporter_email;
-
-      if (note.author_user_id === 'system') {
-        authorName = 'System';
-        authorEmail = 'system';
-      } else if (note.author_user_id && usersMap.has(note.author_user_id)) {
-        const user = usersMap.get(note.author_user_id);
-        authorName = `${user.first_name} ${user.last_name}`.trim() || user.email;
-        authorEmail = user.email;
+    // Create lookup maps
+    const modulesMap = new Map(modulesRes.data?.map(m => [m.module_id, m.module_name]) || []);
+    const issueTypesMap = new Map(issueTypesRes.data?.map(it => [it.issue_type_id, it.issue_type_name]) || []);
+    const severitiesMap = new Map(severitiesRes.data?.map(s => [s.severity_id, s.name]) || []);
+    
+    // Group notes and attachments by incident_id
+    const notesMap = new Map<string, any[]>();
+    (notesRes.data || []).forEach(note => {
+      if (!notesMap.has(note.incident_id)) {
+        notesMap.set(note.incident_id, []);
       }
+      notesMap.get(note.incident_id)!.push(note);
+    });
+
+    const attachmentsMap = new Map<string, any[]>();
+    (attachmentsRes.data || []).forEach(att => {
+      if (!attachmentsMap.has(att.incident_id)) {
+        attachmentsMap.set(att.incident_id, []);
+      }
+      attachmentsMap.get(att.incident_id)!.push(att);
+    });
+
+    // Transform all tickets
+    const transformedTickets = ticketsData.map(ticket => {
+      const notes = (notesMap.get(ticket.incident_id) || []).map(note => {
+        let authorName = 'User';
+        let authorEmail = ticket.reporter_email;
+
+        if (note.author_user_id === 'system') {
+          authorName = 'System';
+          authorEmail = 'system';
+        } else if (note.author_user_id && usersMap.has(note.author_user_id)) {
+          const user = usersMap.get(note.author_user_id);
+          authorName = `${user.first_name} ${user.last_name}`.trim() || user.email;
+          authorEmail = user.email;
+        }
+
+        return {
+          note_id: note.note_id,
+          incident_id: note.incident_id,
+          author_user_id: note.author_user_id,
+          author_name: authorName,
+          author_email: authorEmail,
+          body: note.body,
+          created_at: note.created_at,
+          visibility: note.note_type === 'internal' ? 'internal' : 'public',
+          is_system: note.note_type === 'system' || note.note_type === 'status_change'
+        };
+      });
+
+      const attachments = (attachmentsMap.get(ticket.incident_id) || []).map(att => ({
+        attachment_id: att.attachment_id,
+        incident_id: att.incident_id,
+        file_name: att.file_name,
+        file_size: att.file_size,
+        file_type: att.file_type,
+        storage_url: att.storage_url,
+        uploaded_by_user_id: att.uploaded_by_user_id,
+        uploaded_at: att.uploaded_at
+      }));
 
       return {
-        note_id: note.note_id,
-        incident_id: note.incident_id,
-        author_user_id: note.author_user_id,
-        author_name: authorName,
-        author_email: authorEmail,
-        body: note.body,
-        created_at: note.created_at,
-        visibility: note.note_type === 'internal' ? 'internal' : 'public',
-        is_system: note.note_type === 'system' || note.note_type === 'status_change'
+        incident_id: ticket.incident_id,
+        ticket_num: ticket.ticket_num,
+        title: ticket.title,
+        reporter_user_id: ticket.reporter_user_id,
+        reporter_email: ticket.reporter_email,
+        assigned_user_id: ticket.assignee_user_id,
+        assigned_user_name: ticket.assignee_user_email || 'Unassigned',
+        affected_module_id: ticket.module_id,
+        affected_module_name: modulesMap.get(ticket.module_id) || 'N/A',
+        issue_type_id: ticket.issue_type_id,
+        issue_type_name: issueTypesMap.get(ticket.issue_type_id) || 'N/A',
+        severity_id: ticket.severity_id,
+        severity_name: severitiesMap.get(ticket.severity_id) || 'N/A',
+        derived_severity_score: ticket.derived_severity_score,
+        status: ticket.status,
+        priority: ticket.priority,
+        description: ticket.description,
+        submitted_at: ticket.submitted_at,
+        updated_at: ticket.updated_at,
+        resolved_at: ticket.resolved_at,
+        notes,
+        attachments
       };
     });
 
-    const attachments = (attachmentsRes.data || []).map(att => ({
-      attachment_id: att.attachment_id,
-      incident_id: att.incident_id,
-      file_name: att.file_name,
-      file_size: att.file_size,
-      file_type: att.file_type,
-      storage_url: att.storage_url,
-      uploaded_by_user_id: att.uploaded_by_user_id,
-      uploaded_at: att.uploaded_at
-    }));
-
-    const transformedTicket = {
-      incident_id: ticketData.incident_id,
-      ticket_num: ticketData.ticket_num,
-      title: ticketData.title,
-      reporter_user_id: ticketData.reporter_user_id,
-      reporter_email: ticketData.reporter_email,
-      assigned_user_id: ticketData.assignee_user_id,
-      assigned_user_name: ticketData.assignee_user_email || 'Unassigned',
-      affected_module_id: ticketData.module_id,
-      affected_module_name: moduleRes.data?.module_name || 'N/A',
-      issue_type_id: ticketData.issue_type_id,
-      issue_type_name: issueTypeRes.data?.issue_type_name || 'N/A',
-      severity_id: ticketData.severity_id,
-      severity_name: severityRes.data?.name || 'N/A',
-      derived_severity_score: ticketData.derived_severity_score,
-      status: ticketData.status,
-      priority: ticketData.priority,
-      description: ticketData.description,
-      submitted_at: ticketData.submitted_at,
-      updated_at: ticketData.updated_at,
-      resolved_at: ticketData.resolved_at,
-      notes,
-      attachments
-    };
-
-    console.log('✅ Ticket fetched successfully');
-
     return NextResponse.json({ 
       success: true, 
-      ticket: transformedTicket
+      tickets: transformedTickets
     });
 
   } catch (error) {
-    console.error('💥 Error in MyTickets GET:', error);
+    console.error('💥 Error in user-tickets GET:', error);
     return NextResponse.json({ 
       error: 'Internal server error', 
       details: error instanceof Error ? error.message : 'Unknown error',
@@ -196,14 +209,15 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// ADD PATCH handler for authenticated users
 export async function PATCH(request: NextRequest) {
   const supabase = getSupabaseClient();
 
   try {
     const body = await request.json();
-    const { incident_id, status, note_body, note_type, author_user_id } = body;
+    const { incident_id, status, note_body, note_type, author_user_id, user_email } = body;
 
-    console.log('📝 Updating ticket:', incident_id);
+    console.log('📝 Updating ticket (authenticated):', incident_id);
 
     if (!incident_id) {
       return NextResponse.json({ 
@@ -212,26 +226,30 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Check if ticket is already finalized (Resolved or Cancelled)
-    const { data: currentTicket, error: fetchError } = await supabase
+    if (!author_user_id || !user_email) {
+      return NextResponse.json({ 
+        error: 'User authentication is required', 
+        success: false 
+      }, { status: 400 });
+    }
+
+    // Verify user owns this ticket
+    const { data: ticketData, error: ticketError } = await supabase
       .from('incident')
-      .select('status')
+      .select('reporter_email, reporter_user_id')
       .eq('incident_id', incident_id)
       .single();
 
-    if (fetchError || !currentTicket) {
-      console.error('❌ Error fetching ticket:', fetchError);
+    if (ticketError || !ticketData) {
       return NextResponse.json({ 
         error: 'Ticket not found', 
         success: false 
       }, { status: 404 });
     }
 
-    // Block updates to finalized tickets
-    if (currentTicket.status === 'Resolved' || currentTicket.status === 'Cancelled') {
-      console.log('❌ Attempt to modify finalized ticket');
+    if (ticketData.reporter_email.toLowerCase() !== user_email.toLowerCase()) {
       return NextResponse.json({ 
-        error: `Cannot modify ${currentTicket.status.toLowerCase()} tickets`, 
+        error: 'Unauthorized: You can only update your own tickets', 
         success: false 
       }, { status: 403 });
     }
@@ -239,7 +257,6 @@ export async function PATCH(request: NextRequest) {
     const hasStatusChange = !!status;
     const hasNote = note_body && note_body.trim();
 
-    // Validate: if changing status, note is required
     if (hasStatusChange && !hasNote) {
       return NextResponse.json({ 
         error: 'A note is required when changing the status', 
@@ -276,7 +293,6 @@ export async function PATCH(request: NextRequest) {
         created_at: new Date().toISOString()
       });
     } else if (hasNote) {
-      // If only adding a note (no status change), still update the timestamp
       const { error: updateError } = await supabase
         .from('incident')
         .update({ 
@@ -295,8 +311,7 @@ export async function PATCH(request: NextRequest) {
         .from('incident_note')
         .insert({
           incident_id,
-          // Use provided author_user_id if available, otherwise use 'user' for external access
-          author_user_id: author_user_id || 'user',
+          author_user_id: author_user_id,
           body: note_body.trim(),
           note_type: note_type || 'comment',
           created_at: new Date().toISOString()
@@ -312,7 +327,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    console.log('✅ Ticket updated successfully');
+    console.log('✅ Ticket updated successfully (authenticated)');
 
     return NextResponse.json({ 
       success: true,
@@ -320,7 +335,7 @@ export async function PATCH(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('💥 Error in MyTickets PATCH:', error);
+    console.error('💥 Error in user-tickets PATCH:', error);
     return NextResponse.json({ 
       error: 'Internal server error', 
       details: error instanceof Error ? error.message : 'Unknown error',
@@ -329,6 +344,7 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
+// ADD POST handler for authenticated users to upload attachments
 export async function POST(request: NextRequest) {
   const supabase = getSupabaseClient();
 
@@ -337,14 +353,36 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File;
     const incident_id = formData.get('incident_id') as string;
     const uploaded_by_user_id = formData.get('uploaded_by_user_id') as string;
+    const user_email = formData.get('user_email') as string;
 
-    console.log('📎 Uploading attachment for ticket:', incident_id);
+    console.log('📎 Uploading attachment (authenticated):', incident_id);
 
-    if (!file || !incident_id) {
+    if (!file || !incident_id || !uploaded_by_user_id || !user_email) {
       return NextResponse.json({ 
-        error: 'File and incident ID are required', 
+        error: 'File, incident ID, user ID, and email are required', 
         success: false 
       }, { status: 400 });
+    }
+
+    // Verify user owns this ticket
+    const { data: ticketData, error: ticketError } = await supabase
+      .from('incident')
+      .select('reporter_email')
+      .eq('incident_id', incident_id)
+      .single();
+
+    if (ticketError || !ticketData) {
+      return NextResponse.json({ 
+        error: 'Ticket not found', 
+        success: false 
+      }, { status: 404 });
+    }
+
+    if (ticketData.reporter_email.toLowerCase() !== user_email.toLowerCase()) {
+      return NextResponse.json({ 
+        error: 'Unauthorized: You can only upload to your own tickets', 
+        success: false 
+      }, { status: 403 });
     }
 
     const bytes = await file.arrayBuffer();
@@ -385,8 +423,7 @@ export async function POST(request: NextRequest) {
         file_size: file.size,
         file_type: file.type,
         storage_url: urlData.publicUrl,
-        // Use provided user_id or default to 'user' for external access
-        uploaded_by_user_id: uploaded_by_user_id || 'user',
+        uploaded_by_user_id: uploaded_by_user_id,
         uploaded_at: new Date().toISOString()
       });
 
@@ -407,7 +444,7 @@ export async function POST(request: NextRequest) {
       .update({ updated_at: new Date().toISOString() })
       .eq('incident_id', incident_id);
 
-    console.log('✅ Attachment uploaded successfully');
+    console.log('✅ Attachment uploaded successfully (authenticated)');
 
     return NextResponse.json({ 
       success: true,
@@ -416,7 +453,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('💥 Error in MyTickets POST:', error);
+    console.error('💥 Error in user-tickets POST:', error);
     return NextResponse.json({ 
       error: 'Internal server error', 
       details: error instanceof Error ? error.message : 'Unknown error',
