@@ -2,6 +2,18 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+
+// ===============================================
+// CONSTANTS
+// ===============================================
+
+// Modules restricted to Chief of Clinicians only
+const RESTRICTED_MODULES = [
+    'Data Management',
+    'Security & Access Control',
+    'System Operations'
+];
 
 // ===============================================
 // HELPER FUNCTIONS
@@ -109,7 +121,7 @@ async function handleFileUploads(
     const uploadedAttachments: any[] = [];
     const errors: any[] = [];
 
-    console.log(`📎 Starting upload of ${files.length} file(s) for incident ${incidentId}`);
+    console.log(`🔎 Starting upload of ${files.length} file(s) for incident ${incidentId}`);
 
     for (const file of files) {
         try {
@@ -339,7 +351,7 @@ export async function POST(request: NextRequest) {
         let uploadResults: { uploadedAttachments: any[]; errors: any[] } = { uploadedAttachments: [], errors: [] };
         
         if (files && files.length > 0 && files[0].size > 0) {
-            console.log('📎 Uploading attachments...');
+            console.log('🔎 Uploading attachments...');
             // 🟢 CHANGED: Use privileged client for file uploads (matches NewTickets)
             uploadResults = await handleFileUploads(supabasePrivileged, newIncident.incident_id, files, reporterUserId);
             if (uploadResults.uploadedAttachments.length > 0) {
@@ -398,11 +410,18 @@ export async function GET(request: NextRequest) {
         if (action === 'modules') {
             console.log('🔥 Fetching modules from affected_module table...');
             
+            // 🟢 Read role cookie to determine if user is Chief of Clinicians
+            const cookieStore = await cookies();
+            const roleCookie = cookieStore.get('role');
+            const userRole = roleCookie?.value;
+            
+            console.log('👤 User role from cookie:', userRole);
+            
             const { data: modules, error } = await supabasePrivileged
                 .from('affected_module')
                 .select('module_id, module_name')
-                .eq('is_active', true)
-                .order('module_name');
+                .eq('is_active', true);
+                // Removed .order('module_name') to allow custom sorting
 
             console.log('📊 Modules result:', { modules, error });
 
@@ -424,8 +443,43 @@ export async function GET(request: NextRequest) {
                 });
             }
 
-            console.log(`✅ Successfully fetched ${modules.length} modules`);
-            return NextResponse.json({ success: true, modules });
+            // 🟢 FILTER MODULES BASED ON USER ROLE
+            let filteredModules = modules;
+            
+            // Only Chief of Clinicians can see restricted modules
+            if (userRole !== 'chief-of-clinicians') {
+                filteredModules = modules.filter(
+                    (module: { module_name: string }) => !RESTRICTED_MODULES.includes(module.module_name)
+                );
+                console.log(`🔒 Filtered restricted modules. Total: ${modules.length}, Available: ${filteredModules.length}`);
+            } else {
+                console.log(`👑 Chief of Clinicians - showing all ${modules.length} modules`);
+            }
+            
+            // 🆕 CUSTOM SORTING LOGIC: Sort alphabetically, but move 'Others' to the end.
+            const othersModuleIndex = filteredModules.findIndex(
+                (module: { module_name: string }) => module.module_name.toLowerCase() === 'others'
+            );
+            
+            let othersModule: any = null;
+            if (othersModuleIndex !== -1) {
+                // 1. Remove 'Others' module
+                othersModule = filteredModules.splice(othersModuleIndex, 1)[0];
+            }
+
+            // 2. Sort the remaining modules alphabetically
+            filteredModules.sort((a: { module_name: string }, b: { module_name: string }) => 
+                a.module_name.localeCompare(b.module_name)
+            );
+
+            // 3. Append 'Others' module back to the end
+            if (othersModule) {
+                filteredModules.push(othersModule);
+            }
+            // 🔚 END CUSTOM SORTING LOGIC
+
+            console.log(`✅ Successfully fetched modules for role: ${userRole || 'unknown'}`);
+            return NextResponse.json({ success: true, modules: filteredModules });
         }
 
         if (action === 'issue_types') {
@@ -440,12 +494,13 @@ export async function GET(request: NextRequest) {
 
             console.log('🔥 Fetching issue types for module:', moduleId);
 
+            // 1. Fetch data WITHOUT database ordering
             const { data: issueTypes, error } = await supabasePrivileged
                 .from('issue_type')
                 .select('issue_type_id, issue_type_name')
                 .eq('module_id', moduleId)
-                .eq('is_active', true)
-                .order('issue_type_name');
+                .eq('is_active', true);
+                // Removed .order('issue_type_name');
 
             console.log('📊 Issue types result:', { issueTypes, error });
 
@@ -467,6 +522,30 @@ export async function GET(request: NextRequest) {
                 });
             }
 
+            // 🆕 CUSTOM SORTING LOGIC: Sort alphabetically, but move 'Others' to the end.
+            if (issueTypes && issueTypes.length > 0) {
+                const othersIssueTypeIndex = issueTypes.findIndex(
+                    (issueType: { issue_type_name: string }) => issueType.issue_type_name.toLowerCase() === 'others'
+                );
+                
+                let othersIssueType: any = null;
+                if (othersIssueTypeIndex !== -1) {
+                    // Remove 'Others' issue type
+                    othersIssueType = issueTypes.splice(othersIssueTypeIndex, 1)[0];
+                }
+
+                // Sort the remaining issue types alphabetically
+                issueTypes.sort((a: { issue_type_name: string }, b: { issue_type_name: string }) => 
+                    a.issue_type_name.localeCompare(b.issue_type_name)
+                );
+
+                // Append 'Others' issue type back to the end
+                if (othersIssueType) {
+                    issueTypes.push(othersIssueType);
+                }
+            }
+            // 🔚 END CUSTOM SORTING LOGIC
+            
             console.log(`✅ Successfully fetched ${issueTypes.length} issue types`);
             return NextResponse.json({ success: true, issueTypes });
         }

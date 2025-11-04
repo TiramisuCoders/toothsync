@@ -260,8 +260,7 @@ export default function IncidentLogsPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-[#333]">Admin Incident Logs</h2>
-          <p className="text-gray-500">View and manage reported issues or anomalies in the system</p>
+          <h2 className="text-2xl font-semibold text-[#333]">Incident Logs</h2>
         </div>
         <Button onClick={fetchIncidents} variant="outline" disabled={loading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
