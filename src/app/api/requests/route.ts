@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (fetchError || !currentRequest) {
-      console.error('Request not found:', request_id)
+      console.error('[v0] Request not found:', request_id)
       return Response.json({ error: 'Request not found' }, { status: 404 })
     }
 
@@ -187,50 +187,6 @@ export async function POST(request: NextRequest) {
       .select('status')
       .eq('request_id', request_id)
       .single()
-
-    const newStatus = updatedRequest?.status || 'Confirmed'
-    console.log('[v0] New status:', newStatus)
-
-    // ========================================
-    // LOG ACTIVITY - REQUEST APPROVED
-    // ========================================
-    if (oldStatus !== newStatus) {
-      try {
-        console.log('[v0] Logging request approval...')
-        console.log('[v0] Old status:', oldStatus, '→ New status:', newStatus)
-
-        const clientIp = request.headers.get('x-forwarded-for') ||
-                        request.headers.get('x-real-ip') ||
-                        undefined
-
-        // Log the status change
-        await logRequestApproved(
-          user.id,
-          userRole?.role,
-          userRole?.email || 'unknown@example.com',
-          clinicianEmail,
-          request_id,
-          clinicianName,
-          currentRequest.patient_name,
-          oldStatus,
-          newStatus,
-          clientIp
-        )
-
-        console.log(`[v0] ✅ Activity logged: Request ${request_id} status changed from ${oldStatus} to ${newStatus}`)
-      } catch (logError) {
-        console.error('[v0] Failed to log activity:', logError)
-        // Don't fail the request if logging fails
-      }
-    }
-
-    return Response.json({
-      success: true,
-      result: result,
-      statusChanged: oldStatus !== newStatus,
-      oldStatus,
-      newStatus
-    }, { status: 200 })
 
     const newStatus = updatedRequest?.status || 'Confirmed'
     console.log('[v0] New status:', newStatus)

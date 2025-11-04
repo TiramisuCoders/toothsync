@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Check, X, Clock, ChevronLeft, ChevronRight } from "lucide-react"
+import { Check, X, ChevronLeft, ChevronRight } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -497,46 +497,25 @@ export default function ClerkAttendance() {
                                 )}
                               </Tooltip>
                             </TooltipProvider>
-                            <Button
+                            {/* <Button
                               size="icon"
                               variant="ghost"
                               className="h-8 w-8 text-red-600 hover:bg-red-50"
                               onClick={() => handleDeleteClick(record)}
                             >
                               <X className="h-4 w-4" />
-                            </Button>
+                            </Button> */}
                           </>
                         ) : (
                           <>
-                            {!record.timeOut && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div>
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        className="h-8 w-8 text-blue-600 hover:bg-blue-50"
-                                        onClick={() => handleTimeoutClick(record)}
-                                      >
-                                        <Clock className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Record time out for this clinician</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                            <Button
+                            {/* <Button
                               size="icon"
                               variant="ghost"
                               className="h-8 w-8 text-red-600 hover:bg-red-50"
                               onClick={() => handleDeleteClick(record)}
                             >
                               <X className="h-4 w-4" />
-                            </Button>
+                            </Button> */}
                           </>
                         )}
                       </div>

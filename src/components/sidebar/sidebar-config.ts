@@ -9,10 +9,9 @@ type MenuItem = {
 export const sidebarMenuConfig: Record<UserRole, MenuItem[]> = {
   clinician: [
     { label: "Dashboard", href: "/dashboard/clinician" },
-    { label: "Activities", href: "/activities/clinician" },
     { label: "Dental Chairs", href: "/dental-chairs/clinician" },
     { label: "Records", href: "/records/clinician" },
-    { label: "Form", href: "/form/clinician" },
+    { label: "Request", href: "/form/clinician" },
   ],
   "chief-of-clinicians": [
     { label: "Dashboard", href: "/dashboard/chief-of-clinicians" },
