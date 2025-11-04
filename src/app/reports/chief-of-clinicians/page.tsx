@@ -43,8 +43,7 @@ interface Clinician {
   clinicianId: string // student_id from clinician_records
   firstName: string
   lastName: string
-  year: string // year_level from clinician_records
-  section: string
+  year: string 
   sex: string // sex from users table
   academicYearId: string
   createdAt: string
@@ -60,7 +59,7 @@ interface Activity {
   date: string
   academicYear: string
   semester: string
-  grade?: string // Added grade property
+  remarks: string 
 }
 
 interface NewAcademicYear {
@@ -662,7 +661,7 @@ export default function ReportsPage() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Reports</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Admin Reports</h1>
           <p className="text-gray-600">
             Manage academic years and generate comprehensive reports for dental clinic operations
           </p>
@@ -1107,7 +1106,6 @@ export default function ReportsPage() {
                           "First Name": c.firstName,
                           "Last Name": c.lastName,
                           Year: c.year,
-                          Section: c.section,
                           Sex: c.sex,
                         })),
                         `clinician-history-${selectedYear}`,
@@ -1128,7 +1126,6 @@ export default function ReportsPage() {
                           "First Name": c.firstName,
                           "Last Name": c.lastName,
                           Year: c.year,
-                          Section: c.section,
                           Sex: c.sex,
                         })),
                         `clinician-history-${selectedYear}`,
@@ -1161,7 +1158,6 @@ export default function ReportsPage() {
                           <TableHead className="font-medium text-gray-900">First Name</TableHead>
                           <TableHead className="font-medium text-gray-900">Last Name</TableHead>
                           <TableHead className="font-medium text-gray-900">Year</TableHead>
-                          <TableHead className="font-medium text-gray-900">Section</TableHead>
                           <TableHead className="font-medium text-gray-900">Sex</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1172,7 +1168,6 @@ export default function ReportsPage() {
                             <TableCell className="text-gray-900">{clinician.firstName}</TableCell>
                             <TableCell className="text-gray-900">{clinician.lastName}</TableCell>
                             <TableCell className="text-gray-900">{clinician.year}</TableCell>
-                            <TableCell className="text-gray-900">{clinician.section}</TableCell>
                             <TableCell className="text-gray-900">{clinician.sex}</TableCell>
                           </TableRow>
                         ))}
@@ -1323,7 +1318,7 @@ export default function ReportsPage() {
                           <TableHead className="font-medium text-gray-900">Chair</TableHead>
                           <TableHead className="font-medium text-gray-900">Instructor</TableHead>
                           <TableHead className="font-medium text-gray-900">Procedure</TableHead>
-                          <TableHead className="font-medium text-gray-900">Grade</TableHead>
+                          <TableHead className="font-medium text-gray-900">Remarks</TableHead>
                           <TableHead className="font-medium text-gray-900">Date</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1336,7 +1331,7 @@ export default function ReportsPage() {
                             <TableCell className="text-gray-900">{activity.chair}</TableCell>
                             <TableCell className="text-gray-900">{activity.instructor}</TableCell>
                             <TableCell className="text-gray-900">{activity.procedure}</TableCell>
-                            <TableCell className="text-gray-900">{activity.grade}</TableCell>
+                            <TableCell className="text-gray-900">{activity.remarks}</TableCell>
                             <TableCell className="text-gray-900">
                               {new Date(activity.date).toLocaleDateString()}
                             </TableCell>

@@ -15,15 +15,26 @@ import {
 } from "@/components/ui/dialog"
 import { toast } from "@/hooks/use-toast"
 
+interface ProcedureDetail {
+  name: string
+  grade?: string
+  remarks?: string | null
+  status?: string
+}
+
 export interface Record {
   id: string
-  chair?: string
-  instructorName: string
-  procedures: string[]
-  timeIn: string
-  timeOut: string
-  status: string
+  record_id: string
   clinicianName: string
+  instructorName: string
+  instructorId: string
+  chair: string
+  procedures: string[]
+  procedureDetails: ProcedureDetail[]
+  status: string
+  timeIn: string | null
+  timeOut: string | null
+  archived?: boolean
 }
 
 export interface ClerkInfo {
@@ -79,21 +90,14 @@ export default function ClerkDashboard() {
   }
 
   useEffect(() => {
-    async function fetchSummary() {
-      setLoading(true)
-      setError(null)
-      const res = await fetch("/api/dashboard")
-      const data = await res.json()
-      setSummary(data)
-    }
-
     fetchAttendanceRecords()
-    fetchSummary()
   }, [])
 
   const fetchAttendanceRecords = async () => {
     try {
       setLoading(true)
+      console.log('🔍 Fetching from client...')
+      const start = performance.now()
 
       const response = await fetch('/api/dashboard', {
         method: 'GET',
@@ -104,39 +108,23 @@ export default function ClerkDashboard() {
       })
 
       const result = await response.json()
+      const end = performance.now()
+      console.log(`🌐 Total fetch time: ${(end - start).toFixed(2)} ms`)
+      console.log('📊 API Response:', result)
 
       if (!response.ok) {
         throw new Error(result.error || `Server error (${response.status}): Failed to update sanitization`)
       }
 
       setAttendanceRecords(result.data || [])
-
-      // Fetch user info
-      const userResponse = await fetch("/api/getCurrentUser", {
-        method: "GET",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-
-      if (!userResponse.ok) {
-        throw new Error(`HTTP error! status: ${userResponse.status}`)
-      }
-
-      const userInfo = await userResponse.json()
-
-      if (userInfo.success) {
-        setClerkInfo(userInfo.data)
-      } else {
-        throw new Error(userInfo.error || "Failed to fetch user info")
-      }
+      setSummary(result.dashboard || summary)
+      setClerkInfo(result.user)
 
     } catch (error) {
       // console.error('❌ Client error:', error)
       toast({
         title: "Fetch Failed",
-        description: error.message,
+        description: "Fetching the data failed",
         variant: "destructive",
       })
     } finally {
@@ -229,7 +217,7 @@ export default function ClerkDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'timeout',
-          record_id: clinicianToTimeout.id
+          record_id: clinicianToTimeout.record_id
         })
       })
 
@@ -409,7 +397,6 @@ export default function ClerkDashboard() {
                   <Calendar className="h-6 w-6 text-[#5C8E77]" />
                 </div>
               </div>
-              <p className="text-sm text-gray-500">To approve</p>
             </div>
           </CardContent>
         </Card>
@@ -436,7 +423,6 @@ export default function ClerkDashboard() {
                   <RockingChair className="h-5 w-5 text-[#5C8E77]" />
                 </div>
               </div>
-              <p className="text-sm text-gray-500">Ready for use</p>
             </div>
           </CardContent>
         </Card>
@@ -529,7 +515,7 @@ export default function ClerkDashboard() {
                         size="icon"
                         variant="ghost"
                         className="h-8 w-8 text-green-600 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={attendance.status !== "Completed"}
+                        // disabled={attendance.status !== "Completed"}
                         onClick={() => handleTimeoutClick(attendance)}
                         title={
                           attendance.timeOut !== "-"

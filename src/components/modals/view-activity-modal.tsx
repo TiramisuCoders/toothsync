@@ -1,22 +1,21 @@
+"use client"
+
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "../ui/button"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "../ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useEffect, useState } from "react"
-import { Pencil, X, Check } from "lucide-react"
 
 interface ProcedureStatus {
-  ap_id: string  // ADDED
+  ap_id: string
   procedure: string
   status: string
   remarks: string
 }
 
 interface RecordInstance {
-  id: string  // activity_records.id
+  id: string
   date: string
   timeIn: string
   timeOut: string
@@ -29,159 +28,69 @@ interface ProcedureDetail {
   name: string
   status: string
   remarks: string
-  ap_id: string  // ADDED
+  ap_id: string
 }
 
-interface GradingModalProps {
+interface ViewActModalProps {
   isOpen: boolean
   onClose: () => void
   currentActivity?: any
-  onProcedureChange: (index: number, field: 'status' | 'remarks', value: string) => void
-  onSave: (updatedProcedures?: ProcedureDetail[]) => void  // CHANGED: Accept updated procedures
 }
 
-export default function GradingModal({ 
-  isOpen, 
-  onClose, 
-  currentActivity, 
-  onProcedureChange, 
-  onSave,
-}: GradingModalProps) {
+export default function ViewActModal({ isOpen, onClose, currentActivity }: ViewActModalProps) {
   const [activeTab, setActiveTab] = useState("current")
-  const [isEditMode, setIsEditMode] = useState(false)
   const [localProcedures, setLocalProcedures] = useState<ProcedureDetail[]>([])
-  const [hasChanges, setHasChanges] = useState(false)
 
-  // Initialize local procedures when modal opens or currentActivity changes
   useEffect(() => {
     if (isOpen && currentActivity) {
-      console.log('🔄 Modal: Initializing with currentActivity:', currentActivity)
       const initialData = getLatestProcedureData()
-      console.log('🔄 Modal: Setting localProcedures to:', initialData)
       setLocalProcedures(initialData)
-      setIsEditMode(false)
-      setHasChanges(false)
     }
   }, [isOpen, currentActivity])
 
-  // Get the latest procedure statuses from the most recent record
   const getLatestProcedureData = () => {
     if (!currentActivity?.allRecords || currentActivity.allRecords.length === 0) {
       return currentActivity?.procedureDetails || []
     }
 
     const latestRecord = currentActivity.allRecords[0]
-    
-    return currentActivity.procedures?.map((procName: string) => {
-      const procStatus = latestRecord.procedureStatuses?.find(
-        (ps: ProcedureStatus) => ps.procedure === procName
-      )
-      
-      return {
-        name: procName,
-        status: procStatus?.status || "In Progress",
-        remarks: procStatus?.remarks || "",
-        ap_id: procStatus?.ap_id || ""  // ADDED: Include ap_id
-      }
-    }) || []
+
+    return (
+      currentActivity.procedures?.map((procName: string) => {
+        const procStatus = latestRecord.procedureStatuses?.find((ps: ProcedureStatus) => ps.procedure === procName)
+
+        return {
+          name: procName,
+          status: procStatus?.status || "In Progress",
+          remarks: procStatus?.remarks || "",
+          ap_id: procStatus?.ap_id || "",
+        }
+      }) || []
+    )
   }
 
-  const handleLocalProcedureChange = (index: number, field: 'status' | 'remarks', value: string) => {
-    const updated = [...localProcedures]
-    updated[index] = {
-      ...updated[index],
-      [field]: value
-    }
-    setLocalProcedures(updated)
-    setHasChanges(true)
-  }
-
-  const handleSaveChanges = () => {
-    console.log('🔄 Modal: handleSaveChanges called')
-    console.log('🔄 Modal: localProcedures before save:', localProcedures)
-    
-    // CRITICAL FIX: Pass localProcedures directly to the save function
-    // This ensures we save the ACTUAL updated data from the modal
-    onSave(localProcedures)
-    
-    setIsEditMode(false)
-    setHasChanges(false)
-  }
-
-  const handleCancelEdit = () => {
-    // Reset to initial data
-    const initialData = getLatestProcedureData()
-    setLocalProcedures(initialData)
-    setIsEditMode(false)
-    setHasChanges(false)
-  }
-
-  const handleEnterEditMode = () => {
-    setIsEditMode(true)
-  }
-
-  const handleClose = () => {
-    if (hasChanges) {
-      if (confirm("You have unsaved changes. Are you sure you want to close?")) {
-        setIsEditMode(false)
-        setHasChanges(false)
-        onClose()
-      }
-    } else {
-      onClose()
-    }
-  }
-    
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[800px] p-0 overflow-hidden rounded-lg max-h-[90vh] [&>button]:hidden">
         <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Update Activity</DialogTitle>
-            {!isEditMode && activeTab === "current" && (
-              <Button
-                onClick={handleEnterEditMode}
-                size="sm"
-                className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-              >
-                <Pencil className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
-            )}
-            {isEditMode && (
-              <div className="flex items-center gap-2">
-                <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
-                  Edit Mode
-                </Badge>
-              </div>
-            )}
+            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Activity Details</DialogTitle>
           </div>
         </DialogHeader>
 
         {currentActivity && (
-          <Tabs value={activeTab} onValueChange={(val) => {
-            if (isEditMode && hasChanges) {
-              if (confirm("You have unsaved changes. Are you sure you want to switch tabs?")) {
-                handleCancelEdit()
-                setActiveTab(val)
-              }
-            } else {
-              setActiveTab(val)
-            }
-          }} className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="px-6 pt-4">
               <TabsList className="grid w-full grid-cols-2 bg-gray-100">
-                <TabsTrigger 
+                <TabsTrigger
                   value="current"
                   className="data-[state=active]:bg-white data-[state=active]:text-[#5C8E77]"
-                  disabled={isEditMode}
                 >
                   Current Assessment
                 </TabsTrigger>
-                <TabsTrigger 
+                <TabsTrigger
                   value="history"
                   className="data-[state=active]:bg-white data-[state=active]:text-[#5C8E77]"
-                  disabled={isEditMode}
                 >
                   Previous Records ({currentActivity.allRecords?.length || 0})
                 </TabsTrigger>
@@ -207,7 +116,7 @@ export default function GradingModal({
                       <p className="font-medium text-[#333]">{currentActivity.patientName}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">Patient</p>
+                      <p className="text-sm text-gray-500">Patient Type</p>
                       <p className="font-medium text-[#333]">{currentActivity.patientType}</p>
                     </div>
                     <div>
@@ -218,7 +127,7 @@ export default function GradingModal({
                       <p className="text-sm text-gray-500">Instructor</p>
                       <p className="font-medium text-[#333]">{currentActivity.instructorName}</p>
                     </div>
-                    
+
                     <div>
                       <p className="text-sm text-gray-500">Date</p>
                       <p className="font-medium text-[#333]">{currentActivity.date}</p>
@@ -226,12 +135,10 @@ export default function GradingModal({
                   </div>
                 </div>
 
-                {/* Procedures Grading with Tabs */}
+                {/* Procedures - Display Only */}
                 <div className="space-y-4">
-                  <h3 className="font-semibold text-[#333] mb-3">
-                    {isEditMode ? "Edit Procedures" : "Procedure Assessment"}
-                  </h3>
-                  
+                  <h3 className="font-semibold text-[#333] mb-3">Procedure Assessment</h3>
+
                   {localProcedures && localProcedures.length > 0 ? (
                     localProcedures.length > 1 ? (
                       <Tabs defaultValue="0" className="w-full">
@@ -240,8 +147,8 @@ export default function GradingModal({
                           style={{ gridTemplateColumns: `repeat(${localProcedures.length}, 1fr)` }}
                         >
                           {localProcedures.map((procedure, index) => (
-                            <TabsTrigger 
-                              key={index} 
+                            <TabsTrigger
+                              key={index}
                               value={index.toString()}
                               className="data-[state=active]:bg-white data-[state=active]:text-[#5C8E77]"
                             >
@@ -251,13 +158,18 @@ export default function GradingModal({
                         </TabsList>
                         {localProcedures.map((procedure, index) => (
                           <TabsContent key={index} value={index.toString()} className="mt-4">
-                            <div className={`border rounded-lg p-4 ${isEditMode ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
+                            <div className="border rounded-lg p-4 bg-white">
                               <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
-                                  <span className={`inline-block w-3 h-3 rounded-full ${
-                                    procedure.status === "Completed" ? "bg-[#5C8E77]" : 
-                                    procedure.status === "In Progress" ? "bg-blue-500" : "bg-gray-300"
-                                  }`}></span>
+                                  <span
+                                    className={`inline-block w-3 h-3 rounded-full ${
+                                      procedure.status === "Completed"
+                                        ? "bg-[#5C8E77]"
+                                        : procedure.status === "In Progress"
+                                          ? "bg-blue-500"
+                                          : "bg-gray-300"
+                                    }`}
+                                  ></span>
                                   <p className="font-medium text-[#333]">{procedure.name}</p>
                                 </div>
                                 {procedure.status === "Completed" && (
@@ -271,33 +183,17 @@ export default function GradingModal({
                                   </Badge>
                                 )}
                               </div>
-                              
+
                               <div className="space-y-4">
                                 <div>
                                   <Label className="text-sm text-gray-600">Status</Label>
-                                  <Select
-                                    value={procedure.status || "In Progress"}
-                                    onValueChange={(value) => handleLocalProcedureChange(index, "status", value)}
-                                    disabled={!isEditMode}
-                                  >
-                                    <SelectTrigger className={`mt-1 ${isEditMode ? 'border-blue-400' : 'border-gray-300'}`}>
-                                      <SelectValue placeholder="Select status" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="In Progress">In Progress</SelectItem>
-                                      <SelectItem value="Completed">Completed</SelectItem>
-                                    </SelectContent>
-                                  </Select>
+                                  <p className="mt-1 text-sm font-medium text-gray-900">{procedure.status}</p>
                                 </div>
                                 <div>
-                                  <Label className="text-sm text-gray-600">Remarks (Optional)</Label>
-                                  <Textarea
-                                    placeholder="Enter your feedback or observations"
-                                    value={procedure.remarks || ""}
-                                    onChange={(e) => handleLocalProcedureChange(index, "remarks", e.target.value)}
-                                    className={`mt-1 min-h-[100px] ${isEditMode ? 'border-blue-400' : 'border-gray-300'}`}
-                                    disabled={!isEditMode}
-                                  />
+                                  <Label className="text-sm text-gray-600">Remarks</Label>
+                                  <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">
+                                    {procedure.remarks || "—"}
+                                  </p>
                                 </div>
                               </div>
                             </div>
@@ -306,64 +202,44 @@ export default function GradingModal({
                       </Tabs>
                     ) : (
                       // Single procedure display
-                      <div className={`border rounded-lg p-4 ${isEditMode ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
+                      <div className="border rounded-lg p-4 bg-white">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-2">
-                            <span className={`inline-block w-3 h-3 rounded-full ${
-                              localProcedures[0].status === "Completed" 
-                                ? "bg-[#5C8E77]" 
-                                : localProcedures[0].status === "In Progress"
-                                ? "bg-blue-500"
-                                : "bg-gray-300"
-                            }`}></span>
+                            <span
+                              className={`inline-block w-3 h-3 rounded-full ${
+                                localProcedures[0].status === "Completed"
+                                  ? "bg-[#5C8E77]"
+                                  : localProcedures[0].status === "In Progress"
+                                    ? "bg-blue-500"
+                                    : "bg-gray-300"
+                              }`}
+                            ></span>
                             <p className="font-medium text-[#333]">{localProcedures[0].name}</p>
                           </div>
                           {localProcedures[0].status === "Completed" && (
-                            <Badge className="bg-[#5C8E77]/10 text-[#5C8E77] hover:bg-[#5C8E77]/10">
-                              Completed
-                            </Badge>
+                            <Badge className="bg-[#5C8E77]/10 text-[#5C8E77] hover:bg-[#5C8E77]/10">Completed</Badge>
                           )}
                           {localProcedures[0].status === "In Progress" && (
-                            <Badge className="bg-blue-500/10 text-blue-600 hover:bg-blue-500/10">
-                              In Progress
-                            </Badge>
+                            <Badge className="bg-blue-500/10 text-blue-600 hover:bg-blue-500/10">In Progress</Badge>
                           )}
                         </div>
-                        
+
                         <div className="space-y-4">
                           <div>
                             <Label className="text-sm text-gray-600">Status</Label>
-                            <Select
-                              value={localProcedures[0].status || "In Progress"}
-                              onValueChange={(value) => handleLocalProcedureChange(0, "status", value)}
-                              disabled={!isEditMode}
-                            >
-                              <SelectTrigger className={`mt-1 ${isEditMode ? 'border-blue-400' : 'border-gray-300'}`}>
-                                <SelectValue placeholder="Select status" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="In Progress">In Progress</SelectItem>
-                                <SelectItem value="Completed">Completed</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <p className="mt-1 text-sm font-medium text-gray-900">{localProcedures[0].status}</p>
                           </div>
                           <div>
-                            <Label className="text-sm text-gray-600">Remarks (Optional)</Label>
-                            <Textarea
-                              placeholder="Enter your feedback or observations"
-                              value={localProcedures[0].remarks || ""}
-                              onChange={(e) => handleLocalProcedureChange(0, "remarks", e.target.value)}
-                              className={`mt-1 min-h-[100px] ${isEditMode ? 'border-blue-400' : 'border-gray-300'}`}
-                              disabled={!isEditMode}
-                            />
+                            <Label className="text-sm text-gray-600">Remarks</Label>
+                            <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">
+                              {localProcedures[0].remarks || "—"}
+                            </p>
                           </div>
                         </div>
                       </div>
                     )
                   ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      No procedures available
-                    </div>
+                    <div className="text-center py-8 text-gray-500">No procedures available</div>
                   )}
                 </div>
               </TabsContent>
@@ -442,9 +318,7 @@ export default function GradingModal({
                                             {procStatus.status}
                                           </Badge>
                                         </td>
-                                        <td className="px-4 py-3 text-sm text-gray-700">
-                                          {procStatus.remarks || "—"}
-                                        </td>
+                                        <td className="px-4 py-3 text-sm text-gray-700">{procStatus.remarks || "—"}</td>
                                       </tr>
                                     ))
                                   ) : (
@@ -473,30 +347,9 @@ export default function GradingModal({
         )}
 
         <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-          {!isEditMode ? (
-            <Button variant="outline" onClick={handleClose} className="border-gray-300">
-              Close
-            </Button>
-          ) : (
-            <>
-              <Button 
-                variant="outline" 
-                onClick={handleCancelEdit} 
-                className="border-gray-300"
-              >
-                <X className="h-4 w-4 mr-2" />
-                Cancel
-              </Button>
-              <Button
-                className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-                onClick={handleSaveChanges}
-                disabled={!hasChanges}
-              >
-                <Check className="h-4 w-4 mr-2" />
-                Save Changes
-              </Button>
-            </>
-          )}  
+          <Button variant="outline" onClick={onClose} className="border-gray-300 bg-transparent">
+            Close
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -14,10 +14,9 @@ export async function PATCH(req: Request) {
         { status: 400 }
       )
     }
-
     // Update the activity status in DB
     const { data, error } = await supabase
-      .from("activity_records")
+      .from("activities")
       .update({ status })
       .eq("record_id", activityId)
       .select()
