@@ -726,7 +726,7 @@ export function AdminTicketDetailsModal({
               </div>
             )}
 
-{activeTab === "notes" && (
+        {activeTab === "notes" && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Notes History</h3>
                 {notes?.length > 0 ? (
@@ -785,7 +785,7 @@ export function AdminTicketDetailsModal({
                   </div>
                 </div>
 
-                <div>
+<div>
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">Attached Files</h3>
                   {attachments?.length > 0 ? (
                     <div className="space-y-2">
@@ -814,6 +814,16 @@ export function AdminTicketDetailsModal({
                                   Uploaded {new Date(attachment.uploaded_at).toLocaleString()}
                                 </p>
                               </div>
+                            </div>
+                            <div className="flex gap-2 ml-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(attachment.storage_url, "_blank")}
+                                className="whitespace-nowrap"
+                              >
+                                View
+                              </Button>
                             </div>
                           </div>
                         </div>
