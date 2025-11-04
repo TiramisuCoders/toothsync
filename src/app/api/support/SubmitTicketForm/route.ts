@@ -1,7 +1,6 @@
 // app/api/support/SubmitTicketForm/route.ts
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
-// Import the standard Supabase client for creating the privileged client
 import { createClient } from '@supabase/supabase-js';
 
 // ===============================================
@@ -100,7 +99,7 @@ async function getOrCreateUser(supabase: any, email: string): Promise<string | n
     return null;
 }
 
-// Handle file uploads
+// Handle file uploads - ALIGNED WITH OTHER ROUTES
 async function handleFileUploads(
     supabase: any,
     incidentId: string,
@@ -110,40 +109,71 @@ async function handleFileUploads(
     const uploadedAttachments: any[] = [];
     const errors: any[] = [];
 
+    console.log(`📎 Starting upload of ${files.length} file(s) for incident ${incidentId}`);
+
     for (const file of files) {
         try {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${incidentId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-            const filePath = `incident-attachments/${fileName}`;
+            // Validate file size (10MB limit)
+            const maxSize = 10 * 1024 * 1024; // 10MB
+            if (file.size > maxSize) {
+                console.warn(`⚠️ File ${file.name} exceeds 10MB limit`);
+                errors.push({
+                    file: file.name,
+                    error: 'File size exceeds 10MB limit'
+                });
+                continue;
+            }
 
+            // Generate unique filename
+            const timestamp = Date.now();
+            const sanitizedFilename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+            
+            // 🟢 FIXED: Now matches NewTickets and MyTickets structure
+            const storagePath = `incident-attachments/${incidentId}/${timestamp}-${sanitizedFilename}`;
+
+            console.log(`📤 Uploading file: ${file.name} to path: ${storagePath}`);
+
+            // Convert File to ArrayBuffer then to Buffer
             const arrayBuffer = await file.arrayBuffer();
-            const fileData = new Uint8Array(arrayBuffer);
+            const buffer = Buffer.from(arrayBuffer);
 
-            const { error: uploadError } = await supabase.storage
+            // Upload to Supabase Storage
+            const { data: uploadData, error: uploadError } = await supabase
+                .storage
                 .from('attachments')
-                .upload(filePath, fileData, {
+                .upload(storagePath, buffer, {
                     contentType: file.type,
                     upsert: false
                 });
 
             if (uploadError) {
-                console.error('Upload error for file:', file.name, uploadError);
-                errors.push({ file: file.name, error: uploadError.message });
+                console.error(`❌ Storage upload error for ${file.name}:`, uploadError);
+                errors.push({
+                    file: file.name,
+                    error: uploadError.message
+                });
                 continue;
             }
 
-            const { data: { publicUrl } } = supabase.storage
+            // Get public URL
+            const { data: urlData } = supabase
+                .storage
                 .from('attachments')
-                .getPublicUrl(filePath);
+                .getPublicUrl(storagePath);
 
-            const { data: attachment, error: dbError } = await supabase
+            const storage_url = urlData.publicUrl;
+
+            console.log(`✅ File uploaded to storage: ${storage_url}`);
+
+            // Insert attachment record into database
+            const { data: attachmentData, error: dbError } = await supabase
                 .from('incident_attachment')
                 .insert({
                     incident_id: incidentId,
                     file_name: file.name,
                     file_size: file.size,
                     file_type: file.type,
-                    storage_url: publicUrl,
+                    storage_url: storage_url,
                     uploaded_by_user_id: userId,
                     uploaded_at: new Date().toISOString()
                 })
@@ -151,16 +181,25 @@ async function handleFileUploads(
                 .single();
 
             if (dbError) {
-                console.error('Database error for file:', file.name, dbError);
-                errors.push({ file: file.name, error: dbError.message });
-                await supabase.storage.from('attachments').remove([filePath]);
+                console.error(`❌ Database insert error for ${file.name}:`, dbError);
+                
+                // Clean up uploaded file if DB insert fails
+                await supabase.storage
+                    .from('attachments')
+                    .remove([storagePath]);
+
+                errors.push({
+                    file: file.name,
+                    error: dbError.message
+                });
                 continue;
             }
 
-            uploadedAttachments.push(attachment);
+            console.log(`✅ Attachment saved to database:`, attachmentData);
+            uploadedAttachments.push(attachmentData);
 
         } catch (error) {
-            console.error('Error processing file:', file.name, error);
+            console.error(`💥 Error uploading file ${file.name}:`, error);
             errors.push({
                 file: file.name,
                 error: error instanceof Error ? error.message : 'Unknown error'
@@ -168,6 +207,7 @@ async function handleFileUploads(
         }
     }
 
+    console.log(`📊 Upload complete: ${uploadedAttachments.length} succeeded, ${errors.length} failed`);
     return { uploadedAttachments, errors };
 }
 
@@ -184,7 +224,7 @@ export async function POST(request: NextRequest) {
     );
 
     try {
-        console.log('📥 Processing ticket submission...');
+        console.log('🔥 Processing ticket submission...');
 
         const formData = await request.formData();
         const title = formData.get('title') as string;
@@ -295,11 +335,13 @@ export async function POST(request: NextRequest) {
 
         console.log('✅ Ticket created successfully:', newIncident.incident_id);
 
+        // Handle file uploads - now using privileged client for consistency
         let uploadResults: { uploadedAttachments: any[]; errors: any[] } = { uploadedAttachments: [], errors: [] };
         
         if (files && files.length > 0 && files[0].size > 0) {
             console.log('📎 Uploading attachments...');
-            uploadResults = await handleFileUploads(supabaseGeneral, newIncident.incident_id, files, reporterUserId);
+            // 🟢 CHANGED: Use privileged client for file uploads (matches NewTickets)
+            uploadResults = await handleFileUploads(supabasePrivileged, newIncident.incident_id, files, reporterUserId);
             if (uploadResults.uploadedAttachments.length > 0) {
                 console.log(`✅ Uploaded ${uploadResults.uploadedAttachments.length} attachment(s)`);
             }
@@ -344,7 +386,6 @@ export async function POST(request: NextRequest) {
 // ===============================================
 
 export async function GET(request: NextRequest) {
-    // Create the privileged client using the Service Role Key
     const supabasePrivileged = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!, 
         process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -355,9 +396,8 @@ export async function GET(request: NextRequest) {
 
     try {
         if (action === 'modules') {
-            console.log('📥 Fetching modules from affected_module table...');
+            console.log('🔥 Fetching modules from affected_module table...');
             
-            // Use privileged client to bypass RLS
             const { data: modules, error } = await supabasePrivileged
                 .from('affected_module')
                 .select('module_id, module_name')
@@ -398,9 +438,8 @@ export async function GET(request: NextRequest) {
                 }, { status: 400 });
             }
 
-            console.log('📥 Fetching issue types for module:', moduleId);
+            console.log('🔥 Fetching issue types for module:', moduleId);
 
-            // Use privileged client to bypass RLS
             const { data: issueTypes, error } = await supabasePrivileged
                 .from('issue_type')
                 .select('issue_type_id, issue_type_name')

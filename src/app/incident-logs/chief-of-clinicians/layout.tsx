@@ -1,3 +1,5 @@
+// src/app/incident-logs/chief-of-clinicians/layout.tsx
+
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { RoleBasedSidebar } from "@/components/sidebar/RoleBasedSidebar"
 import { Header } from "@/components/layouts/header"

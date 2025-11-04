@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js'; 
 
 // ===============================================
-// HELPER FUNCTIONS (unchanged, but rely on privileged client)
+// HELPER FUNCTIONS
 // ===============================================
 
 // Get an available user with role 'R04' to be the assignee
@@ -19,7 +19,12 @@ async function findAssignee(supabase: any): Promise<{ id: string, email: string 
             console.error('Error finding assignee (RPC failed):', error);
             return null;
         }
-        // ... (rest of logic)
+        
+        if (!data || data.length === 0) {
+            console.log('⚠️ No assignees with role R04 found');
+            return null;
+        }
+
         const assignee = data[0]; 
         return {
             id: assignee.auth_user_id,
@@ -67,7 +72,7 @@ async function getIssueTypeId(supabase: any, issueTypeName: string, moduleId: st
     return data?.issue_type_id || null;
 }
 
-// Get or create user (unchanged)
+// Get or create user
 async function getOrCreateUser(supabase: any, email: string): Promise<string | null> {
     const lowerCaseEmail = email.toLowerCase();
     
@@ -97,17 +102,113 @@ async function getOrCreateUser(supabase: any, email: string): Promise<string | n
     return null;
 }
 
-// Handle file uploads (unchanged)
+// Handle file uploads
 async function handleFileUploads(
     supabase: any,
     incidentId: string,
     files: File[],
     userId: string
 ): Promise<{ uploadedAttachments: any[]; errors: any[] }> {
-    // ... (logic remains the same)
     const uploadedAttachments: any[] = [];
     const errors: any[] = [];
-    // ... (rest of logic)
+
+    console.log(`📎 Starting upload of ${files.length} file(s) for incident ${incidentId}`);
+
+    for (const file of files) {
+        try {
+            // Validate file size (10MB limit)
+            const maxSize = 10 * 1024 * 1024; // 10MB
+            if (file.size > maxSize) {
+                console.warn(`⚠️ File ${file.name} exceeds 10MB limit`);
+                errors.push({
+                    fileName: file.name,
+                    error: 'File size exceeds 10MB limit'
+                });
+                continue;
+            }
+
+            // Generate unique filename
+            const timestamp = Date.now();
+            const sanitizedFilename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const storagePath = `incident-attachments/${incidentId}/${timestamp}-${sanitizedFilename}`;
+
+            console.log(`📤 Uploading file: ${file.name} to path: ${storagePath}`);
+
+            // Convert File to ArrayBuffer then to Buffer
+            const arrayBuffer = await file.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            // Upload to Supabase Storage
+            const { data: uploadData, error: uploadError } = await supabase
+                .storage
+                .from('attachments')
+                .upload(storagePath, buffer, {
+                    contentType: file.type,
+                    upsert: false
+                });
+
+            if (uploadError) {
+                console.error(`❌ Storage upload error for ${file.name}:`, uploadError);
+                errors.push({
+                    fileName: file.name,
+                    error: uploadError.message
+                });
+                continue;
+            }
+
+            // Get public URL
+            const { data: urlData } = supabase
+                .storage
+                .from('attachments')
+                .getPublicUrl(storagePath);
+
+            const storage_url = urlData.publicUrl;
+
+            console.log(`✅ File uploaded to storage: ${storage_url}`);
+
+            // Insert attachment record into database
+            const { data: attachmentData, error: dbError } = await supabase
+                .from('incident_attachment')
+                .insert({
+                    incident_id: incidentId,
+                    file_name: file.name,
+                    file_size: file.size,
+                    file_type: file.type,
+                    storage_url: storage_url,
+                    uploaded_by_user_id: userId,
+                    uploaded_at: new Date().toISOString()
+                })
+                .select()
+                .single();
+
+            if (dbError) {
+                console.error(`❌ Database insert error for ${file.name}:`, dbError);
+                
+                // Clean up uploaded file if DB insert fails
+                await supabase.storage
+                    .from('attachments')
+                    .remove([storagePath]);
+
+                errors.push({
+                    fileName: file.name,
+                    error: dbError.message
+                });
+                continue;
+            }
+
+            console.log(`✅ Attachment saved to database:`, attachmentData);
+            uploadedAttachments.push(attachmentData);
+
+        } catch (error) {
+            console.error(`💥 Error uploading file ${file.name}:`, error);
+            errors.push({
+                fileName: file.name,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
+    console.log(`📊 Upload complete: ${uploadedAttachments.length} succeeded, ${errors.length} failed`);
     return { uploadedAttachments, errors };
 }
 
@@ -117,15 +218,14 @@ async function handleFileUploads(
 // ===============================================
 
 export async function POST(request: NextRequest) {
-    // 🟢 POST uses the Privileged Client for RLS bypass (This is already correct)
+    // 🟢 POST uses the Privileged Client for RLS bypass
     const supabasePrivileged = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-        process.env.SUPABASE_SECRET_KEY!      
+        process.env.SUPABASE_SERVICE_ROLE_KEY!      
     );
-    // ... (rest of POST logic remains the same, relying on supabasePrivileged)
     
     try {
-        console.log('📝 Processing ticket submission...');
+        console.log('🔥 Processing ticket submission...');
 
         const formData = await request.formData();
         const title = formData.get('title') as string;
@@ -177,8 +277,7 @@ export async function POST(request: NextRequest) {
             );
         }
         
-        // ... (rest of POST logic: ticket number generation, assignee lookup, incident insert, file upload) ...
-
+        // Generate ticket number
         const { data: ticketNumResult, error: rpcError } = await supabasePrivileged.rpc('generate_ticket_number');
 
         if (rpcError) {
@@ -203,6 +302,7 @@ export async function POST(request: NextRequest) {
             console.log('⚠️ Could not find a default assignee. Ticket will be unassigned (Pending).');
         }
 
+        // Create incident
         const { data: newIncident, error: incidentInsertError } = await supabasePrivileged
             .from('incident')
             .insert({
@@ -239,12 +339,12 @@ export async function POST(request: NextRequest) {
 
         console.log('✅ Ticket created successfully:', newIncident.incident_id);
 
+        // Handle file uploads
         let uploadResults: { uploadedAttachments: any[]; errors: any[] } = { uploadedAttachments: [], errors: [] };
-        const supabaseStorage = await createSupabaseServerClient(); 
         
         if (files && files.length > 0 && files[0].size > 0) {
             console.log('📎 Uploading attachments...');
-            uploadResults = await handleFileUploads(supabaseStorage, newIncident.incident_id, files, reporterUserId);
+            uploadResults = await handleFileUploads(supabasePrivileged, newIncident.incident_id, files, reporterUserId);
             if (uploadResults.uploadedAttachments.length > 0) {
                 console.log(`✅ Uploaded ${uploadResults.uploadedAttachments.length} attachment(s)`);
             }
@@ -285,14 +385,14 @@ export async function POST(request: NextRequest) {
 }
 
 // ===============================================
-// GET - Fetch data (FIXED: Uses Privileged Client for RLS Bypass)
+// GET - Fetch data (Uses Privileged Client for RLS Bypass)
 // ===============================================
 
 export async function GET(request: NextRequest) {
     // 🟢 CRITICAL FIX: Use the Privileged Client for RLS bypass to fetch config data.
     const supabasePrivileged = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-        process.env.SUPABASE_SECRET_KEY!
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
     const supabase = supabasePrivileged; 
     
@@ -300,12 +400,12 @@ export async function GET(request: NextRequest) {
     const action = searchParams.get('action');
 
     try {
-        console.log('📥 GET request - action:', action);
+        console.log('🔥 GET request - action:', action);
 
         if (action === 'modules') {
             console.log('🔍 Fetching modules from affected_module table...');
 
-            const { data: modules, error } = await supabase // Uses privileged client
+            const { data: modules, error } = await supabase
                 .from('affected_module')
                 .select('module_id, module_name')
                 .eq('is_active', true)
@@ -315,7 +415,6 @@ export async function GET(request: NextRequest) {
 
             if (error) {
                 console.error('❌ Error fetching modules:', error);
-                // Return a specific error structure that the client can understand
                 return NextResponse.json({
                     error: 'Failed to fetch modules',
                     details: error.message,
@@ -323,7 +422,6 @@ export async function GET(request: NextRequest) {
                 }, { status: 500 });
             }
 
-            // ... (rest of module logic remains the same)
             if (!modules || modules.length === 0) {
                 console.log('⚠️ No modules found in database');
                 return NextResponse.json({
@@ -344,7 +442,6 @@ export async function GET(request: NextRequest) {
                 return NextResponse.json({ error: 'module_id required', success: false }, { status: 400 });
             }
 
-            // Fetch issue types using the privileged client
             const { data: issueTypes, error } = await supabase
                 .from('issue_type')
                 .select('issue_type_id, issue_type_name, description')
@@ -360,8 +457,6 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ success: true, issueTypes });
         }
 
-        // ... (other GET actions like 'ticket' remain the same)
-
         if (action === 'ticket') {
             const ticketNum = searchParams.get('ticket_num');
 
@@ -369,10 +464,6 @@ export async function GET(request: NextRequest) {
                 return NextResponse.json({ error: 'Ticket number required', success: false }, { status: 400 });
             }
 
-            // Note: RLS needs to allow the current user to read this incident, 
-            // so we use the standard client (createSupabaseServerClient) or rely on a privileged client 
-            // if the check is handled later. Sticking to standard client for general GET reads here.
-            
             const supabaseGeneral = await createSupabaseServerClient(); 
             const { data, error } = await supabaseGeneral
                 .from('incident')

@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { TicketSuccessModal } from "@/components/modals/ticket-success-modal" 
-import { TicketFailureModal } from "@/components/modals/ticket-failure-modal"   
+import { TicketSuccessModal } from "@/components/modals/support-faq/ticket-success-modal" 
+import { TicketFailureModal } from "@/components/modals/support-faq/ticket-failure-modal"   
 import { useToast } from "@/hooks/use-toast"
 import { createBrowserClient } from "@supabase/ssr"
 
@@ -211,15 +211,10 @@ export default function SubmitTicketForm() {
     }
   }
 
-  const handleSuccessClose = () => {
-    setShowSuccessModal(false)
-    router.push("/incident-management/my-tickets") 
-  }
-
-  const handleViewTickets = () => {
-    setShowSuccessModal(false)
-    router.push("/incident-management/my-tickets")
-  }
+const handleSuccessClose = () => {
+  setShowSuccessModal(false)
+  router.push("/support/faq/my-ticket") 
+}
 
   const handleFailureClose = () => {
     setShowFailureModal(false)
@@ -405,7 +400,6 @@ export default function SubmitTicketForm() {
       <TicketSuccessModal
         isOpen={showSuccessModal}
         onClose={handleSuccessClose}
-        onViewTickets={handleViewTickets}
         ticketNumber={ticketNumber}
         submissionDate={submissionDate}
       />

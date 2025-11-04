@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { TicketDetailsModal } from "./TicketDetailsModal"
-import { FeedbackFormModal } from "@/components/modals/feedback-form-modal" // Correct Alias Path
+import { FeedbackFormModal } from "@/components/modals/feedback-form-modal"
 
 interface IncidentAttachment {
   attachment_id: string
@@ -92,12 +92,13 @@ export default function MyTicket() {
   const { toast } = useToast()
 
   const [ticketNumber, setTicketNumber] = useState("")
+  const [email, setEmail] = useState("")
   const [ticketSubmitted, setTicketSubmitted] = useState(false)
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false) 
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
 
   const backgroundImages = [
@@ -122,8 +123,9 @@ export default function MyTicket() {
     }
   }, [ticketSubmitted])
 
-  const handleTicketNumberSubmit = (e: React.FormEvent) => {
+  const handleTicketNumberSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
     if (!ticketNumber || !ticketNumber.trim()) {
       toast({
         title: "Invalid Ticket Number",
@@ -132,18 +134,39 @@ export default function MyTicket() {
       })
       return
     }
-    setTicketSubmitted(true)
-    fetchTicket()
+
+    if (!email || !email.trim()) {
+      toast({
+        title: "Email Required",
+        description: "Please enter your email address.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email.trim())) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    await fetchTicket()
   }
 
   const fetchTicket = async () => {
-    if (!ticketNumber) return
+    if (!ticketNumber || !email) return
     
     try {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch(`/api/support/MyTickets?ticket_num=${encodeURIComponent(ticketNumber)}`)
+      const response = await fetch(
+        `/api/support/MyTickets?ticket_num=${encodeURIComponent(ticketNumber.trim())}&user_email=${encodeURIComponent(email.trim())}`
+      )
       
       if (!response.ok) {
         const result = await response.json()
@@ -157,11 +180,12 @@ export default function MyTicket() {
       }
 
       setTicket(result.ticket)
+      setTicketSubmitted(true)
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch ticket'
       setError(errorMessage)
-      setTicket(null) // Only clear ticket state if the fetch genuinely failed
+      setTicket(null)
       toast({
         title: "Ticket Not Found",
         description: errorMessage,
@@ -172,7 +196,6 @@ export default function MyTicket() {
     }
   }
 
-  // 🟢 UPDATED: Handles closure of TicketDetailsModal AND the decision to open Feedback.
   const handleCloseDetailsModal = (feedbackRequired: boolean = false) => {
     setShowDetailsModal(false)
     if (feedbackRequired) {
@@ -180,11 +203,9 @@ export default function MyTicket() {
     }
   }
   
-  // 🟢 NEW: Handles the closure of the Feedback Modal
   const handleCloseFeedbackModal = () => {
-      setShowFeedbackModal(false);
+    setShowFeedbackModal(false)
   }
-
 
   const handleCopyTicketId = (ticketId: string) => {
     navigator.clipboard.writeText(ticketId)
@@ -195,7 +216,7 @@ export default function MyTicket() {
   }
 
   const handleTicketUpdated = () => {
-    fetchTicket() 
+    fetchTicket()
   }
 
   const handleNewTicket = () => {
@@ -203,7 +224,6 @@ export default function MyTicket() {
   }
 
   if (isLoading && !ticket) {
-    // Only show full loading spinner if there is no ticket data at all
     return (
       <div className="min-h-screen bg-gray-100 font-poppins flex items-center justify-center overflow-hidden">
         <div className="text-center">
@@ -216,9 +236,9 @@ export default function MyTicket() {
 
   if (!ticketSubmitted) {
     return (
-      <div className="h-screen w-screen fixed inset-0 overflow-hidden font-poppins m-0 p-0">
+      <div className="min-h-screen w-full overflow-hidden font-poppins">
         {/* Background Carousel */}
-        <div className="absolute inset-0">
+        <div className="fixed inset-0 -z-10">
           {backgroundImages.map((image, index) => (
             <div
               key={index}
@@ -241,7 +261,7 @@ export default function MyTicket() {
         <main className="relative z-10 flex items-center justify-center p-6 h-screen">
           <div className="bg-white/90 backdrop-blur-md rounded-lg shadow-lg p-8 max-w-md w-full">
             <h2 className="text-2xl font-bold text-gray-800 mb-2">Track Your Ticket</h2>
-            <p className="text-gray-600 mb-6">Enter your ticket number to view status and details</p>
+            <p className="text-gray-600 mb-6">Enter your ticket number and email to view status and details</p>
             
             <form onSubmit={handleTicketNumberSubmit}>
               <div className="mb-4">
@@ -257,9 +277,21 @@ export default function MyTicket() {
                   className="w-full"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  You can find your ticket number in the confirmation email
-                </p>
+              </div>
+
+              <div className="mb-4">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address
+                </label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="your.email@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full"
+                  required
+                />
               </div>
               
               <Button
@@ -313,6 +345,7 @@ export default function MyTicket() {
               setTicketSubmitted(false)
               setTicket(null)
               setTicketNumber("")
+              setEmail("")
               setError(null)
             }}
             variant="outline"
@@ -329,7 +362,7 @@ export default function MyTicket() {
         </div>
       </header>
 
-      <main className="p-6">
+      <main className="p-6 pt-28">
         <div className="max-w-4xl mx-auto">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded mb-4">
@@ -345,10 +378,10 @@ export default function MyTicket() {
                   <p className="text-gray-600 mt-1">{ticket.ticket_num}</p>
                 </div>
                 <div className="flex gap-2">
-                  <Badge className={`${getStatusBadgeColors(ticket.status)} px-3 py-1`}>
+                  <Badge className={`${getStatusBadgeColors(ticket.status)} px-3 py-1 hover:bg-opacity-100`}>
                     {ticket.status}
                   </Badge>
-                  <Badge className={`${getPriorityBadgeColors(ticket.priority)} px-3 py-1`}>
+                  <Badge className={`${getPriorityBadgeColors(ticket.priority)} px-3 py-1 hover:bg-opacity-100`}>
                     {ticket.priority}
                   </Badge>
                 </div>
@@ -398,21 +431,22 @@ export default function MyTicket() {
         </div>
       </main>
 
-      {/* 1. Ticket Details Modal */}
+      {/* Ticket Details Modal - Pass reporter_user_id for external users */}
       {ticket && (
         <TicketDetailsModal
           isOpen={showDetailsModal}
-          onClose={handleCloseDetailsModal} // 👈 Passes handler that checks for feedback
+          onClose={handleCloseDetailsModal}
           ticket={ticket}
+          userId={ticket.reporter_user_id}
           onTicketUpdated={handleTicketUpdated}
         />
       )}
       
-      {/* 2. Decoupled Feedback Modal */}
+      {/* Feedback Modal */}
       {ticket && (
         <FeedbackFormModal
           isOpen={showFeedbackModal}
-          onClose={handleCloseFeedbackModal} // 👈 Dedicated handler for closure
+          onClose={handleCloseFeedbackModal}
           ticketId={ticket.incident_id}
         />
       )}

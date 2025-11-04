@@ -1,14 +1,11 @@
-// app/support/faq/my-ticket/page.tsx
 "use client"
 
-import MyTicketForm from "./MyTicketForm" // 🟢 Import the core logic component
+import TicketTracker from "./TicketTracker"
 
 export default function MyTicketPage() {
-  // The outer layout (SupportLayout) handles the sidebar and padding.
   return (
-    <div className="py-8 px-4 md:px-8 bg-gray-100">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">View My Tickets</h1>
-      <MyTicketForm />
+    <div className="min-h-screen w-full bg-[#f9f9f9] py-8 px-4 md:px-8">
+      <TicketTracker />
     </div>
   )
 }
