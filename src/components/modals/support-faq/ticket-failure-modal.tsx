@@ -1,27 +1,26 @@
 "use client"
 
+
 import { X, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-interface FeedbackFailureModalProps {
+
+interface TicketFailureModalProps {
   isOpen: boolean
   onClose: () => void
   onRetry: () => void
   errorMessage?: string
 }
 
-export function FeedbackFailureModal({
+
+export function TicketFailureModal({
   isOpen,
   onClose,
   onRetry,
-  errorMessage = "An unexpected error occurred while submitting your feedback. Please try again.",
-}: FeedbackFailureModalProps) {
+  errorMessage = "An unexpected error occurred while submitting your ticket. Please try again.",
+}: TicketFailureModalProps) {
   if (!isOpen) return null
 
-  const handleCloseFailure = () => {
-    // This is the clean closure action that directs the user back to the ticket list.
-    onClose();
-  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -38,21 +37,26 @@ export function FeedbackFailureModal({
           </div>
         </div>
 
+
         {/* Content */}
         <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Feedback Submission Failed</h2>
-          {/* 🔴 Removed instructional text and block elements */}
-          <p className="text-gray-600 text-sm leading-relaxed">
-            {errorMessage}
-          </p>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">Submission Failed</h2>
+          <p className="text-gray-600 text-sm leading-relaxed">{errorMessage}</p>
         </div>
+
 
         {/* Action Buttons */}
         <div className="space-y-3">
-          {/* 🟢 Keep only the primary Close button */}
           <Button
-            onClick={handleCloseFailure}
+            onClick={onRetry}
             className="w-full bg-red-600 hover:bg-red-700 text-white py-3 text-base font-medium"
+          >
+            Try Again
+          </Button>
+          <Button
+            onClick={onClose}
+            variant="outline"
+            className="w-full border-red-600 text-red-600 hover:bg-red-50 py-3 text-base font-medium bg-transparent"
           >
             Close
           </Button>
@@ -61,3 +65,6 @@ export function FeedbackFailureModal({
     </div>
   )
 }
+
+
+

@@ -16,8 +16,8 @@ export function FeedbackSuccessModal({ isOpen, onClose }: FeedbackSuccessModalPr
 
   const handleBackToTickets = () => {
     onClose() // Close the modal
-    // 🟢 CORRECTED PATH based on your file structure
-    router.push("/incident-management/my-tickets") 
+    // 🟢 HARDCODED: Directs user to the SECURE, logged-in ticket tracking page
+    router.push("/support/faq/my-ticket") 
   }
 
   return (
