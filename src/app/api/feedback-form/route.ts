@@ -1,14 +1,24 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, NextRequest } from 'next/server';
 
-// ⚠️ IMPORTANT: Replace with your actual Supabase credentials!
-// Ensure SUPABASE_SECRET_KEY is stored securely in your environment variables.
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SECRET_KEY!; // Use a service role or a key with sufficient write permissions
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Helper function to initialize Supabase client at request time
+function getSupabaseClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!, // Use consistent naming with your other route
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
+  );
+}
 
 // Handles POST requests to /api/feedback-form
 export async function POST(req: NextRequest) {
+  const supabase = getSupabaseClient(); // Initialize here, at request time
+  
   try {
     const payload = await req.json();
 
