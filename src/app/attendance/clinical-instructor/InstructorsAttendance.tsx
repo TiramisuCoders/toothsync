@@ -28,7 +28,7 @@ export default function InstructorAttendance() {
   const [attendanceRecords, setAttendanceRecords] = useState<Record[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-    // Pagination state
+  // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
@@ -70,33 +70,42 @@ export default function InstructorAttendance() {
     fetchAttendanceData()
   }, [])
 
-  // Filter records based on active filter
   // Apply filters
-const filteredRecords = attendanceRecords.filter((record) => {
-  let matchesDate = true
-  let matchesStatus = true
+  const filteredRecords = attendanceRecords.filter((record) => {
+    let matchesDate = true
+    let matchesStatus = true
 
-  // Date filter
-  if (dateFilter === "today") {
-    const recordDate = new Date(record.date).toDateString()
-    const today = new Date().toDateString()
-    matchesDate = recordDate === today
-  } else if (dateFilter === "custom" && customDate) {
-    matchesDate = record.date === customDate
-  }
+    // Date filter
+    if (dateFilter === "today") {
+      const recordDate = new Date(record.date).toDateString()
+      const today = new Date().toDateString()
+      matchesDate = recordDate === today
+    } else if (dateFilter === "custom" && customDate) {
+      matchesDate = record.date === customDate
+    }
 
-  // Status filter
-  if (activeFilter === "in progress") {
-    matchesStatus = record.status.toLowerCase() === "in progress"
-  } else if (activeFilter === "completed") {
-    matchesStatus = record.status.toLowerCase() === "completed" || record.status.toLowerCase() === "completed"
-  }  else if (activeFilter === "cancelled") {
-    matchesStatus = record.status.toLowerCase() === "cancelled" || record.status.toLowerCase() === "cancelled"
-  }
+    // Status filter
+    if (activeFilter === "in progress") {
+      matchesStatus = record.status.toLowerCase() === "in progress"
+    } else if (activeFilter === "completed") {
+      matchesStatus = record.status.toLowerCase() === "completed" || record.status.toLowerCase() === "completed"
+    }  else if (activeFilter === "cancelled") {
+      matchesStatus = record.status.toLowerCase() === "cancelled" || record.status.toLowerCase() === "cancelled"
+    }
 
+    return matchesDate && matchesStatus
+  })
 
-  return matchesDate && matchesStatus
-})
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const currentRecords = filteredRecords.slice(startIndex, endIndex)
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [dateFilter, customDate, activeFilter, itemsPerPage])
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -135,44 +144,38 @@ const filteredRecords = attendanceRecords.filter((record) => {
     )
   }
 
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-
-const currentRecords = filteredRecords.slice(startIndex, endIndex)
-
- return (
+  return (
     <div className="space-y-6">
-
       <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-800">Attendance</h1>
-                
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">Date:</span>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold text-gray-800">Attendance</h1>
+                  
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Date:</span>
             <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-[140px]"> <SelectValue /> </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Dates</SelectItem>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="custom">Custom Date</SelectItem>
-                </SelectContent>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Dates</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="custom">Custom Date</SelectItem>
+              </SelectContent>
             </Select>
-              {dateFilter === "custom" && (
+            {dateFilter === "custom" && (
               <input
                 type="date"
                 value={customDate}
                 onChange={(e) => setCustomDate(e.target.value)}
                 className="px-3 py-1.5 border border-gray-300 rounded-md text-sm"
               />
-              )}
-       </div>
-    </div></div>
-    
+            )}
+          </div>
+        </div>
+      </div>
+      
       {/* Attendance Table */}
       <Card className="bg-white border border-gray-200 shadow-sm">
-        
         <CardContent className="p-0">
           <Table>
             <TableHeader className="bg-white border-b border-gray-200">
@@ -186,8 +189,8 @@ const currentRecords = filteredRecords.slice(startIndex, endIndex)
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRecords.length > 0 ? (
-                filteredRecords.map((record) => (
+              {currentRecords.length > 0 ? (
+                currentRecords.map((record) => (
                   <TableRow key={record.realid} className="hover:bg-gray-50 border-b border-gray-200">
                     <TableCell className="font-medium text-[#333]">{record.id}</TableCell>
                     <TableCell className="text-[#333]">{record.clinicianName}</TableCell>

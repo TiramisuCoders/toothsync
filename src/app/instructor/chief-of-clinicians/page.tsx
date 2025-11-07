@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Edit, Info } from "lucide-react"
+import { Plus, Edit } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -29,10 +29,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 
-// Type definitions moved inline
 interface Instructor {
   id: string
   firstName: string
@@ -65,12 +63,6 @@ interface FormErrors {
   expertise?: string
 }
 
-interface NotificationState {
-  show: boolean
-  type: "success" | "error"
-  message: string
-}
-
 type FilterType = "all" | "available" | "not-available"
 
 export default function InstructorPage() {
@@ -89,17 +81,13 @@ export default function InstructorPage() {
   })
 
   const [formErrors, setFormErrors] = useState<FormErrors>({})
-  const [notification, setNotification] = useState<NotificationState>({ show: false, type: "success", message: "" })
   const [showArchived, setShowArchived] = useState(false)
   const [showStatusConfirmation, setShowStatusConfirmation] = useState(false)
   const [pendingStatusChange, setPendingStatusChange] = useState<string | null>(null)
   const [originalStatus, setOriginalStatus] = useState<string>("")
   const { toast } = useToast()
-
-  // Sample data for instructors
   const [instructors, setInstructors] = useState<Instructor[]>([])
 
-  // Available dental services/expertise
   const dentalServices = [
     "Endodontics",
     "Extraction",
@@ -146,7 +134,6 @@ export default function InstructorPage() {
     return Object.keys(errors).length === 0
   }
 
-  // Reset form data
   const resetFormData = () => {
     setFormData({
       firstName: "",
@@ -160,7 +147,6 @@ export default function InstructorPage() {
     setFormErrors({})
   }
 
-  // Function to handle edit button click
   const handleEditClick = (instructor: Instructor) => {
     setCurrentInstructor(instructor)
     setOriginalStatus(instructor.status)
@@ -199,7 +185,6 @@ export default function InstructorPage() {
     setPendingStatusChange(null)
   }
 
-  // Function to update instructor
   const handleUpdateInstructor = async () => {
     if (!currentInstructor) return
 
@@ -225,7 +210,7 @@ export default function InstructorPage() {
       })
 
       if (response.ok) {
-        await fetchInstructors() // Refresh the list
+        await fetchInstructors()
         setIsEditModalOpen(false)
         setCurrentInstructor(null)
         resetFormData()
@@ -253,7 +238,6 @@ export default function InstructorPage() {
     }
   }
 
-  // Function to add new instructor
   const handleAddInstructor = async () => {
     if (!validateForm()) {
       toast({
@@ -274,7 +258,7 @@ export default function InstructorPage() {
       })
 
       if (response.ok) {
-        await fetchInstructors() // Refresh the list
+        await fetchInstructors()
         setIsAddModalOpen(false)
         resetFormData()
         setFormErrors({})
@@ -301,12 +285,10 @@ export default function InstructorPage() {
     }
   }
 
-  // Handle form field changes
   const handleInputChange = (field: keyof InstructorFormData, value: string) => {
     setFormData((prev: InstructorFormData) => ({ ...prev, [field]: value }))
   }
 
-  // Handle expertise checkbox changes
   const handleExpertiseChange = (service: string, checked: boolean) => {
     setFormData((prev: InstructorFormData) => ({
       ...prev,
@@ -314,7 +296,6 @@ export default function InstructorPage() {
     }))
   }
 
-  // Function to archive/unarchive instructor
   const handleArchiveInstructor = (instructorId: string) => {
     setInstructors(
       instructors.map((instructor: Instructor) =>
@@ -331,20 +312,16 @@ export default function InstructorPage() {
     }
   }
 
-  // Filter instructors based on active filter
   const filteredInstructors = instructors.filter((instructor) => {
-    // First filter by archived status
     if (showArchived && !instructor.archived) return false
     if (!showArchived && instructor.archived) return false
 
-    // Then filter by availability status
     if (activeFilter === "all") return true
     if (activeFilter === "available") return instructor.status === "Available"
     if (activeFilter === "not-available") return instructor.status === "Not Available"
     return true
   })
 
-  // Handle modal close
   const handleAddModalClose = () => {
     setIsAddModalOpen(false)
     resetFormData()
@@ -360,7 +337,6 @@ export default function InstructorPage() {
     return formErrors[field] ? <p className="text-sm text-red-600 mt-1">{formErrors[field]}</p> : null
   }
 
-  // API integration functions
   const fetchInstructors = async () => {
     try {
       const response = await fetch("/api/instructors")
@@ -386,19 +362,17 @@ export default function InstructorPage() {
 
   useEffect(() => {
     fetchInstructors()
+    
+    // Show info toast when page loads
+    toast({
+      title: "Assignment Information",
+      description: "Only Available instructors can be automatically assigned to students who confirmed attendance and are assigned to chairs.",
+      duration: 5000,
+    })
   }, [])
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-6">
-      {/* Information Alert */}
-      <Alert className="mb-6 bg-[#5C8E77]/10 border-[#5C8E77]/20">
-        <Info className="h-4 w-4 text-[#5C8E77]" />
-        <AlertDescription className="text-[#333]">
-          Only <span className="font-semibold">Available</span> instructors can be automatically assigned to students
-          who confirmed attendance and are assigned to chairs.
-        </AlertDescription>
-      </Alert>
-
       {/* Instructors Table */}
       <Card className="bg-white border border-gray-200 shadow-sm mb-6">
         <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
@@ -662,8 +636,7 @@ export default function InstructorPage() {
                     Service Expertise <span className="text-red-500">*</span>
                   </Label>
                   <p className="text-sm text-gray-500">
-                    Select the dental services this instructor is qualified to supervise. The system will only assign
-                    instructors to students if both the instructor is available and the case matches their expertise.
+                    Select the dental services this instructor is qualified to supervise.
                   </p>
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     {dentalServices.map((service) => (
@@ -811,9 +784,7 @@ export default function InstructorPage() {
                         Service Expertise <span className="text-red-500">*</span>
                       </Label>
                       <p className="text-sm text-gray-500">
-                        Select the dental services this instructor is qualified to supervise. The system will only
-                        assign instructors to students if both the instructor is available and the case matches their
-                        expertise.
+                        Select the dental services this instructor is qualified to supervise.
                       </p>
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         {dentalServices.map((service) => (

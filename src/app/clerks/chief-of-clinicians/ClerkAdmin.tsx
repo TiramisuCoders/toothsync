@@ -10,11 +10,11 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useToast } from "@/hooks/use-toast"
 
 interface Clerk {
   id: string
-  clerk_id: string  // Added this for API operations
+  clerk_id: string
   firstName: string
   lastName: string
   email: string
@@ -35,11 +35,9 @@ interface FormErrors {
 
 export default function ClerksPage() {
   const [clerks, setClerks] = useState<Clerk[]>([])
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
-  const [debugInfo, setDebugInfo] = useState<string>("")
+  const { toast } = useToast()
 
-  // Available users for promotion to clerk
   const [availableUsers, setAvailableUsers] = useState<any[]>([])
   const [selectedUser, setSelectedUser] = useState<any>(null)
 
@@ -72,8 +70,6 @@ export default function ClerksPage() {
 
   const fetchAvailableUsers = async () => {
     try {
-      console.log("👥 Fetching available users...")
-
       const response = await fetch("/api/clerks/available-users", {
         method: "GET",
         credentials: "include",
@@ -86,20 +82,15 @@ export default function ClerksPage() {
 
       const result = await response.json()
       setAvailableUsers(result.data || [])
-      console.log("✅ Fetched available users:", result.data?.length || 0)
       
     } catch (err) {
-      console.error("❌ Failed to fetch available users:", err)
-      // Don't set main error for this, it's not critical
+      console.error("Failed to fetch available users:", err)
     }
   }
 
   const fetchClerks = async () => {
     try {
       setLoading(true)
-      setError(null)
-      setDebugInfo("")
-      console.log("🔄 Fetching clerks from admin side...")
 
       const response = await fetch("/api/clerks", {
         method: "GET",
@@ -108,12 +99,7 @@ export default function ClerksPage() {
         headers: { "Content-Type": "application/json" },
       })
 
-      console.log("- Response status:", response.status)
-      console.log("- Response ok:", response.ok)
-
-      // Get response text first to handle both JSON and text responses
       const responseText = await response.text()
-      console.log("- Response body (raw):", responseText)
 
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}`
@@ -128,33 +114,26 @@ export default function ClerksPage() {
           errorMessage += `: ${responseText}`
         }
         
-        setDebugInfo(`Status: ${response.status}, Response: ${responseText}`)
         throw new Error(errorMessage)
       }
 
-      // Parse the response
       let raw
       try {
         raw = JSON.parse(responseText)
       } catch (parseError) {
-        console.error("Failed to parse JSON response:", parseError)
         throw new Error("Invalid JSON response from server")
       }
 
-      console.log("- Parsed response:", raw)
-
-      // Support both shapes: direct array or { data: Clerk[] }
       const payload = Array.isArray(raw) ? raw : raw?.data || []
 
       if (!Array.isArray(payload)) {
         throw new Error("Expected array of clerks from API")
       }
 
-      // Normalize data - ensure clerk_id is properly mapped
       const normalized: Clerk[] = (payload as any[]).map((c, i) => {
         return {
           id: String(c?.id ?? `CLK${String(i + 1).padStart(3, '0')}`),
-          clerk_id: String(c?.clerk_id ?? c?.user_id ?? ''), // Map user_id to clerk_id
+          clerk_id: String(c?.clerk_id ?? c?.user_id ?? ''),
           firstName: c?.firstName ?? c?.first_name ?? '',
           lastName: c?.lastName ?? c?.last_name ?? '',
           email: c?.email ?? '',
@@ -165,46 +144,27 @@ export default function ClerksPage() {
         }
       })
 
-      console.log("✅ Normalized clerks data:", normalized)
-      console.log("📝 Sample clerk object:", normalized[0])
-      console.log("📊 Archived clerks count:", normalized.filter(c => c.archived).length)
-      console.log("📊 Active clerks count:", normalized.filter(c => !c.archived).length)
       setClerks(normalized)
-      setDebugInfo(`Successfully loaded ${normalized.length} clerks`)
+      
+      toast({
+        title: "Success",
+        description: `Successfully loaded ${normalized.length} clerks`,
+      })
       
     } catch (err) {
-      console.error("❌ Clerk fetch error:", err)
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch clerks"
-      setError(errorMessage)
       
-      // Add debug info for different error types
-      if (err instanceof TypeError && err.message.includes('fetch')) {
-        setDebugInfo("Network error - check if the server is running")
-      } else if (err instanceof Error && err.message.includes('401')) {
-        setDebugInfo("Authentication error - user may not be logged in")
-      } else if (err instanceof Error && err.message.includes('403')) {
-        setDebugInfo("Permission error - user may not have required role")
-      }
+      toast({
+        variant: "destructive",
+        title: "Error Loading Clerks",
+        description: errorMessage,
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  // Test authentication helper function
-  const testAuth = async () => {
-    try {
-      const response = await fetch('/api/auth/user', { credentials: 'include' })
-      const data = await response.json()
-      console.log('Auth test result:', data)
-      setDebugInfo(`Auth test: ${response.status} - ${JSON.stringify(data)}`)
-    } catch (error) {
-      console.error('Auth test failed:', error)
-      setDebugInfo(`Auth test failed: ${error}`)
-    }
-  }
-
-  // Validation function
-const validateForm = (_isEdit: boolean = false): boolean => {
+  const validateForm = (_isEdit: boolean = false): boolean => {
     const errors: FormErrors = {}
     
     if (!formData.firstName.trim()) {
@@ -237,22 +197,16 @@ const validateForm = (_isEdit: boolean = false): boolean => {
     return Object.keys(errors).length === 0
   }
 
-  // Filter clerks based on search term, archived status, and duty status
   const filteredClerks = clerks.filter((clerk) => {
-    // Filter by archived status - show archived when showArchived is true
     if (showArchived) {
-      // When showing archived, only show archived clerks
       if (!clerk.archived) return false
     } else {
-      // When not showing archived, only show non-archived clerks
       if (clerk.archived) return false
     }
     
-    // Then filter by duty status
     if (activeFilter === "on-duty" && clerk.status !== "On Duty") return false
     if (activeFilter === "not-on-duty" && clerk.status !== "Not On Duty") return false
     
-    // Finally filter by search term
     return (
       clerk.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       clerk.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -261,29 +215,27 @@ const validateForm = (_isEdit: boolean = false): boolean => {
     )
   })
 
-  // Debug logging for filtered results
-  console.log("🔍 Filter Debug:", {
-    showArchived,
-    activeFilter,
-    totalClerks: clerks.length,
-    filteredClerks: filteredClerks.length,
-    archivedInData: clerks.filter(c => c.archived).length
-  })
-
   const handleAddClerk = async () => {
     if (!selectedUser) {
-      setError("Please select a user to promote to clerk")
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please select a user to promote to clerk",
+      })
       return
     }
 
     if (!clerkFormData.academic_year) {
-      setError("Please fill in academic year")
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please fill in academic year",
+      })
       return
     }
 
     try {
       setLoading(true)
-      setError(null)
 
       const response = await fetch("/api/clerks", {
         method: "POST",
@@ -302,22 +254,27 @@ const validateForm = (_isEdit: boolean = false): boolean => {
         throw new Error(result.error || result.details || "Failed to add clerk")
       }
 
-      // Refresh both lists
       await fetchClerks()
       await fetchAvailableUsers()
       
-      // Reset form and close modal
       setSelectedUser(null)
       setClerkFormData({
         academic_year: "",
         status: "Not On Duty",
       })
       setIsAddModalOpen(false)
-      setDebugInfo(`Successfully promoted ${selectedUser.first_name} ${selectedUser.last_name} to clerk`)
+      
+      toast({
+        title: "Success",
+        description: `Successfully promoted ${selectedUser.first_name} ${selectedUser.last_name} to clerk`,
+      })
       
     } catch (err) {
-      console.error("Error adding clerk:", err)
-      setError(err instanceof Error ? err.message : "Failed to add clerk")
+      toast({
+        variant: "destructive",
+        title: "Error Adding Clerk",
+        description: err instanceof Error ? err.message : "Failed to add clerk",
+      })
     } finally {
       setLoading(false)
     }
@@ -327,7 +284,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
     if (selectedClerk && validateForm(true)) {
       try {
         setLoading(true)
-        setError(null)
 
         if (!selectedClerk.clerk_id) {
           throw new Error("Clerk ID is missing. Cannot update clerk.")
@@ -354,10 +310,8 @@ const validateForm = (_isEdit: boolean = false): boolean => {
           throw new Error(result.error || result.details || "Failed to update clerk")
         }
 
-        // Refresh the clerks list
         await fetchClerks()
         
-        // Reset form and close modal
         setIsEditModalOpen(false)
         setSelectedClerk(null)
         setFormData({
@@ -369,11 +323,18 @@ const validateForm = (_isEdit: boolean = false): boolean => {
           status: "Not On Duty",
         })
         setFormErrors({})
-        setDebugInfo("Clerk updated successfully")
+        
+        toast({
+          title: "Success",
+          description: "Clerk updated successfully",
+        })
         
       } catch (err) {
-        console.error("Error updating clerk:", err)
-        setError(err instanceof Error ? err.message : "Failed to update clerk")
+        toast({
+          variant: "destructive",
+          title: "Error Updating Clerk",
+          description: err instanceof Error ? err.message : "Failed to update clerk",
+        })
       } finally {
         setLoading(false)
       }
@@ -394,11 +355,9 @@ const validateForm = (_isEdit: boolean = false): boolean => {
     setIsEditModalOpen(true)
   }
 
-  // Function to archive/unarchive clerk
   const handleArchiveClerk = async (clerk: Clerk) => {
     try {
       setLoading(true)
-      setError(null)
       
       if (!clerk.clerk_id) {
         throw new Error("Clerk ID is missing. Cannot archive/unarchive clerk.")
@@ -422,13 +381,19 @@ const validateForm = (_isEdit: boolean = false): boolean => {
         throw new Error(result.error || result.details || `Failed to ${action} clerk`)
       }
 
-      // Refresh the clerks list
       await fetchClerks()
-      setDebugInfo(`Clerk ${action}d successfully`)
+      
+      toast({
+        title: "Success",
+        description: `Clerk ${action}d successfully`,
+      })
       
     } catch (err) {
-      console.error(`Error ${clerk.archived ? 'unarchiving' : 'archiving'} clerk:`, err)
-      setError(err instanceof Error ? err.message : `Failed to ${clerk.archived ? 'unarchive' : 'archive'} clerk`)
+      toast({
+        variant: "destructive",
+        title: `Error ${clerk.archived ? 'Unarchiving' : 'Archiving'} Clerk`,
+        description: err instanceof Error ? err.message : `Failed to ${clerk.archived ? 'unarchive' : 'archive'} clerk`,
+      })
     } finally {
       setLoading(false)
     }
@@ -467,7 +432,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Clerks Management</h1>
@@ -475,48 +439,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
         </div>
       </div>
 
-      {/* Error Alert with Debug Info */}
-      {error && (
-        <Alert className="bg-red-50 border-red-200">
-          <AlertDescription className="text-red-800">
-            <div className="mb-2">
-              <strong>Error:</strong> {error}
-            </div>
-            {debugInfo && (
-              <div className="text-sm text-red-600 mb-2">
-                <strong>Debug Info:</strong> {debugInfo}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Button
-                variant="link"
-                className="p-0 h-auto text-red-600"
-                onClick={fetchClerks}
-              >
-                Try again
-              </Button>
-              <Button
-                variant="link"
-                className="p-0 h-auto text-red-600"
-                onClick={testAuth}
-              >
-                Test Auth
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Success Debug Info */}
-      {!error && debugInfo && (
-        <Alert className="bg-green-50 border-green-200">
-          <AlertDescription className="text-green-800">
-            {debugInfo}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Search */}
       <div className="flex justify-start">
         <div className="relative w-80">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -530,7 +452,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
         </div>
       </div>
 
-      {/* Clerks Table */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-start">
@@ -574,7 +495,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
               </div>
             </div>
             <div className="flex flex-col items-end">
-              {/* Add Clerk Button - Disabled for now since we only have GET endpoint */}
               <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
                 <DialogTrigger asChild>
                   <Button 
@@ -591,7 +511,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                     <DialogTitle>Promote User to Clerk</DialogTitle>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
-                    {/* User Selection */}
                     <div className="space-y-2">
                       <Label>Select User (R01 - Clinicians)</Label>
                       <Select 
@@ -621,12 +540,11 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                       </Select>
                       {availableUsers.length === 0 && (
                         <p className="text-sm text-gray-500">
-                          No R01 (Clinician) users available for promotion. All clinicians are already assigned as clerks.
+                          No R01 (Clinician) users available for promotion.
                         </p>
                       )}
                     </div>
 
-                    {/* Selected User Display */}
                     {selectedUser && (
                       <div className="bg-gray-50 p-3 rounded-lg">
                         <h4 className="font-medium text-sm text-gray-700 mb-2">Selected Clinician:</h4>
@@ -639,13 +557,9 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                             <div><strong>Contact:</strong> {selectedUser.contact_number}</div>
                           )}
                         </div>
-                        <div className="mt-2 text-xs text-blue-600">
-                          Note: This clinician's role will be changed to R02 (Clerk) when promoted. They can be demoted back to R01 later if needed.
-                        </div>
                       </div>
                     )}
 
-                    {/* Clerk Details */}
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="academicYear">Academic Year</Label>
@@ -680,9 +594,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                             <SelectItem value="Not On Duty">Not On Duty</SelectItem>
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="text-xs text-gray-500 bg-blue-50 p-2 rounded">
-                        <strong>Note:</strong> Section assignment is not required. The system will automatically handle section management.
                       </div>
                     </div>
                   </div>
@@ -808,14 +719,12 @@ const validateForm = (_isEdit: boolean = false): boolean => {
         </CardContent>
       </Card>
 
-      {/* Edit Modal - Keeping for future functionality */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Clerk Information</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            {/* Display current user info (read-only) */}
             <div className="bg-gray-50 p-3 rounded-lg">
               <h4 className="font-medium text-sm text-gray-700 mb-2">User Information (Read Only):</h4>
               <div className="grid gap-2 text-sm">
@@ -823,12 +732,8 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                 <div><strong>Email:</strong> {selectedClerk?.email}</div>
                 <div><strong>Current Section:</strong> {selectedClerk?.section}</div>
               </div>
-              <div className="mt-2 text-xs text-blue-600">
-                Note: Personal info and section updates require database schema changes.
-              </div>
             </div>
 
-            {/* Editable fields */}
             <div className="grid gap-4">
               <div className="space-y-2">
                 <Label htmlFor="editYear">Academic Year</Label>
@@ -837,10 +742,10 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                     <SelectValue placeholder="Select year" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="AY2024-1">AY2024-1 (2024-2025, 1st Semester)</SelectItem>
-                    <SelectItem value="AY2024-2">AY2024-2 (2024-2025, 2nd Semester)</SelectItem>
-                    <SelectItem value="AY2025-1">AY2025-1 (2025-2026, 1st Semester)</SelectItem>
-                    <SelectItem value="AY2025-2">AY2025-2 (2025-2026, 2nd Semester)</SelectItem>
+                    <SelectItem value="AY2024-1">AY2024-1</SelectItem>
+                    <SelectItem value="AY2024-2">AY2024-2</SelectItem>
+                    <SelectItem value="AY2025-1">AY2025-1</SelectItem>
+                    <SelectItem value="AY2025-2">AY2025-2</SelectItem>
                   </SelectContent>
                 </Select>
                 {formErrors.year && (
