@@ -19,22 +19,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { uploadCliniciansCsv } from "@/lib/csv-upload" // Assuming you have this helper from previous steps
+import { uploadCliniciansCsv } from "@/lib/csv-upload"
 
 import { createBrowserClient } from "@supabase/ssr"
 
 // Type definitions
 interface Clinician {
-  id: string // This will be user_id from DB (internal)
-  studentId: string // New: student_id from DB (for display)
-  firstName: string // from public.users
-  lastName: string // from public.users
-  gender: string // from public.users (sex)
-  status: string // from public.clinicians (enrollment_status)
-  email: string // from public.users
-  contactNumber: string // from public.users
-  yearLevel: string // from public.clinicians
-  section: string // from public.clinicians
+  id: string
+  studentId: string
+  firstName: string
+  lastName: string
+  gender: string
+  status: string
+  email: string
+  contactNumber: string
+  yearLevel: string
+}
+
+interface AcademicYear {
+  id: string
+  academicYear: string
+  semester: string
+  status: string
+  createdAt: string
 }
 
 interface AttendanceRecord {
@@ -44,20 +51,6 @@ interface AttendanceRecord {
   timeOut: string
   sanitized: string
   status: string
-}
-
-interface HistoryItem {
-  timestamp: string
-  user: string
-  action: string
-  description: string
-  details: {
-    date: string
-    procedure: string
-    patient: string
-    grade: string
-    remarks: string
-  }
 }
 
 interface Activity {
@@ -72,20 +65,18 @@ interface Activity {
   status: string
   firstName: string
   lastName: string
-  history: HistoryItem[]
-  assessmentStatus?: string
 }
 
 interface NewClinician {
-  studentId: string // New: studentId for manual add
+  studentId: string
   firstName: string
   lastName: string
   gender: string
   email: string
   contactNumber: string
   yearLevel: string
-  section: string
   status: string
+  academicYearId?: string
 }
 
 export default function CliniciansPage() {
@@ -96,29 +87,33 @@ export default function CliniciansPage() {
   const [currentClinician, setCurrentClinician] = useState<Clinician | null>(null)
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [selectedClinician, setSelectedClinician] = useState<Clinician | null>(null)
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
-  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null)
-  const [activeTab, setActiveTab] = useState<"activities" | "attendance">("activities")
-  const [isActivityEditModalOpen, setIsActivityEditModalOpen] = useState(false)
-  const [currentActivity, setCurrentActivity] = useState<Activity | null>(null)
+  // const [activeTab, setActiveTab] = useState<"activities" | "attendance">("activities")
+
+  
+// Add these new state variables at the top of your component
+const [clinicianActivities, setClinicianActivities] = useState<any>(null);
+const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+const [activitiesError, setActivitiesError] = useState<string>("");
+const [selectedAcademicYearTab, setSelectedAcademicYearTab] = useState<string>("");
 
   const [addSuccessMessage, setAddSuccessMessage] = useState<string>("")
-  const [addErrorMessage, setAddErrorMessage] = useState<string>("") // New state for add errors
+  const [addErrorMessage, setAddErrorMessage] = useState<string>("")
   const [uploadSuccessMessage, setUploadSuccessMessage] = useState<string>("")
   const [isProcessingUpload, setIsProcessingUpload] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([])
+  const [isLoadingAcademicYears, setIsLoadingAcademicYears] = useState(false)
+
   const [formData, setFormData] = useState<Partial<NewClinician>>({
-    yearLevel: "5th Year",
-    section: "A",
+    yearLevel: "",
   })
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Sample data for clinicians (reduced to one entry)
   const [clinicians, setClinicians] = useState<Clinician[]>([])
 
   const supabase = createBrowserClient(
@@ -139,16 +134,16 @@ export default function CliniciansPage() {
     getCurrentUser()
   }, [])
 
-  // Add this useEffect hook and fetchClinicians function
   useEffect(() => {
     fetchClinicians()
+    fetchAcademicYears()
   }, [])
+  
 
   const fetchClinicians = async () => {
     try {
       const response = await fetch("/api/clinicians")
       if (!response.ok) {
-        // Log the full response for debugging
         const errorData = await response.json()
         console.error("Failed to fetch clinicians:", response.status, errorData)
         throw new Error(`HTTP error! status: ${response.status} - ${errorData.message || "Unknown error"}`)
@@ -157,66 +152,83 @@ export default function CliniciansPage() {
       setClinicians(data)
     } catch (error) {
       console.error("Failed to fetch clinicians:", error)
-      // Optionally set an error message to display in the UI
     }
   }
 
-  // Sample attendance data (reduced to one entry)
-  const [attendanceData] = useState<AttendanceRecord[]>([
-    {
-      id: 1,
-      date: "2025-05-08",
-      timeIn: "08:15 AM",
-      timeOut: "04:30 PM",
-      sanitized: "Yes",
-      status: "Present",
-    },
-  ])
+  const fetchAcademicYears = async () => {
+    setIsLoadingAcademicYears(true)
+    try {
+      const response = await fetch("/api/academic-years?limit=100")
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const result = await response.json()
+      setAcademicYears(result.data || [])
+    } catch (error) {
+      console.error("Failed to fetch academic years:", error)
+    } finally {
+      setIsLoadingAcademicYears(false)
+    }
+  }
 
-  // Sample activities data (reduced to one entry)
-  const [activitiesData, setActivitiesData] = useState<Activity[]>([
-    {
-      id: "A001",
-      date: "2025-05-08",
-      procedure: "Root Canal Treatment",
-      chair: "Chair 05",
-      instructor: "Dr. Reyes",
-      patient: "Juan Dela Cruz",
-      grade: "85",
-      remarks: "Good work on canal preparation",
-      status: "Completed",
-      firstName: "Maria",
-      lastName: "Santos",
-      history: [
-        {
-          timestamp: "2025-05-08T15:30:00",
-          user: "dr.reyes@example.com",
-          action: "Updated",
-          description: "Grade changed from 80 to 85",
-          details: {
-            date: "2025-05-08",
-            procedure: "Root Canal Treatment",
-            patient: "Juan Dela Cruz",
-            grade: "85",
-            remarks: "Good work on canal preparation",
-          },
-        },
-        {
-          timestamp: "2025-05-08T14:20:00",
-          user: "dr.reyes@example.com",
-          action: "Created",
-          description: "Initial activity record created",
-          details: {
-            date: "2025-05-08",
-            procedure: "Root Canal Treatment",
-            patient: "Juan Dela Cruz",
-            grade: "80",
-            remarks: "Needs improvement on final cleaning",
-          },
-        },
-      ],
-    },
-  ])
+  const fetchClinicianActivities = async (clinicianId: string) => {
+  setIsLoadingActivities(true);
+  setActivitiesError("");
+  try {
+    const response = await fetch('/api/clinicians/activity_overview', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ clinician_id: clinicianId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (result.success && result.data) {
+      setClinicianActivities(result.data);
+    } else {
+      setClinicianActivities(null);
+      setActivitiesError(result.message || 'No activities found for this clinician');
+    }
+  } catch (error) {
+    console.error('Failed to fetch clinician activities:', error);
+    setActivitiesError('Failed to load activities. Please try again.');
+    setClinicianActivities(null);
+  } finally {
+    setIsLoadingActivities(false);
+  }
+};
+
+  // const [attendanceData] = useState<AttendanceRecord[]>([
+  //   {
+  //     id: 1,
+  //     date: "2025-05-08",
+  //     timeIn: "08:15 AM",
+  //     timeOut: "04:30 PM",
+  //     sanitized: "Yes",
+  //     status: "Present",
+  //   },
+  // ])
+
+  // const [activitiesData] = useState<Activity[]>([
+  //   {
+  //     id: "A001",
+  //     date: "2025-05-08",
+  //     procedure: "Root Canal Treatment",
+  //     chair: "Chair 05",
+  //     instructor: "Dr. Reyes",
+  //     patient: "Juan Dela Cruz",
+  //     grade: "85",
+  //     remarks: "Good work on canal preparation",
+  //     status: "Completed",
+  //     firstName: "Maria",
+  //     lastName: "Santos",
+  //   },
+  // ])
 
   const handleEditClick = (clinician: Clinician) => {
     setCurrentClinician(clinician)
@@ -224,50 +236,14 @@ export default function CliniciansPage() {
   }
 
   const handleViewClick = (clinician: Clinician) => {
-    setSelectedClinician(clinician)
-    setIsViewModalOpen(true)
-  }
-
-  const handleHistoryClick = (activity: Activity) => {
-    setSelectedActivity(activity)
-    setIsHistoryModalOpen(true)
-  }
-
-  const handleActivityEditClick = (activity: Activity) => {
-    setCurrentActivity(activity)
-    setIsActivityEditModalOpen(true)
-  }
-
+    setSelectedClinician(clinician);
+    setIsViewModalOpen(true);
+    // Fetch activities when modal opens
+    fetchClinicianActivities(clinician.id);
+  };
   const handleUpdateClinician = (updatedClinician: Clinician) => {
     setClinicians(clinicians.map((clinician) => (clinician.id === updatedClinician.id ? updatedClinician : clinician)))
     setIsEditModalOpen(false)
-  }
-
-  const handleUpdateActivity = (updatedActivity: Activity) => {
-    const newHistory: HistoryItem = {
-      timestamp: new Date().toISOString(),
-      user: "admin@example.com",
-      action: "Updated",
-      description: "Activity details updated",
-      details: {
-        date: updatedActivity.date,
-        procedure: updatedActivity.procedure,
-        patient: updatedActivity.patient,
-        grade: updatedActivity.grade || "",
-        remarks: updatedActivity.remarks || "",
-      },
-    }
-    setActivitiesData(
-      activitiesData.map((activity) =>
-        activity.id === updatedActivity.id
-          ? {
-              ...updatedActivity,
-              history: [newHistory, ...activity.history],
-            }
-          : activity,
-      ),
-    )
-    setIsActivityEditModalOpen(false)
   }
 
   const updateFormData = (field: keyof NewClinician, value: string) => {
@@ -280,29 +256,30 @@ export default function CliniciansPage() {
   const resetForm = () => {
     setFormData({
       yearLevel: "",
-      section: "",
-      studentId: "", // Reset studentId
+      studentId: "",
       firstName: "",
       lastName: "",
       gender: "",
       email: "",
       contactNumber: "",
       status: "",
+      academicYearId: "",
     })
     setFormErrors({})
-    setAddSuccessMessage("") // Clear messages on reset
-    setAddErrorMessage("") // Clear messages on reset
+    setAddSuccessMessage("")
+    setAddErrorMessage("")
   }
 
   const validateForm = (): Record<string, string> => {
     const errors: Record<string, string> = {}
-    if (!formData.studentId?.trim()) errors.studentId = "Student ID is required" // New validation
+    if (!formData.studentId?.trim()) errors.studentId = "Student ID is required"
     if (!formData.firstName?.trim()) errors.firstName = "First name is required"
     if (!formData.lastName?.trim()) errors.lastName = "Last name is required"
     if (!formData.gender) errors.gender = "Gender is required for medical records"
     if (!formData.contactNumber?.trim()) errors.contactNumber = "Contact number is required for emergencies"
     if (!formData.email?.trim()) errors.email = "Email is required for communication"
-    if (!formData.status) errors.status = "Enrollment status is required"
+    if (isSelectedAcademicYearActive && !formData.status) errors.status = "Enrollment status is required"
+    if (!formData.academicYearId) errors.academicYearId = "Academic year is required"
     return errors
   }
 
@@ -310,8 +287,8 @@ export default function CliniciansPage() {
     event.preventDefault()
     setIsSubmitting(true)
     setFormErrors({})
-    setAddSuccessMessage("") // Clear previous messages
-    setAddErrorMessage("") // Clear previous messages
+    setAddSuccessMessage("")
+    setAddErrorMessage("")
 
     const errors = validateForm()
     if (Object.keys(errors).length > 0) {
@@ -321,15 +298,19 @@ export default function CliniciansPage() {
     }
 
     const newClinicianData: NewClinician = {
-      studentId: formData.studentId?.trim() || "", // Include studentId
+      studentId: formData.studentId?.trim() || "",
       firstName: formData.firstName?.trim() || "",
       lastName: formData.lastName?.trim() || "",
       gender: formData.gender || "",
-      status: formData.status === "enrolled" ? "Enrolled" : "Not Enrolled",
+      status: isSelectedAcademicYearActive
+        ? formData.status === "enrolled"
+          ? "Enrolled"
+          : "Not Enrolled"
+        : "Not Enrolled",
       email: formData.email?.trim() || "",
       contactNumber: formData.contactNumber?.trim() || "",
-      yearLevel: formData.yearLevel || "5th Year",
-      section: formData.section || "A",
+      yearLevel: formData.yearLevel || "",
+      academicYearId: formData.academicYearId,
     }
 
     try {
@@ -349,26 +330,23 @@ export default function CliniciansPage() {
             `Successfully added ${newClinicianData.firstName} ${newClinicianData.lastName} to the system!`,
         )
         resetForm()
-        fetchClinicians() // Refresh the list
+        fetchClinicians()
         setTimeout(() => {
           setAddSuccessMessage("")
           setIsAddModalOpen(false)
         }, 3000)
       } else {
-        setAddErrorMessage(result.message || "Failed to add clinician. Please try again.") // Set error message
-        setAddSuccessMessage("") // Ensure success message is cleared
+        setAddErrorMessage(result.message || "Failed to add clinician. Please try again.")
+        setAddSuccessMessage("")
       }
     } catch (error) {
       console.error("Error adding clinician:", error)
-      setAddErrorMessage("An unexpected error occurred. Please try again.") // Set error message for network issues
-      setAddSuccessMessage("") // Ensure success message is cleared
+      setAddErrorMessage("An unexpected error occurred. Please try again.")
+      setAddSuccessMessage("")
     } finally {
       setIsSubmitting(false)
     }
   }
-
-  // Remove the old handleAddClinician function as it's replaced by the logic in handleAddClinicianSubmit
-  // const handleAddClinician = (newClinician: NewClinician) => { ... }
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -386,7 +364,7 @@ export default function CliniciansPage() {
 
   const processCSVFile = async () => {
     if (!selectedFile) {
-      setUploadErrorMessage("Please select a valid .csv file")
+      setUploadErrorMessage("Please select a CSV file to upload.")
       return
     }
 
@@ -395,16 +373,25 @@ export default function CliniciansPage() {
       return
     }
 
+    if (!formData.academicYearId) {
+      setUploadErrorMessage("Please select an academic year before uploading the CSV file.")
+      return
+    }
+
     setIsProcessingUpload(true)
     setUploadSuccessMessage("")
     setUploadErrorMessage("")
     try {
-      console.log("[v0] Frontend CSV upload - currentUserId:", currentUserId, "role:", "chief-of-clinicians")
-      const result = await uploadCliniciansCsv(selectedFile, currentUserId, "chief-of-clinicians")
+      const result = await uploadCliniciansCsv(
+        selectedFile,
+        currentUserId,
+        "chief-of-clinicians",
+        formData.academicYearId,
+      )
       if (result.status === "success") {
         setUploadSuccessMessage(result.message)
         setSelectedFile(null)
-        fetchClinicians() // Refresh the list after CSV upload
+        fetchClinicians()
         setTimeout(() => {
           setUploadSuccessMessage("")
           setIsUploadModalOpen(false)
@@ -422,70 +409,20 @@ export default function CliniciansPage() {
     }
   }
 
-  const exportActivitiesToCSV = () => {
-    if (!selectedClinician) return
-    const headers = ["ID", "Date", "Procedure", "Patient", "Chair", "Instructor", "Grade", "Status", "Remarks"].join(
-      ",",
-    )
-    const rows = activitiesData.map(
-      (activity) =>
-        `"${activity.id}","${activity.date}","${activity.procedure}","${activity.patient}","${activity.chair}","${activity.instructor}","${activity.grade}","${activity.status}","${activity.remarks}"`,
-    )
-    const csv = [headers, ...rows].join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.setAttribute("href", url)
-    link.setAttribute(
-      "download",
-      `${selectedClinician.firstName}_${selectedClinician.lastName}_Activities_${new Date()
-        .toISOString()
-        .slice(0, 10)}.csv`,
-    )
-    link.style.visibility = "hidden"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
-
-  const exportAttendanceToCSV = () => {
-    if (!selectedClinician) return
-    const headers = ["Date", "Time In", "Time Out", "Sanitized", "Status"].join(",")
-    const rows = attendanceData.map(
-      (attendance) =>
-        `"${attendance.date}","${attendance.timeIn}","${attendance.timeOut}","${attendance.sanitized}","${attendance.status}"`,
-    )
-    const csv = [headers, ...rows].join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.setAttribute("href", url)
-    link.setAttribute(
-      "download",
-      `${selectedClinician.firstName}_${selectedClinician.lastName}_Attendance_${new Date()
-        .toISOString()
-        .slice(0, 10)}.csv`,
-    )
-    link.style.visibility = "hidden"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
-
-  const exportToCSV = () => {
-    if (activeTab === "activities") {
-      exportActivitiesToCSV()
-    } else {
-      exportAttendanceToCSV()
-    }
-  }
-
   const filteredClinicians = clinicians.filter((clinician) => {
     if (activeFilter === "all") return true
     if (activeFilter === "enrolled") return clinician.status === "Enrolled"
     if (activeFilter === "not-enrolled") return clinician.status === "Not Enrolled"
     return true
   })
+
+  const getSelectedAcademicYearStatus = () => {
+    if (!formData.academicYearId) return null
+    const selectedYear = academicYears.find((year) => year.id === formData.academicYearId)
+    return selectedYear?.status || null
+  }
+
+  const isSelectedAcademicYearActive = getSelectedAcademicYearStatus() === "Active"
 
   return (
     <>
@@ -563,7 +500,6 @@ export default function CliniciansPage() {
                 <TableHead className="font-medium text-[#333]">First Name</TableHead>
                 <TableHead className="font-medium text-[#333]">Last Name</TableHead>
                 <TableHead className="font-medium text-[#333]">Year</TableHead>
-                <TableHead className="font-medium text-[#333]">Section</TableHead>
                 <TableHead className="font-medium text-[#333]">Gender</TableHead>
                 <TableHead className="font-medium text-[#333]">Status</TableHead>
                 <TableHead className="font-medium text-[#333]">Action</TableHead>
@@ -577,7 +513,6 @@ export default function CliniciansPage() {
                     <TableCell className="text-[#333]">{clinician.firstName}</TableCell>
                     <TableCell className="text-[#333]">{clinician.lastName}</TableCell>
                     <TableCell className="text-[#333]">{clinician.yearLevel}</TableCell>
-                    <TableCell className="text-[#333]">{clinician.section}</TableCell>
                     <TableCell className="text-[#333]">{clinician.gender}</TableCell>
                     <TableCell>
                       {clinician.status === "Enrolled" ? (
@@ -612,7 +547,7 @@ export default function CliniciansPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-gray-500">
+                  <TableCell colSpan={7} className="text-center py-12 text-gray-500">
                     No clinicians found.
                   </TableCell>
                 </TableRow>
@@ -621,107 +556,672 @@ export default function CliniciansPage() {
           </Table>
         </CardContent>
       </Card>
-      {/* Add Clinician Modal */}
-      <Dialog
-        open={isAddModalOpen}
-        onOpenChange={(open) => {
-          setIsAddModalOpen(open)
-          if (!open) resetForm()
-        }}
-      >
-        <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
-          <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Add New Clinician</DialogTitle>
-            <DialogDescription className="text-gray-500">
-              Enter the clinician details to add them to the system.
-            </DialogDescription>
-          </DialogHeader>
-          {addSuccessMessage && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-6 mt-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
+
+      <>
+        {/* Edit Clinician Modal */}
+        <Dialog
+          open={isEditModalOpen}
+          onOpenChange={(open) => {
+            setIsEditModalOpen(open)
+            if (!open) {
+              setTimeout(() => setCurrentClinician(null), 100)
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
+            {currentClinician && (
+              <>
+                <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
+                  <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Edit Clinician</DialogTitle>
+                  <DialogDescription className="text-gray-500">
+                    Update clinician information for {currentClinician.firstName} {currentClinician.lastName}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
+                  <Tabs defaultValue="personal" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 mb-4">
+                      <TabsTrigger value="personal">Personal Information</TabsTrigger>
+                      <TabsTrigger value="academic">Academic Information</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="personal" className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-studentId" className="text-[#333]">
+                          Student ID
+                        </Label>
+                        <Input
+                          id="edit-studentId"
+                          defaultValue={currentClinician.studentId}
+                          onChange={(e) => setCurrentClinician({ ...currentClinician, studentId: e.target.value })}
+                          className="border-gray-300"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-firstName" className="text-[#333]">
+                            First Name
+                          </Label>
+                          <Input
+                            id="edit-firstName"
+                            defaultValue={currentClinician.firstName}
+                            onChange={(e) => setCurrentClinician({ ...currentClinician, firstName: e.target.value })}
+                            className="border-gray-300"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-lastName" className="text-[#333]">
+                            Last Name
+                          </Label>
+                          <Input
+                            id="edit-lastName"
+                            defaultValue={currentClinician.lastName}
+                            onChange={(e) => setCurrentClinician({ ...currentClinician, lastName: e.target.value })}
+                            className="border-gray-300"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-gender" className="text-[#333]">
+                            Gender
+                          </Label>
+                          <Select
+                            defaultValue={currentClinician.gender.toLowerCase()}
+                            onValueChange={(value) =>
+                              setCurrentClinician({
+                                ...currentClinician,
+                                gender: value.charAt(0).toUpperCase() + value.slice(1),
+                              })
+                            }
+                          >
+                            <SelectTrigger id="edit-gender" className="border-gray-300">
+                              <SelectValue placeholder={currentClinician.gender} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="male">Male</SelectItem>
+                              <SelectItem value="female">Female</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-email" className="text-[#333]">
+                            Email
+                          </Label>
+                          <Input
+                            id="edit-email"
+                            type="email"
+                            defaultValue={currentClinician.email}
+                            onChange={(e) => setCurrentClinician({ ...currentClinician, email: e.target.value })}
+                            className="border-gray-300"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-contactNumber" className="text-[#333]">
+                          Contact Number
+                        </Label>
+                        <Input
+                          id="edit-contactNumber"
+                          defaultValue={currentClinician.contactNumber}
+                          onChange={(e) => setCurrentClinician({ ...currentClinician, contactNumber: e.target.value })}
+                          className="border-gray-300"
+                        />
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="academic" className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-yearLevel" className="text-[#333]">
+                          Year Level
+                        </Label>
+                        <Select
+                          defaultValue={currentClinician.yearLevel}
+                          onValueChange={(value) =>
+                            setCurrentClinician({
+                              ...currentClinician,
+                              yearLevel: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger id="edit-yearLevel" className="border-gray-300">
+                            <SelectValue placeholder={currentClinician.yearLevel} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1st Year">1st Year</SelectItem>
+                            <SelectItem value="2nd Year">2nd Year</SelectItem>
+                            <SelectItem value="3rd Year">3rd Year</SelectItem>
+                            <SelectItem value="4th Year">4th Year</SelectItem>
+                            <SelectItem value="5th Year">5th Year</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-status" className="text-[#333]">
+                          Enrollment Status
+                        </Label>
+                        <Select
+                          defaultValue={currentClinician.status.toLowerCase().replace(" ", "-")}
+                          onValueChange={(value) =>
+                            setCurrentClinician({
+                              ...currentClinician,
+                              status: value === "enrolled" ? "Enrolled" : "Not Enrolled",
+                            })
+                          }
+                        >
+                          <SelectTrigger id="edit-status" className="border-gray-300">
+                            <SelectValue placeholder={currentClinician.status} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="enrolled">Enrolled</SelectItem>
+                            <SelectItem value="not-enrolled">Not Enrolled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-green-800">{addSuccessMessage}</p>
+                <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
+                  <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="border-gray-300">
+                    Cancel
+                  </Button>
+                  <Button
+                    className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
+                    onClick={() => handleUpdateClinician(currentClinician)}
+                  >
+                    Update Clinician
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Upload CSV Modal */}
+        <Dialog
+          open={isUploadModalOpen}
+          onOpenChange={(open) => {
+            setIsUploadModalOpen(open)
+            if (!open) {
+              setTimeout(() => {
+                setSelectedFile(null)
+                setUploadSuccessMessage("")
+                setUploadErrorMessage("")
+              }, 100)
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
+            <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
+              <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Upload Clinicians CSV</DialogTitle>
+              <DialogDescription className="text-gray-500">
+                Upload a CSV file containing clinician information.
+              </DialogDescription>
+            </DialogHeader>
+            {uploadSuccessMessage && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-6 mt-4">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-green-800 break-words">{uploadSuccessMessage}</p>
+                  </div>
                 </div>
+              </div>
+            )}
+            {uploadErrorMessage && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mx-6 mt-4">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 001.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-red-800 break-words">{uploadErrorMessage}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="px-6 py-4 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="csvAcademicYear" className="text-[#333]">
+                  Academic Year <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={formData.academicYearId || ""}
+                  onValueChange={(value) => updateFormData("academicYearId", value)}
+                  disabled={isLoadingAcademicYears}
+                >
+                  <SelectTrigger id="csvAcademicYear" className="border-gray-300">
+                    <SelectValue placeholder={isLoadingAcademicYears ? "Loading..." : "Please select academic year"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {academicYears.map((year) => (
+                      <SelectItem key={year.id} value={year.id}>
+                        {year.academicYear} - {year.semester} Semester {year.status === "Inactive" ? "(Inactive)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">Select the academic year for the clinicians being uploaded</p>
+              </div>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 w-full flex flex-col items-center justify-center">
+                <Upload className="h-12 w-12 text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium text-[#333] mb-2">
+                  {selectedFile ? selectedFile.name : "Drag and drop your CSV file"}
+                </h3>
+                <p className="text-sm text-gray-500 mb-4 text-center">
+                  {selectedFile
+                    ? "File selected. Click upload to process."
+                    : "or click to browse files from your computer"}
+                </p>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  id="csv-upload"
+                  ref={fileInputRef}
+                />
+                <label htmlFor="csv-upload">
+                  <Button
+                    className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Browse Files
+                  </Button>
+                </label>
+              </div>
+              <div className="mt-6 w-full">
+                <h4 className="text-sm font-medium text-[#333] mb-2">CSV Format Requirements:</h4>
+                <ul className="text-xs text-gray-500 list-disc pl-5 space-y-1">
+                  <li>First row must contain column headers</li>
+                  <li>Required columns: Student ID, First Name, Last Name, Gender, Email, Contact Number, Status</li>
+                  <li>Optional columns: Year Level</li>
+                  <li>Status must be either &quot;Enrolled&quot; or &quot;Not Enrolled&quot;</li>
+                </ul>
+              </div>
+            </div>
+            <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
+              <Button variant="outline" onClick={() => setIsUploadModalOpen(false)} className="border-gray-300">
+                Cancel
+              </Button>
+              <Button
+                className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
+                onClick={processCSVFile}
+                disabled={!selectedFile || isProcessingUpload}
+              >
+                {isProcessingUpload ? "Processing..." : "Upload"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Clinician Records View Modal */}
+<Dialog
+  open={isViewModalOpen}
+  onOpenChange={(open) => {
+    setIsViewModalOpen(open);
+    if (!open) {
+      setTimeout(() => {
+        setSelectedClinician(null);
+        setClinicianActivities(null);
+        setActivitiesError("");
+        setSelectedAcademicYearTab("");
+      }, 100);
+    }
+  }}
+>
+  <DialogContent className="sm:max-w-[1000px] p-0 overflow-hidden rounded-lg">
+    {selectedClinician && (
+      <>
+        <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-xl font-semibold text-[#5C8E77]">
+                Clinician Records
+              </DialogTitle>
+              <p className="text-sm text-gray-500 mt-1">
+                Viewing records for {selectedClinician.firstName} {selectedClinician.lastName}
+              </p>
+            </div>
+            {/* <div className="flex items-center gap-3">
+              <div className="h-16 w-16 rounded-full bg-[#e6f7eb] flex items-center justify-center text-[#5C8E77] text-xl font-bold">
+                {selectedClinician.firstName.charAt(0)}
+                {selectedClinician.lastName.charAt(0)}
+              </div>
+            </div> */}
+          </div>
+        </DialogHeader>
+        <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
+          {/* Clinician Basic Info */}
+          <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-gray-200">
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Student ID</h3>
+              <p className="text-[#333] font-medium">{selectedClinician.studentId}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Full Name</h3>
+              <p className="text-[#333] font-medium">
+                {selectedClinician.firstName} {selectedClinician.lastName}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Gender</h3>
+              <p className="text-[#333] font-medium">{selectedClinician.gender}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Year Level</h3>
+              <p className="text-[#333] font-medium">{selectedClinician.yearLevel}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Email</h3>
+              <p className="text-[#333] font-medium">{selectedClinician.email}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Contact Number</h3>
+              <p className="text-[#333] font-medium">{selectedClinician.contactNumber}</p>
+            </div>
+          </div>
+
+          {/* Loading State */}
+          {isLoadingActivities && (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#5C8E77] mx-auto mb-4"></div>
+                <p className="text-gray-500">Loading activities...</p>
               </div>
             </div>
           )}
-          {addErrorMessage && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mx-6 mt-4">
+
+          {/* Error State */}
+          {activitiesError && !isLoadingActivities && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
               <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 001.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-red-800 break-words">{addErrorMessage}</p>
-                </div>
+                <svg className="h-5 w-5 text-amber-400 mr-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <p className="text-sm font-medium text-amber-800">{activitiesError}</p>
               </div>
             </div>
           )}
-          <form onSubmit={handleAddClinicianSubmit}>
-            <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
-              <Tabs defaultValue="personal" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-4">
-                  <TabsTrigger value="personal">Personal Information</TabsTrigger>
-                  <TabsTrigger value="academic">Academic Information</TabsTrigger>
+
+          {/* Activities by Academic Year with Tabs */}
+          {!isLoadingActivities && clinicianActivities && clinicianActivities.academic_years.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-[#333]">
+                  Activities Overview
+                </h3>
+                <Badge className="bg-[#5C8E77]">
+                  {clinicianActivities.totalActivities} Total Activities
+                </Badge>
+              </div>
+
+              <Tabs value={selectedAcademicYearTab} onValueChange={setSelectedAcademicYearTab} className="w-full">
+                <TabsList className="grid w-full gap-2 h-15" style={{ gridTemplateColumns: `repeat(${clinicianActivities.academic_years.length}, minmax(0, 1fr))` }}>
+                  {clinicianActivities.academic_years.map((academicYear: any) => (
+                    <TabsTrigger 
+                      key={academicYear.academic_year_id} 
+                      value={academicYear.academic_year_id}
+                      className="data-[state=active]:bg-[#5C8E77] data-[state=active]:text-white"
+                    >
+                      <div className="flex flex-col items-center">
+                        <span className="font-medium">{academicYear.academic_year_id}</span>
+                        <span className="text-xs opacity-80">
+                          {academicYear.activityCount} {academicYear.activityCount === 1 ? 'Activity' : 'Activities'}
+                        </span>
+                      </div>
+                    </TabsTrigger>
+                  ))}
                 </TabsList>
-                <TabsContent value="personal" className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="studentId" className="text-[#333]">
-                      Student ID <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="studentId"
-                      value={formData.studentId || ""}
-                      onChange={(e) => updateFormData("studentId", e.target.value)}
-                      placeholder="Enter student ID"
-                      className={formErrors.studentId ? "border-red-500" : "border-gray-300"}
-                    />
-                    {formErrors.studentId && <p className="text-sm text-red-500">{formErrors.studentId}</p>}
+
+                {clinicianActivities.academic_years.map((academicYear: any) => (
+                  <TabsContent key={academicYear.academic_year_id} value={academicYear.academic_year_id} className="mt-4">
+                    <div className="space-y-4">
+                      {academicYear.activities.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          No activities found for this academic year.
+                        </div>
+                      ) : (
+                        academicYear.activities.map((activity: any) => (
+                          <div key={activity.activity_id} className="border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                            {/* Activity Header */}
+                            <div className="bg-[#f8f9fa] px-4 py-3 border-b border-gray-200">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <h5 className="font-semibold text-[#333]">
+                                    {activity.patientName || 'Unknown Patient'}
+                                  </h5>
+                                  <p className="text-sm text-gray-600">
+                                    {activity.patientType} • {activity.shift}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm text-gray-600">
+                                    {activity.dateStarted} - {activity.dateEnded}
+                                  </p>
+                                  <Badge variant="outline" className="mt-1">
+                                    {activity.recordCount} {activity.recordCount === 1 ? 'Session' : 'Sessions'}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Procedures */}
+                            <div className="px-4 py-3 bg-blue-50 border-b border-gray-200">
+                              <p className="text-sm font-medium text-gray-700 mb-2">Procedures:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {activity.procedures.map((procedure: string, idx: number) => (
+                                  <Badge key={idx} variant="outline" className="bg-white">
+                                    {procedure}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* All Records/Sessions */}
+                            <div className="p-4 space-y-3">
+                              {activity.allRecords.map((record: any, recordIdx: number) => (
+                                <div key={record.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <h6 className="font-medium text-[#333]">
+                                      Session {recordIdx + 1} - {record.date}
+                                    </h6>
+                                    <span className="text-sm text-gray-600">
+                                      {record.timeIn} - {record.timeOut}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-4 mb-3">
+                                    <div>
+                                      <p className="text-xs text-gray-500">Instructor</p>
+                                      <p className="text-sm font-medium text-[#333]">{record.instructorName}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-500">Chair</p>
+                                      <p className="text-sm font-medium text-[#333]">{record.chair}</p>
+                                    </div>
+                                    {record.clerkName !== "N/A" && (
+                                      <div>
+                                        <p className="text-xs text-gray-500">Clerk</p>
+                                        <p className="text-sm font-medium text-[#333]">{record.clerkName}</p>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Procedure Statuses */}
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-medium text-gray-700">Procedure Details:</p>
+                                    {record.procedureStatuses.map((procStatus: any, idx: number) => (
+                                      <div key={procStatus.ap_id || idx} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="font-medium text-sm text-[#333]">
+                                            {procStatus.procedure}
+                                          </span>
+                                          <Badge 
+                                            className={
+                                              procStatus.status === 'Approved' ? 'bg-green-500 hover:bg-green-600' :
+                                              procStatus.status === 'Pending' ? 'bg-yellow-500 hover:bg-yellow-600' :
+                                              procStatus.status === 'Rejected' ? 'bg-red-500 hover:bg-red-600' :
+                                              'bg-gray-500 hover:bg-gray-600'
+                                            }
+                                          >
+                                            {procStatus.status}
+                                          </Badge>
+                                        </div>
+                                        {procStatus.remarks && procStatus.remarks !== "No remarks" && (
+                                          <p className="text-xs text-gray-600 italic">
+                                            Remarks: {procStatus.remarks}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </TabsContent>
+                ))}
+              </Tabs>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!isLoadingActivities && clinicianActivities && clinicianActivities.academic_years.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No activities found for this clinician.</p>
+            </div>
+          )}
+
+          {!isLoadingActivities && !clinicianActivities && !activitiesError && (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No activities found for this clinician.</p>
+            </div>
+          )}
+        </div>
+      </>
+    )}
+  </DialogContent>
+</Dialog>
+
+        {/* Add Clinician Modal */}
+        <Dialog
+          open={isAddModalOpen}
+          onOpenChange={(open) => {
+            setIsAddModalOpen(open)
+            if (!open) {
+              setTimeout(() => resetForm(), 100)
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
+            <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
+              <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Add New Clinician</DialogTitle>
+              <DialogDescription className="text-gray-500">
+                Enter the clinician details to add them to the system.
+              </DialogDescription>
+            </DialogHeader>
+            {addSuccessMessage && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-6 mt-4">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-green-800">{addSuccessMessage}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {addErrorMessage && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mx-6 mt-4">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 001.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-red-800 break-words">{addErrorMessage}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <form onSubmit={handleAddClinicianSubmit}>
+              <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
+                <Tabs defaultValue="personal" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 mb-4">
+                    <TabsTrigger value="personal">Personal Information</TabsTrigger>
+                    <TabsTrigger value="academic">Academic Information</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="personal" className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="firstName" className="text-[#333]">
-                        First Name <span className="text-red-500">*</span>
+                      <Label htmlFor="studentId" className="text-[#333]">
+                        Student ID <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="firstName"
-                        value={formData.firstName || ""}
-                        onChange={(e) => updateFormData("firstName", e.target.value)}
-                        placeholder="Enter first name"
-                        className={formErrors.firstName ? "border-red-500" : "border-gray-300"}
+                        id="studentId"
+                        value={formData.studentId || ""}
+                        onChange={(e) => updateFormData("studentId", e.target.value)}
+                        placeholder="Enter student ID"
+                        className={formErrors.studentId ? "border-red-500" : "border-gray-300"}
                       />
-                      {formErrors.firstName && <p className="text-sm text-red-500">{formErrors.firstName}</p>}
+                      {formErrors.studentId && <p className="text-sm text-red-500">{formErrors.studentId}</p>}
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="lastName" className="text-[#333]">
-                        Last Name <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="lastName"
-                        value={formData.lastName || ""}
-                        onChange={(e) => updateFormData("lastName", e.target.value)}
-                        placeholder="Enter last name"
-                        className={formErrors.lastName ? "border-red-500" : "border-gray-300"}
-                      />
-                      {formErrors.lastName && <p className="text-sm text-red-500">{formErrors.lastName}</p>}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="firstName" className="text-[#333]">
+                          First Name <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="firstName"
+                          value={formData.firstName || ""}
+                          onChange={(e) => updateFormData("firstName", e.target.value)}
+                          placeholder="Enter first name"
+                          className={formErrors.firstName ? "border-red-500" : "border-gray-300"}
+                        />
+                        {formErrors.firstName && <p className="text-sm text-red-500">{formErrors.firstName}</p>}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="lastName" className="text-[#333]">
+                          Last Name <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="lastName"
+                          value={formData.lastName || ""}
+                          onChange={(e) => updateFormData("lastName", e.target.value)}
+                          placeholder="Enter last name"
+                          className={formErrors.lastName ? "border-red-500" : "border-gray-300"}
+                        />
+                        {formErrors.lastName && <p className="text-sm text-red-500">{formErrors.lastName}</p>}
+                      </div>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="gender" className="text-[#333]">
                         Gender <span className="text-red-500">*</span>
@@ -738,554 +1238,147 @@ export default function CliniciansPage() {
                       </Select>
                       {formErrors.gender && <p className="text-sm text-red-500">{formErrors.gender}</p>}
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email" className="text-[#333]">
-                      Email <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email || ""}
-                      onChange={(e) => updateFormData("email", e.target.value)}
-                      placeholder="Enter email address"
-                      className={formErrors.email ? "border-red-500" : "border-gray-300"}
-                    />
-                    {formErrors.email && <p className="text-sm text-red-500">{formErrors.email}</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="contactNumber" className="text-[#333]">
-                      Contact Number <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="contactNumber"
-                      value={formData.contactNumber || ""}
-                      onChange={(e) => updateFormData("contactNumber", e.target.value)}
-                      placeholder="Enter contact number"
-                      className={formErrors.contactNumber ? "border-red-500" : "border-gray-300"}
-                    />
-                    {formErrors.contactNumber && <p className="text-sm text-red-500">{formErrors.contactNumber}</p>}
-                  </div>
-                </TabsContent>
-                <TabsContent value="academic" className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="yearLevel" className="text-[#333]">
-                      Year Level
-                    </Label>
-                    <Select
-                      value={formData.yearLevel || "5th Year"}
-                      onValueChange={(value) => updateFormData("yearLevel", value)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select Year Level" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="5th Year">5th Year</SelectItem>
-                        <SelectItem value="6th Year">6th Year</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="section" className="text-[#333]">
-                      Section
-                    </Label>
-                    <Select value={formData.section || "A"} onValueChange={(value) => updateFormData("section", value)}>
-                      <SelectTrigger id="section" className="border-gray-300">
-                        <SelectValue placeholder="Select section" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="A">Section A</SelectItem>
-                        <SelectItem value="B">Section B</SelectItem>
-                        <SelectItem value="C">Section C</SelectItem>
-                        <SelectItem value="D">Section D</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="status" className="text-[#333]">
-                      Enrollment Status <span className="text-red-500">*</span>
-                    </Label>
-                    <Select value={formData.status || ""} onValueChange={(value) => updateFormData("status", value)}>
-                      <SelectTrigger id="status" className={formErrors.status ? "border-red-500" : "border-gray-300"}>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="enrolled">Enrolled</SelectItem>
-                        <SelectItem value="not-enrolled">Not Enrolled</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {formErrors.status && <p className="text-sm text-red-500">{formErrors.status}</p>}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </div>
-            <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={() => setIsAddModalOpen(false)}
-                className="border-gray-300"
-              >
-                Cancel
-              </Button>
-              <Button type="submit" className="bg-[#5C8E77] hover:bg-[#406E58] text-white" disabled={isSubmitting}>
-                {isSubmitting ? "Adding..." : "Add Clinician"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-      {/* Edit Clinician Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden rounded-lg">
-          {currentClinician && (
-            <>
-              <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-                <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Edit Clinician</DialogTitle>
-                <DialogDescription className="text-gray-500">
-                  Update clinician information for {currentClinician.firstName} {currentClinician.lastName}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
-                <Tabs defaultValue="personal" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 mb-4">
-                    <TabsTrigger value="personal">Personal Information</TabsTrigger>
-                    <TabsTrigger value="academic">Academic Information</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="personal" className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="edit-studentId" className="text-[#333]">
-                        Student ID
+                      <Label htmlFor="email" className="text-[#333]">
+                        Email <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="edit-studentId"
-                        defaultValue={currentClinician.studentId}
-                        onChange={(e) => setCurrentClinician({ ...currentClinician, studentId: e.target.value })}
-                        className="border-gray-300"
+                        id="email"
+                        type="email"
+                        value={formData.email || ""}
+                        onChange={(e) => updateFormData("email", e.target.value)}
+                        placeholder="Enter email address"
+                        className={formErrors.email ? "border-red-500" : "border-gray-300"}
                       />
+                      {formErrors.email && <p className="text-sm text-red-500">{formErrors.email}</p>}
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-firstName" className="text-[#333]">
-                          First Name
-                        </Label>
-                        <Input
-                          id="edit-firstName"
-                          defaultValue={currentClinician.firstName}
-                          onChange={(e) => setCurrentClinician({ ...currentClinician, firstName: e.target.value })}
-                          className="border-gray-300"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-lastName" className="text-[#333]">
-                          Last Name
-                        </Label>
-                        <Input
-                          id="edit-lastName"
-                          defaultValue={currentClinician.lastName}
-                          onChange={(e) => setCurrentClinician({ ...currentClinician, lastName: e.target.value })}
-                          className="border-gray-300"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-gender" className="text-[#333]">
-                          Gender
-                        </Label>
-                        <Select
-                          defaultValue={currentClinician.gender.toLowerCase()}
-                          onValueChange={(value) =>
-                            setCurrentClinician({
-                              ...currentClinician,
-                              gender: value.charAt(0).toUpperCase() + value.slice(1),
-                            })
-                          }
-                        >
-                          <SelectTrigger id="edit-gender" className="border-gray-300">
-                            <SelectValue placeholder={currentClinician.gender} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="male">Male</SelectItem>
-                            <SelectItem value="female">Female</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-email" className="text-[#333]">
-                          Email
-                        </Label>
-                        <Input
-                          id="edit-email"
-                          type="email"
-                          defaultValue={currentClinician.email}
-                          onChange={(e) => setCurrentClinician({ ...currentClinician, email: e.target.value })}
-                          className="border-gray-300"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-contactNumber" className="text-[#333]">
-                          Contact Number
-                        </Label>
-                        <Input
-                          id="edit-contactNumber"
-                          defaultValue={currentClinician.contactNumber}
-                          onChange={(e) => setCurrentClinician({ ...currentClinician, contactNumber: e.target.value })}
-                          className="border-gray-300"
-                        />
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="contactNumber" className="text-[#333]">
+                        Contact Number <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="contactNumber"
+                        value={formData.contactNumber || ""}
+                        onChange={(e) => updateFormData("contactNumber", e.target.value)}
+                        placeholder="Enter contact number"
+                        className={formErrors.contactNumber ? "border-red-500" : "border-gray-300"}
+                      />
+                      {formErrors.contactNumber && <p className="text-sm text-red-500">{formErrors.contactNumber}</p>}
                     </div>
                   </TabsContent>
                   <TabsContent value="academic" className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="edit-yearLevel" className="text-[#333]">
+                      <Label htmlFor="academicYear" className="text-[#333]">
+                        Academic Year <span className="text-red-500">*</span>
+                      </Label>
+                      <Select
+                        value={formData.academicYearId || ""}
+                        onValueChange={(value) => updateFormData("academicYearId", value)}
+                        disabled={isLoadingAcademicYears}
+                      >
+                        <SelectTrigger
+                          id="academicYear"
+                          className={formErrors.academicYearId ? "border-red-500" : "border-gray-300"}
+                        >
+                          <SelectValue
+                            placeholder={isLoadingAcademicYears ? "Loading..." : "Please select academic year"}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {academicYears.map((year) => (
+                            <SelectItem key={year.id} value={year.id}>
+                              {year.academicYear} - {year.semester} Semester{" "}
+                              {year.status === "Inactive" ? "(Inactive)" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {formErrors.academicYearId && <p className="text-sm text-red-500">{formErrors.academicYearId}</p>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="yearLevel" className="text-[#333]">
                         Year Level
                       </Label>
                       <Select
-                        defaultValue={currentClinician.yearLevel.split(" ")[0].toLowerCase()}
-                        onValueChange={(value) =>
-                          setCurrentClinician({
-                            ...currentClinician,
-                            yearLevel: `${value.charAt(0).toUpperCase() + value.slice(1)} Year`,
-                          })
-                        }
+                        value={formData.yearLevel || ""}
+                        onValueChange={(value) => updateFormData("yearLevel", value)}
                       >
-                        <SelectTrigger id="edit-yearLevel" className="border-gray-300">
-                          <SelectValue placeholder={currentClinician.yearLevel} />
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select Year Level" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="5th">5th Year</SelectItem>
-                          <SelectItem value="6th">6th Year</SelectItem>
+                          <SelectItem value="1st Year">1st Year</SelectItem>
+                          <SelectItem value="2nd Year">2nd Year</SelectItem>
+                          <SelectItem value="3rd Year">3rd Year</SelectItem>
+                          <SelectItem value="4th Year">4th Year</SelectItem>
+                          <SelectItem value="5th Year">5th Year</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-section" className="text-[#333]">
-                        Section
-                      </Label>
-                      <Select
-                        defaultValue={currentClinician.section}
-                        onValueChange={(value) =>
-                          setCurrentClinician({
-                            ...currentClinician,
-                            section: value,
-                          })
-                        }
-                      >
-                        <SelectTrigger id="edit-section" className="border-gray-300">
-                          <SelectValue placeholder={currentClinician.section} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="A">Section A</SelectItem>
-                          <SelectItem value="B">Section B</SelectItem>
-                          <SelectItem value="C">Section C</SelectItem>
-                          <SelectItem value="D">Section C</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-status" className="text-[#333]">
-                        Enrollment Status
-                      </Label>
-                      <Select
-                        defaultValue={currentClinician.status.toLowerCase().replace(" ", "-")}
-                        onValueChange={(value) =>
-                          setCurrentClinician({
-                            ...currentClinician,
-                            status: value === "enrolled" ? "Enrolled" : "Not Enrolled",
-                          })
-                        }
-                      >
-                        <SelectTrigger id="edit-status" className="border-gray-300">
-                          <SelectValue placeholder={currentClinician.status} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="enrolled">Enrolled</SelectItem>
-                          <SelectItem value="not-enrolled">Not Enrolled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {isSelectedAcademicYearActive && (
+                      <div className="space-y-2">
+                        <Label htmlFor="status" className="text-[#333]">
+                          Enrollment Status <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                          value={formData.status || ""}
+                          onValueChange={(value) => updateFormData("status", value)}
+                        >
+                          <SelectTrigger
+                            id="status"
+                            className={formErrors.status ? "border-red-500" : "border-gray-300"}
+                          >
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="enrolled">Enrolled</SelectItem>
+                            <SelectItem value="not-enrolled">Not Enrolled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {formErrors.status && <p className="text-sm text-red-500">{formErrors.status}</p>}
+                      </div>
+                    )}
+                    {formData.academicYearId && !isSelectedAcademicYearActive && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0">
+                            <svg className="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                              <path
+                                fillRule="evenodd"
+                                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                          <div className="ml-3">
+                            <p className="text-sm font-medium text-amber-800">
+                              This academic year is inactive. Enrollment status is not required for inactive academic
+                              years.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
               </div>
               <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-                <Button variant="outline" onClick={() => setIsEditModalOpen(false)} className="border-gray-300">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="border-gray-300"
+                >
                   Cancel
                 </Button>
-                <Button
-                  className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-                  onClick={() => handleUpdateClinician(currentClinician)}
-                >
-                  Update Clinician
+                <Button type="submit" className="bg-[#5C8E77] hover:bg-[#406E58] text-white" disabled={isSubmitting}>
+                  {isSubmitting ? "Adding..." : "Add Clinician"}
                 </Button>
               </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-      {/* Upload CSV Modal */}
-      <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
-        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden rounded-lg">
-          <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-            <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Upload Clinicians CSV</DialogTitle>
-            <DialogDescription className="text-gray-500">
-              Upload a CSV file containing clinician information.
-            </DialogDescription>
-          </DialogHeader>
-          {uploadSuccessMessage && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mx-6 mt-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-green-800 break-words">{uploadSuccessMessage}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          {uploadErrorMessage && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mx-6 mt-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 001.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-red-800 break-words">{uploadErrorMessage}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="px-6 py-8 flex flex-col items-center justify-center">
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 w-full flex flex-col items-center justify-center">
-              <Upload className="h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium text-[#333] mb-2">
-                {selectedFile ? selectedFile.name : "Drag and drop your CSV file"}
-              </h3>
-              <p className="text-sm text-gray-500 mb-4 text-center">
-                {selectedFile
-                  ? "File selected. Click upload to process."
-                  : "or click to browse files from your computer"}
-              </p>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileSelect}
-                className="hidden"
-                id="csv-upload"
-                ref={fileInputRef}
-              />
-              <label htmlFor="csv-upload">
-                <Button
-                  className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Browse Files
-                </Button>
-              </label>
-            </div>
-            <div className="mt-6 w-full">
-              <h4 className="text-sm font-medium text-[#333] mb-2">CSV Format Requirements:</h4>
-              <ul className="text-xs text-gray-500 list-disc pl-5 space-y-1">
-                <li>First row must contain column headers</li>
-                <li>
-                  Required columns: Student ID, First Name, Last Name, Gender, Birthday, Email, Contact Number, Status
-                </li>
-                <li>Optional columns: Address, Year Level, Section</li>
-                <li>Status must be either &quot;Enrolled&quot; or &quot;Not Enrolled&quot;</li>
-              </ul>
-            </div>
-          </div>
-          <DialogFooter className="bg-[#f8f9fa] px-6 py-4 border-t border-gray-200">
-            <Button variant="outline" onClick={() => setIsUploadModalOpen(false)} className="border-gray-300">
-              Cancel
-            </Button>
-            <Button
-              className="bg-[#5C8E77] hover:bg-[#406E58] text-white"
-              onClick={processCSVFile}
-              disabled={!selectedFile || isProcessingUpload}
-            >
-              {isProcessingUpload ? "Processing..." : "Upload"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* Clinician Records View Modal */}
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="sm:max-w-[900px] p-0 overflow-hidden rounded-lg">
-          {selectedClinician && (
-            <>
-              <DialogHeader className="bg-[#f8f9fa] px-6 py-4 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Clinician Records</DialogTitle>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Viewing records for {selectedClinician.firstName} {selectedClinician.lastName} - AY 2024-2025, 1st
-                      Semester
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="h-16 w-16 rounded-full bg-[#e6f7eb] flex items-center justify-center text-[#5C8E77] text-xl font-bold">
-                      {selectedClinician.firstName.charAt(0)}
-                      {selectedClinician.lastName.charAt(0)}
-                    </div>
-                  </div>
-                </div>
-              </DialogHeader>
-              <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
-                <div className="grid grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">Student ID</h3> {/* Changed to Student ID */}
-                    <p className="text-[#333] font-medium">{selectedClinician.studentId}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">First Name</h3>
-                    <p className="text-[#333] font-medium">{selectedClinician.firstName}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">Last Name</h3>
-                    <p className="text-[#333] font-medium">{selectedClinician.lastName}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">Gender</h3>
-                    <p className="text-[#333] font-medium">{selectedClinician.gender}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">Email</h3>
-                    <p className="text-[#333] font-medium">{selectedClinician.email}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">Contact Number</h3>
-                    <p className="text-[#333] font-medium">{selectedClinician.contactNumber}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">Year Level</h3>
-                    <p className="text-[#333] font-medium">{selectedClinician.yearLevel}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">Section</h3>
-                    <p className="text-[#333] font-medium">{selectedClinician.section}</p>
-                  </div>
-                </div>
-                <Tabs defaultValue="activities" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 mb-4">
-                    <TabsTrigger value="activities" onClick={() => setActiveTab("activities")}>
-                      Activities
-                    </TabsTrigger>
-                    <TabsTrigger value="attendance" onClick={() => setActiveTab("attendance")}>
-                      Attendance
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="activities" className="space-y-4">
-                    {activitiesData.length > 0 ? (
-                      activitiesData.map((activity) => (
-                        <div key={activity.id} className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-lg font-semibold text-[#333]">Activity ID: {activity.id}</h4>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 text-[#5C8E77] hover:bg-[#e6f7eb]"
-                              onClick={() => handleActivityEditClick(activity)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Date</h3>
-                              <p className="text-[#333] font-medium">{activity.date}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Procedure</h3>
-                              <p className="text-[#333] font-medium">{activity.procedure}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Patient</h3>
-                              <p className="text-[#333] font-medium">{activity.patient}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Chair</h3>
-                              <p className="text-[#333] font-medium">{activity.chair}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Instructor</h3>
-                              <p className="text-[#333] font-medium">{activity.instructor}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Grade</h3>
-                              <p className="text-[#333] font-medium">{activity.grade}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Status</h3>
-                              <p className="text-[#333] font-medium">{activity.status}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Remarks</h3>
-                              <p className="text-[#333] font-medium">{activity.remarks}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-500">No activities found.</p>
-                    )}
-                  </TabsContent>
-                  <TabsContent value="attendance" className="space-y-4">
-                    {attendanceData.length > 0 ? (
-                      attendanceData.map((attendance) => (
-                        <div key={attendance.id} className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-lg font-semibold text-[#333]">Attendance ID: {attendance.id}</h4>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Date</h3>
-                              <p className="text-[#333] font-medium">{attendance.date}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Time In</h3>
-                              <p className="text-[#333] font-medium">{attendance.timeIn}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Time Out</h3>
-                              <p className="text-[#333] font-medium">{attendance.timeOut}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Sanitized</h3>
-                              <p className="text-[#333] font-medium">{attendance.sanitized}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Status</h3>
-                              <p className="text-[#333] font-medium">{attendance.status}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-500">No attendance records found.</p>
-                    )}
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </>
     </>
   )
 }

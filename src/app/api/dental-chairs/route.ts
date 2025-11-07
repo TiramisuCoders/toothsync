@@ -2,117 +2,44 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createSupabaseServerClient } from "@/lib/supabase-server"
 
-// GET /api/dental-chairs - Fetch all chairs with procedures and status
+// GET /api/dental-chairs - Fetch all chairs with procedures and status for both shifts
 export async function GET() {
   const supabase = await createSupabaseServerClient()
   
   try {
     const { data, error: authError } = await supabase.auth.getUser()
     
-    console.log('🔍 Auth Debug:')
-    console.log('User ID:', data)
-    console.log('Auth error:', authError)
-    
     const user = data?.user
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    const { data: userRole } = await supabase
+    const { data: userRole, error: roleError } = await supabase
       .from('users')
       .select('role')
       .eq('auth_user_id', user.id)
       .single()
 
-    console.log('User role data:', userRole)
-    
-    console.log('🔍 Fetching chair data with procedures and status...')
-
-    // Fetch all chairs with their basic info
-    const { data: chairs, error: chairError } = await supabase
-      .from('chair')
-      .select('chair_id, chair_name, is_active')
-      .order('chair_id')
-
-    if (chairError) {
-      console.log('❌ Chair query failed:', chairError.message)
-      return NextResponse.json({ error: 'Database error', details: chairError.message }, { status: 500 })
+    if (roleError || !userRole) {
+      return Response.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Fetch all chair procedures
-    const { data: chairProcedures, error: proceduresError } = await supabase
-      .from('chair_procedures')
-      .select(`
-        chair_id,
-        procedure:prod_id(
-          procedure_id,
-          name
-        )
-      `)
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
 
-    if (proceduresError) {
-      console.log('❌ Procedures query failed:', proceduresError.message)
-      return NextResponse.json({ error: 'Database error', details: proceduresError.message }, { status: 500 })
-    }
-
-    // Fetch chair availability for today's shift to check occupancy
-    const today = new Date().toISOString().split('T')[0]
-    const { data: chairAvailability, error: availabilityError } = await supabase
-      .from('chair_availability')
-      .select('chair_id, is_occupied')
-      .eq('date', today)
-
-    if (availabilityError) {
-      console.log('❌ Availability query failed:', availabilityError.message)
-      // Don't fail the request, just log the error
-    }
-
-    // Create maps for easier lookup
-    const proceduresByChair = new Map()
-    chairProcedures?.forEach((cp: any) => {
-      if (!proceduresByChair.has(cp.chair_id)) {
-        proceduresByChair.set(cp.chair_id, [])
-      }
-      if (cp.procedure) {
-        proceduresByChair.get(cp.chair_id).push(cp.procedure.name)
-      }
+    const { data: chairs, error } = await supabase.rpc("get_chair_overview", {
+      p_date: today
     })
 
-    const occupancyByChair = new Map()
-    chairAvailability?.forEach((ca: any) => {
-      occupancyByChair.set(ca.chair_id, ca.is_occupied)
-    })
+    if (error) {
+      console.error("❌ get_chair_overview failed:", error.message)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
-    // Transform data to match your interface
-    const transformedData = chairs?.map(chair => {
-      const procedures = proceduresByChair.get(chair.chair_id) || []
-      const isOccupied = occupancyByChair.get(chair.chair_id) || false
-      
-      // Determine status based on your logic
-      let status: "Available" | "Occupied" | "Under Maintenance"
-      if (!chair.is_active) {
-        status = "Under Maintenance"
-      } else if (isOccupied) {
-        status = "Occupied"
-      } else {
-        status = "Available"
-      }
-      
-      return {
-        id: chair.chair_id.toString(),
-        chair_name: chair.chair_name,
-        procedures: procedures,
-        status: status
-        // student: status === "Occupied" ? "Student assigned" : null // You can fetch actual student info if needed
-      }
-    }) || []
-
-    console.log('Transformed data:', transformedData)
-    
-    return NextResponse.json({ 
-      success: true, 
-      data: transformedData,
-      user_id: user.id 
+    return NextResponse.json({
+      success: true,
+      data: chairs,
+      user_id: user.id,
+      userRole: userRole.role
     })
     
   } catch (error) {
@@ -133,108 +60,162 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { chairId, status, procedures } = await req.json()
+    const { chairId, status, procedures, shift } = await req.json()
 
     if (!chairId) {
       return NextResponse.json({ error: 'Chair ID is required' }, { status: 400 })
     }
 
-    console.log('🔄 Updating chair:', chairId, 'Status:', status, 'Procedures:', procedures)
+    console.log('🔄 Updating chair:', chairId, 'Status:', status, 'Shift:', shift, 'Procedures:', procedures)
 
-    // Start a transaction-like approach
-    
-    // 1. Update chair status (is_active)
-    const isActive = status !== "Under Maintenance"
-    const { error: chairUpdateError } = await supabase
-      .from('chair')
-      .update({ is_active: isActive })
-      .eq('chair_id', parseInt(chairId))
+    const date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+    const timeNow = new Date().toISOString()
 
-    if (chairUpdateError) {
-      console.error('Error updating chair status:', chairUpdateError)
-      return NextResponse.json({ error: 'Failed to update chair status' }, { status: 500 })
+    // 1. Update overall chair status (is_active) - affects both shifts
+    if (status && !shift) {
+      const isActive = status !== "Under Maintenance"
+      const { error: chairUpdateError } = await supabase
+        .from("chair")
+        .update({ is_active: isActive })
+        .eq("chair_id", chairId)
+
+      if (chairUpdateError) {
+        console.error('Error updating chair status:', chairUpdateError)
+        return NextResponse.json({ error: "Failed to update chair status" }, { status: 500 })
+      }
+
+      console.log('✅ Chair overall status updated successfully')
+      return NextResponse.json({ 
+        success: true,
+        message: "Chair status updated successfully" 
+      }, { status: 200 })
     }
 
-    // 2. Update chair availability if needed
-    const today = new Date().toISOString().split('T')[0]
-    const isOccupied = status === "Occupied"
-    
-    // Check if availability record exists for today
-    const { data: existingAvailability } = await supabase
-      .from('chair_availability')
-      .select('chair_id')
-      .eq('chair_id', chairId)
-      .eq('date', today)
-      .single()
+    // 2. Update shift-specific status in chair_availability
+    if (status && shift && date) {
+      const isOccupied = status === "Occupied"
+      const shiftValue = shift === "Shift 1" ? "1st" : "2nd"
 
-    if (existingAvailability) {
-      // Update existing record
-      const { error: availabilityUpdateError } = await supabase
-        .from('chair_availability')
-        .update({ is_occupied: isOccupied })
-        .eq('chair_id', chairId)
-        .eq('date', today)
+      // Find the chair_availability record for this date and shift
+      const { data: availability, error: fetchError } = await supabase
+        .from("chair_availability")
+        .select("*")
+        .eq("chair_id", chairId)
+        .eq("shift", shiftValue)
+        .eq("date", date)
+        .single()
 
-      if (availabilityUpdateError) {
-        console.error('Error updating chair availability:', availabilityUpdateError)
+      if (fetchError && fetchError.code !== "PGRST116") {
+        console.error("Error fetching chair_availability:", fetchError)
+        return NextResponse.json({ error: "Failed to fetch chair availability" }, { status: 500 })
       }
-    } else {
-      // Create new availability record
-      const { error: availabilityInsertError } = await supabase
-        .from('chair_availability')
-        .insert({
-          chair_id: chairId,
-          date: today,
-          shift: '1st', // Default shift - you might want to determine this dynamically
-          is_occupied: isOccupied
-        })
 
-      if (availabilityInsertError) {
-        console.error('Error inserting chair availability:', availabilityInsertError)
+      if (availability) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from("chair_availability")
+          .update({ 
+            is_occupied: isOccupied,
+            update_at: timeNow
+          })
+          .eq("id", availability.id)
+
+        if (updateError) {
+          console.error("Error updating chair_availability:", updateError)
+          return NextResponse.json({ error: "Failed to update chair availability" }, { status: 500 })
+        }
+
+        console.log(`✅ Chair shift ${shiftValue} status updated successfully`)
+      } else {
+        // Create new record if it doesn't exist
+        const { error: createError } = await supabase
+          .from("chair_availability")
+          .insert({
+            chair_id: chairId,
+            shift: shiftValue,
+            date,
+            is_occupied: isOccupied,
+          })
+
+        if (createError) {
+          console.error("Error creating chair_availability:", createError)
+          return NextResponse.json({ error: "Failed to create chair availability" }, { status: 500 })
+        }
+
+        console.log(`✅ Chair shift ${shiftValue} availability created successfully`)
       }
+
+      return NextResponse.json({ 
+        success: true,
+        message: "Chair shift status updated successfully" 
+      }, { status: 200 })
     }
 
     // 3. Update procedures if provided
     if (procedures && Array.isArray(procedures)) {
-      // First, get all procedure IDs for the given procedure names
-      const { data: procedureData, error: procedureError } = await supabase
-        .from('procedure')
-        .select('procedure_id, name')
+      // Get all department IDs that match the selected procedure names
+      const { data: departments, error: deptErr } = await supabase
+        .from('departments')
+        .select('id, name')
         .in('name', procedures)
 
-      if (procedureError) {
-        console.error('Error fetching procedures:', procedureError)
-        return NextResponse.json({ error: 'Failed to fetch procedures' }, { status: 500 })
+      if (deptErr) {
+        console.error('Error fetching departments:', deptErr)
+        return NextResponse.json({ error: 'Failed to fetch departments' }, { status: 500 })
       }
 
-      // Delete existing chair procedures
-      const { error: deleteError } = await supabase
+      // Get current chair_procedure records
+      const { data: existingProcedures, error: existingErr } = await supabase
         .from('chair_procedures')
-        .delete()
+        .select('department_id')
         .eq('chair_id', chairId)
 
-      if (deleteError) {
-        console.error('Error deleting existing procedures:', deleteError)
-        return NextResponse.json({ error: 'Failed to delete existing procedures' }, { status: 500 })
+      if (existingErr) {
+        console.error('Error fetching existing chair procedures:', existingErr)
+        return NextResponse.json({ error: 'Failed to fetch existing chair procedures' }, { status: 500 })
       }
 
-      // Insert new chair procedures
-      if (procedureData && procedureData.length > 0) {
-        const chairProcedurePayload = procedureData.map((proc: any) => ({
-          chair_prod_id: `${chairId}_${proc.procedure_id}`,
+      // Convert to ID arrays for easier comparison
+      const existingIds = existingProcedures.map((p: any) => p.department_id)
+      const newIds = departments.map((d: any) => d.id)
+
+      // Determine which to delete and which to add
+      const toDelete = existingIds.filter((id) => !newIds.includes(id))
+      const toAdd = newIds.filter((id) => !existingIds.includes(id))
+
+      // Delete unchecked procedures
+      if (toDelete.length > 0) {
+        const { error: deleteError } = await supabase
+          .from('chair_procedures')
+          .delete()
+          .eq('chair_id', chairId)
+          .in('department_id', toDelete)
+
+        if (deleteError) {
+          console.error('Error deleting chair procedures:', deleteError)
+          return NextResponse.json({ error: 'Failed to delete chair procedures' }, { status: 500 })
+        }
+      }
+
+      // Insert newly added procedures
+      if (toAdd.length > 0) {
+        const payload = toAdd.map((deptId) => ({
+          chair_dept_id: `${chairId}_${deptId}`,
           chair_id: chairId,
-          prod_id: proc.procedure_id
+          department_id: deptId,
         }))
 
         const { error: insertError } = await supabase
           .from('chair_procedures')
-          .insert(chairProcedurePayload)
+          .insert(payload)
 
         if (insertError) {
-          console.error('Error inserting new procedures:', insertError)
-          return NextResponse.json({ error: 'Failed to insert new procedures' }, { status: 500 })
+          console.error('Error inserting new chair procedures:', insertError)
+          return NextResponse.json({ error: 'Failed to insert new chair procedures' }, { status: 500 })
         }
       }
+
+      console.log('✅ Chair procedures updated successfully')
     }
 
     return NextResponse.json({ 

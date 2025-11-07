@@ -1,7 +1,6 @@
 "use client"
 
 import { Phone, Mail, Clock } from "lucide-react"
-import Header from "@/components/layouts/header"
 
 export default function FAQPage() {
   const faqs = [
@@ -57,71 +56,68 @@ export default function FAQPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
+    <div className="space-y-6 p-6 bg-[#f9f9f9] min-h-screen">
+      {/* Header Section */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Frequently Asked Questions</h1>
+        <p className="text-gray-600">Find answers to common questions about the Dental Laboratory Support System</p>
+      </div>
 
-      <div className="pt-16 max-w-4xl mx-auto px-4 py-8">
-        {/* Header Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Frequently Asked Questions</h1>
-          <p className="text-gray-600">Find answers to common questions about the Dental Laboratory Support System</p>
-        </div>
-
-        {/* FAQ List */}
-        <div className="space-y-4">
-          {faqs.map((faq) => (
-            <div key={faq.id} className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <details className="group">
-                <summary className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 rounded-lg">
-                  <h3 className="text-lg font-medium text-gray-900 pr-4">{faq.question}</h3>
-                  <div className="flex-shrink-0">
-                    <div className="w-6 h-6 rounded-full bg-[#5C8E77] bg-opacity-10 flex items-center justify-center group-open:rotate-45 transition-transform">
-                      <div className="w-3 h-3 text-[#5C8E77]">
-                        <svg viewBox="0 0 12 12" fill="currentColor">
-                          <path d="M6.5 0h-1v5.5H0v1h5.5V12h1V6.5H12v-1H6.5V0z" />
-                        </svg>
-                      </div>
+      {/* FAQ List */}
+      <div className="space-y-4">
+        {faqs.map((faq) => (
+          <div key={faq.id} className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <details className="group">
+              <summary className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 rounded-lg">
+                <h3 className="text-lg font-medium text-gray-900 pr-4">{faq.question}</h3>
+                <div className="flex-shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-[#5C8E77] bg-opacity-10 flex items-center justify-center group-open:rotate-45 transition-transform">
+                    <div className="w-3 h-3 text-[#5C8E77]">
+                      <svg viewBox="0 0 12 12" fill="currentColor">
+                        <path d="M6.5 0h-1v5.5H0v1h5.5V12h1V6.5H12v-1H6.5V0z" />
+                      </svg>
                     </div>
                   </div>
-                </summary>
-                <div className="px-6 pb-6">
-                  <p className="text-gray-700 leading-relaxed">{faq.answer}</p>
                 </div>
-              </details>
-            </div>
-          ))}
-        </div>
+              </summary>
+              <div className="px-6 pb-6">
+                <p className="text-gray-700 leading-relaxed">{faq.answer}</p>
+              </div>
+            </details>
+          </div>
+        ))}
+      </div>
 
-        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Need More Help?</h3>
-          <div className="space-y-4 mb-6">
-            <div className="flex items-center text-sm text-gray-600">
-              <Phone className="h-4 w-4 mr-3 text-[#5C8E77]" />
-              <span>+63 (02) 8123-4567</span>
-            </div>
-            <div className="flex items-center text-sm text-gray-600">
-              <Mail className="h-4 w-4 mr-3 text-[#5C8E77]" />
-              <span>support@deocampo.edu.ph</span>
-            </div>
-            <div className="flex items-center text-sm text-gray-600">
-              <Clock className="h-4 w-4 mr-3 text-[#5C8E77]" />
-              <span>Mon-Fri, 8AM-5PM</span>
-            </div>
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Need More Help?</h3>
+        <div className="space-y-4 mb-6">
+          <div className="flex items-center text-sm text-gray-600">
+            <Phone className="h-4 w-4 mr-3 text-[#5C8E77]" />
+            <span>+63 (02) 8123-4567</span>
           </div>
-          <div className="flex gap-4">
-            <a
-              href="#" // TODO: Replace with actual link to new-ticket page
-              className="flex-1 bg-[#5C8E77] text-white px-4 py-2 rounded-lg hover:bg-[#406E58] transition-colors text-center"
-            >
-              Submit Support Ticket
-            </a>
-            <a
-              href="#" // TODO: Replace with actual link to my-tickets page
-              className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-center"
-            >
-              View My Tickets
-            </a>
+          <div className="flex items-center text-sm text-gray-600">
+            <Mail className="h-4 w-4 mr-3 text-[#5C8E77]" />
+            <span>toothsync.helpdesk@gmail.com</span>
           </div>
+          <div className="flex items-center text-sm text-gray-600">
+            <Clock className="h-4 w-4 mr-3 text-[#5C8E77]" />
+            <span>Mon-Fri, 8AM-5PM</span>
+          </div>
+        </div>
+        <div className="flex gap-4">
+          <a
+            // 🟢 CORRECTED LINK: Points to the new ticket form path within the logged-in section
+            href="/support/faq/new-ticket"
+            className="flex-1 bg-[#5C8E77] text-white px-4 py-2 rounded-lg hover:bg-[#406E58] transition-colors text-center"
+          >
+            Submit Support Ticket
+          </a>
+          <a
+            href="/support/faq/my-ticket"
+            className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-center"
+          >
+            View My Tickets
+          </a>
         </div>
       </div>
     </div>

@@ -1,26 +1,39 @@
+// components/modals/feedback-form-modal.tsx
 "use client"
 
 import type React from "react"
 
 import { useState } from "react"
-// Removed X icon import as the button is being removed
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast" // Assuming you have a useToast hook
-import { FeedbackSuccessModal } from "./feedback-success-modal" // Import the new success modal
-import { FeedbackFailureModal } from "./feedback-failure-modal" // Import the new failure modal
+import { useToast } from "@/hooks/use-toast"
+import { FeedbackSuccessModal } from "./feedback-success-modal"
+import { FeedbackFailureModal } from "./feedback-failure-modal"
 
 interface FeedbackFormModalProps {
   isOpen: boolean
-  onClose: () => void // This onClose will now close the form and potentially open the success modal
-  ticketId?: string // Optional: to link feedback to a specific ticket
+  onClose: () => void 
+  ticketId?: string 
 }
 
 type Rating = "Poor" | "Very Poor" | "Fair" | "Good" | "Excellent" | ""
 type IssueResolved = "Yes" | "No" | "Partially" | ""
+
+const mapIssueResolutionToSupabase = (frontendValue: IssueResolved): string => {
+  switch (frontendValue) {
+    case "Yes":
+      return "Resolved completely"
+    case "Partially":
+      return "Resolved partially"
+    case "No":
+      return "Not resolved"
+    default:
+      return "" 
+  }
+}
 
 export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormModalProps) {
   const { toast } = useToast()
@@ -29,10 +42,9 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
   const [supportResponsiveness, setSupportResponsiveness] = useState<Rating>("")
   const [additionalComments, setAdditionalComments] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [showFeedbackSuccessModal, setShowFeedbackSuccessModal] = useState(false) // New state for success modal
-  const [showFeedbackFailureModal, setShowFeedbackFailureModal] = useState(false) // New state for failure modal
+  const [showFeedbackSuccessModal, setShowFeedbackSuccessModal] = useState(false)
+  const [showFeedbackFailureModal, setShowFeedbackFailureModal] = useState(false)
 
-  // Only render if any of the modals are open
   if (!isOpen && !showFeedbackSuccessModal && !showFeedbackFailureModal) return null
 
   const ratings: Rating[] = ["Poor", "Very Poor", "Fair", "Good", "Excellent"]
@@ -43,7 +55,8 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
       overallExperience !== "" &&
       issueResolved !== "" &&
       supportResponsiveness !== "" &&
-      additionalComments.trim() !== ""
+      additionalComments.trim() !== "" &&
+      !!ticketId 
     )
   }
 
@@ -66,61 +79,61 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
     }
 
     setIsSubmitting(true)
-    console.log("Submitting feedback for ticket:", ticketId)
-    console.log({
-      overallExperience,
-      issueResolved,
-      supportResponsiveness,
-      additionalComments,
-    })
 
-    // 🟢 REPLACE WITH YOUR DATABASE SUBMISSION LOGIC
+    // 🟢 Step 1: Prepare Payloads
+    const feedbackPayload = {
+      incident_id: ticketId,
+      overall_experience: overallExperience,
+      issue_resolved: mapIssueResolutionToSupabase(issueResolved), 
+      support_responsiveness: supportResponsiveness,
+      additional_comments: additionalComments.trim(),
+    }
+    
+    const statusUpdatePayload = {
+        incident_id: ticketId,
+        status: "Resolved"
+    };
+
     try {
-      // Simulate API call with random success/failure
-      await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          const isSuccess = Math.random() > 0.3 // 70% success rate for demo
-          if (isSuccess) {
-            resolve(true)
-          } else {
-            reject(new Error("Network error or server issue."))
-          }
-        }, 1500)
-      })
-
-      // Example API call (uncomment and modify when ready)
-      /*
-      const response = await fetch('/api/feedback', {
+      // 🟢 Step 2: Submit Feedback API Call
+      const feedbackResponse = await fetch('/api/feedback-form', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ticketId,
-          overallExperience,
-          issueResolved,
-          supportResponsiveness,
-          additionalComments,
-        }),
+        body: JSON.stringify(feedbackPayload),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to submit feedback');
+      if (!feedbackResponse.ok) {
+        throw new Error('Failed to submit feedback.');
+      }
+      
+      // 🟢 Step 3: Execute Deferred Status Update API Call
+      // Mark the ticket as Resolved ONLY AFTER feedback submission succeeds
+      const statusResponse = await fetch("/api/support/MyTickets", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(statusUpdatePayload),
+      });
+      
+      if (!statusResponse.ok) {
+          // Log an error but proceed with success modal since the user finished their job
+          console.error("Warning: Feedback submitted, but status update failed. The ticket might not show as resolved yet.");
       }
 
-      const result = await response.json();
-      console.log('Feedback submitted successfully:', result);
-      */
-
-      // On success, close the form and open the success modal
-      onClose() // Close the feedback form itself
-      setShowFeedbackSuccessModal(true) // Open the new success modal
-      handleClearForm() // Clear form after successful submission
+      // 🟢 Step 4: Success
+      handleClearForm() 
+      onClose() // Closes the FeedbackFormModal
+      setShowFeedbackSuccessModal(true)
+      
     } catch (error) {
-      console.error("Error submitting feedback:", error)
-      onClose() // Close the feedback form itself
-      setShowFeedbackFailureModal(true) // Open the new failure modal
-      // No need for toast here, as the modal will show the message
+      // 🟢 Step 5: Failure
+      console.error("Error submitting process:", error)
+      
+      handleClearForm()
+      onClose() 
+      setShowFeedbackFailureModal(true)
+      
     } finally {
       setIsSubmitting(false)
     }
@@ -128,29 +141,21 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
 
   const handleCloseFeedbackSuccessModal = () => {
     setShowFeedbackSuccessModal(false)
-    // The parent's onClose (from MyTicketsPage) will handle closing the backdrop
-    // and ensuring only the ticket tracker is visible.
   }
 
   const handleCloseFeedbackFailureModal = () => {
     setShowFeedbackFailureModal(false)
-    // The parent's onClose (from MyTicketsPage) will handle closing the backdrop
-    // and ensuring only the ticket tracker is visible.
   }
 
   const handleRetryFeedbackSubmission = () => {
     setShowFeedbackFailureModal(false)
-    // Re-open the feedback form for the user to try again
-    // The parent component (MyTicketsPage) needs to be informed to re-open the form
-    // For simplicity here, we'll just close the failure modal and expect the user to re-trigger the form.
-    // A more robust solution might involve passing a callback to re-open the form.
-    // For now, we'll just close the failure modal and the user can click "Submit Feedback" again.
+    onClose() 
   }
 
   return (
     <>
-      {isOpen && ( // Only render the form if isOpen is true
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      {isOpen && ( 
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"> 
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
             {/* Header */}
             <div className="bg-emerald-700 text-white p-6 flex items-center justify-between">
@@ -158,7 +163,6 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
                 <h2 className="text-xl font-bold">ToothSync Feedback Form</h2>
                 <p className="text-sm text-emerald-100">We'd love your feedback!</p>
               </div>
-              {/* Removed the close button (X) to make the form mandatory */}
             </div>
 
             {/* Content */}

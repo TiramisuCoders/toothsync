@@ -1,7 +1,8 @@
 "use client"
-import ClerkChairs from "./ClerkChairs"
+
+import ChairsPage from "../ChairsPage"
 
 export default function ClerkChairsPage() {
-  return <ClerkChairs />
+  return <ChairsPage />
 }
 
