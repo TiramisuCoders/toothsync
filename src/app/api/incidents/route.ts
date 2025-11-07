@@ -123,7 +123,13 @@ export async function GET(request: NextRequest) {
     // Fetch all incidents (default)
     console.log('🔥 Fetching all incidents...')
     
+<<<<<<< HEAD
     const { data: incidents, error } = await supabaseAdmin
+=======
+    // Run the main query - NO FILTERS, just like dashboard does
+    // ✅ CHANGED: Removed '!inner' from select string to use LEFT JOINs
+    const incidentsPromise = supabaseAdmin
+>>>>>>> a22a78e (fixed outdated incident records: chief)
       .from('incident')
       .select(`
         incident_id,
@@ -144,9 +150,9 @@ export async function GET(request: NextRequest) {
         submitted_at,
         updated_at,
         resolved_at,
-        affected_module!inner(module_id, module_name),
-        issue_type!inner(issue_type_id, issue_type_name),
-        severity_level!inner(severity_id, severity_name)
+        affected_module(module_id, module_name),
+        issue_type(issue_type_id, issue_type_name),
+        severity_level(severity_id, severity_name)
       `)
       .order('submitted_at', { ascending: false })
 
@@ -155,7 +161,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch incidents', details: error.message }, { status: 500 })
     }
 
+<<<<<<< HEAD
     const formattedIncidents = incidents?.map(incident => ({
+=======
+    // 🔍 Debug: Log first few incidents
+    if (rawIncidents && rawIncidents.length > 0) {
+      console.log('🎫 Sample incidents (first 3):', rawIncidents.slice(0, 3).map(i => ({
+        ticket_num: i.ticket_num,
+        title: i.title,
+        status: i.status,
+        submitted_at: i.submitted_at,
+        updated_at: i.updated_at
+      })))
+    } else {
+      console.warn('⚠️ No incidents returned from query!')
+    }
+
+    // ✅ CHANGED: Formatting logic updated to handle null/undefined values from LEFT JOINs
+    const formattedIncidents = rawIncidents?.map(incident => ({
+>>>>>>> a22a78e (fixed outdated incident records: chief)
       incident_id: incident.incident_id,
       ticket_num: incident.ticket_num,
       title: incident.title,
@@ -164,11 +188,14 @@ export async function GET(request: NextRequest) {
       assignee_user_id: incident.assignee_user_id,
       assignee_user_email: incident.assignee_user_email,
       module_id: incident.module_id,
-      module_name: incident.affected_module.module_name,
+      // Handle null module 
+      module_name: incident.affected_module?.module_name || 'Unknown Module',
       issue_type_id: incident.issue_type_id,
-      issue_type_name: incident.issue_type.issue_type_name,
+      // Handle null issue type
+      issue_type_name: incident.issue_type?.issue_type_name || 'Unknown Issue Type',
       severity_id: incident.severity_id,
-      severity_name: incident.severity_level.severity_name,
+      // Handle null severity
+      severity_name: incident.severity_level?.severity_name || 'Unknown Severity',
       derived_severity_score: incident.derived_severity_score,
       requires_manual_severity_review: incident.requires_manual_severity_review,
       status: incident.status,
@@ -178,6 +205,7 @@ export async function GET(request: NextRequest) {
       updated_at: incident.updated_at,
       resolved_at: incident.resolved_at
     })) || []
+    // END OF CHANGES
 
     console.log('✅ Incidents fetched:', formattedIncidents.length)
     return NextResponse.json({ 
