@@ -139,6 +139,7 @@ interface TicketDetailsModalProps {
   onTicketUpdated: () => void
 }
 
+
 export function TicketDetailsModal({
   isOpen,
   onClose,
@@ -221,11 +222,21 @@ export function TicketDetailsModal({
   }, [isOpen, ticket.incident_id, isFinalized, fetchFeedback])
 
 
-  if (!isOpen || !mounted) return null
+if (!isOpen || !mounted) return null
   
   // --- Handlers ---
 
   const handleUpdateTicket = async () => {
+    // 🔒 CRITICAL: Block all updates to finalized tickets
+    if (isFinalized) {
+      toast({
+        title: "Action Blocked",
+        description: `Cannot modify ${finalizedReason} tickets. This ticket is locked.`,
+        variant: "destructive",
+      })
+      return
+    }
+
     const hasStatusChange = selectedStatus !== ticket.status
     const hasNote = noteBody.trim().length > 0
 
@@ -246,55 +257,7 @@ export function TicketDetailsModal({
       })
       return
     }
-
-    if (isFinalized && hasStatusChange) {
-      toast({
-        title: "Action Blocked",
-        description: `Cannot change the status of an already ${finalizedReason} ticket.`,
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (selectedStatus === "Resolved" && hasStatusChange) {
-      try {
-        setIsUpdating(true)
-        const updateData = {
-          incident_id: ticket.incident_id,
-          status: selectedStatus,
-          note_body: noteBody.trim(),
-          note_type: "comment",
-          author_user_id: userId
-        }
-
-        const response = await fetch("/api/support/MyTickets", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updateData),
-        })
-
-        const result = await response.json()
-        if (!response.ok || !result.success)
-          throw new Error(result.error || result.details || "Failed to update ticket")
-
-        toast({ title: "Success", description: "Ticket marked as resolved" })
-        setNoteBody("")
-        await onTicketUpdated()
-        
-        setTimeout(() => onClose(true), 500)
-      } catch (error) {
-        console.error("Error updating ticket:", error)
-        toast({
-          title: "Update Failed",
-          description: error instanceof Error ? error.message : "An unexpected error occurred",
-          variant: "destructive",
-        })
-      } finally {
-        setIsUpdating(false)
-      }
-      return
-    }
-    
+  
     try {
       setIsUpdating(true)
       const updateData: any = { 
@@ -328,6 +291,11 @@ export function TicketDetailsModal({
       toast({ title: "Success", description: successMessage })
       setNoteBody("")
       await onTicketUpdated()
+
+      // If the ticket was resolved, close the modal and prompt for feedback
+      if (selectedStatus === "Resolved" && hasStatusChange) {
+        setTimeout(() => onClose(true), 500)
+      }
       
     } catch (error) {
       console.error("Error updating ticket:", error)
