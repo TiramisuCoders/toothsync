@@ -420,6 +420,134 @@ export async function logBulkDelete(
   });
 }
 
+// app/utils/activityLogger.ts
+// Add these functions to your existing file
+
+// =====================================================
+// CLERK MANAGEMENT ACTIONS
+// =====================================================
+
+export async function logClerkPromoted(
+  adminUserId: string,
+  adminRoleId: string,
+  adminEmail: string,
+  promotedUserId: string,
+  promotedEmail: string,
+  academicYear: string,
+  clientIp?: string
+) {
+  const adminUsername = adminEmail.split("@")[0];
+  const promotedUsername = promotedEmail.split("@")[0];
+
+  await logActivity({
+    actionKey: "clerk_promoted",
+    userId: adminUserId,
+    roleId: adminRoleId,
+    placeholders: {
+      admin_username: adminUsername,
+      username: promotedUsername,
+      academic_year: academicYear,
+    },
+    metadata: {
+      admin_email: adminEmail,
+      promoted_user_id: promotedUserId,
+      promoted_email: promotedEmail,
+      academic_year: academicYear,
+    },
+    clientIp,
+  });
+}
+
+export async function logClerkStatusChanged(
+  adminUserId: string,
+  adminRoleId: string,
+  adminEmail: string,
+  clerkUserId: string,
+  clerkEmail: string,
+  oldStatus: string,
+  newStatus: string,
+  clientIp?: string
+) {
+  const adminUsername = adminEmail.split("@")[0];
+  const clerkUsername = clerkEmail.split("@")[0];
+
+  await logActivity({
+    actionKey: "clerk_status_changed",
+    userId: adminUserId,
+    roleId: adminRoleId,
+    placeholders: {
+      admin_username: adminUsername,
+      clerk_username: clerkUsername,
+      old_status: oldStatus,
+      new_status: newStatus,
+    },
+    metadata: {
+      admin_email: adminEmail,
+      clerk_user_id: clerkUserId,
+      clerk_email: clerkEmail,
+      old_status: oldStatus,
+      new_status: newStatus,
+    },
+    clientIp,
+  });
+}
+
+export async function logClerkArchived(
+  adminUserId: string,
+  adminRoleId: string,
+  adminEmail: string,
+  clerkUserId: string,
+  clerkEmail: string,
+  clientIp?: string
+) {
+  const adminUsername = adminEmail.split("@")[0];
+  const clerkUsername = clerkEmail.split("@")[0];
+
+  await logActivity({
+    actionKey: "clerk_archived",
+    userId: adminUserId,
+    roleId: adminRoleId,
+    placeholders: {
+      admin_username: adminUsername,
+      clerk_username: clerkUsername,
+    },
+    metadata: {
+      admin_email: adminEmail,
+      clerk_user_id: clerkUserId,
+      clerk_email: clerkEmail,
+    },
+    clientIp,
+  });
+}
+
+export async function logClerkUnarchived(
+  adminUserId: string,
+  adminRoleId: string,
+  adminEmail: string,
+  clerkUserId: string,
+  clerkEmail: string,
+  clientIp?: string
+) {
+  const adminUsername = adminEmail.split("@")[0];
+  const clerkUsername = clerkEmail.split("@")[0];
+
+  await logActivity({
+    actionKey: "clerk_unarchived",
+    userId: adminUserId,
+    roleId: adminRoleId,
+    placeholders: {
+      admin_username: adminUsername,
+      clerk_username: clerkUsername,
+    },
+    metadata: {
+      admin_email: adminEmail,
+      clerk_user_id: clerkUserId,
+      clerk_email: clerkEmail,
+    },
+    clientIp,
+  });
+}
+
 export async function logBulkExport(
   userId: string,
   roleId: string,
