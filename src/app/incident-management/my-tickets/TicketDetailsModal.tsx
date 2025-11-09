@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { X, FileText, MessageSquare, Paperclip, Star } from "lucide-react"
+import { X, FileText, MessageSquare, Paperclip, Star, Shield } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -77,6 +77,9 @@ interface Ticket {
   notes: IncidentNote[]
   attachments: IncidentAttachment[]
 }
+
+// --- Constants ---
+const SUPPORT_TEAM_EMAIL = "judeemmanuel.flores.cics@ust.edu.ph"
 
 // --- Utility Functions ---
 
@@ -160,6 +163,9 @@ export function TicketDetailsModal({
   const [feedback, setFeedback] = useState<SystemFeedback | null>(null)
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false)
   
+  // Check if ticket is assigned to support team (R04 ticket)
+  const isSupportTeamTicket = ticket.assigned_user_name?.toLowerCase().includes(SUPPORT_TEAM_EMAIL.toLowerCase())
+  
   // Lock ticket if it's Resolved OR Cancelled
   const isFinalized = ticket.status === "Resolved" || ticket.status === "Cancelled"
   const finalizedReason = ticket.status === "Resolved" ? "resolved" : "cancelled"
@@ -222,7 +228,7 @@ export function TicketDetailsModal({
   }, [isOpen, ticket.incident_id, isFinalized, fetchFeedback])
 
 
-if (!isOpen || !mounted) return null
+  if (!isOpen || !mounted) return null
   
   // --- Handlers ---
 
@@ -441,6 +447,20 @@ if (!isOpen || !mounted) return null
         <div className="flex-1 overflow-y-auto p-6">
           {activeTab === "details" && (
             <div className="space-y-6">
+              {/* Support Team Notice for R04 Tickets */}
+              {isSupportTeamTicket && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+                  <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold text-blue-900 mb-1">Support Team Ticket</h3>
+                    <p className="text-sm text-blue-800">
+                      This ticket is being handled by our support team at{" "}
+                      <span className="font-medium">{SUPPORT_TEAM_EMAIL}</span>
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Incident Details</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -502,8 +522,12 @@ if (!isOpen || !mounted) return null
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-600">Assigned to</label>
-                    <p className="text-gray-800 mt-1">{ticket.assigned_user_name || "Unassigned"}</p>
+                    <label className="text-sm font-medium text-gray-600">
+                      {isSupportTeamTicket ? "Support Team" : "Assigned to"}
+                    </label>
+                    <p className="text-gray-800 mt-1">
+                      {isSupportTeamTicket ? SUPPORT_TEAM_EMAIL : (ticket.assigned_user_name || "Unassigned")}
+                    </p>
                   </div>
                 </div>
               </div>

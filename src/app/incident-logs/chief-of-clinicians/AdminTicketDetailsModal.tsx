@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { X, FileText, MessageSquare, Paperclip, AlertTriangle, ChevronDown, Star } from "lucide-react"
+import { X, FileText, MessageSquare, Paperclip, AlertTriangle, ChevronDown, Star, AlertCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,7 +20,21 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { createBrowserClient } from "@supabase/ssr"
 
-// NEW: Feedback Interface (matching the finalized user structure)
+// Auto-escalation issue types
+const AUTO_ESCALATION_ISSUE_TYPES = [
+  'ISS_ROLE_ACCESS',
+  'ISS_RESOURCE_NOT_APPEARING',
+  'ISS_MANUAL_OVERRIDE_FAILED',
+  'ISS_INCORRECT_FORM_ACCESS',
+  'ISS_TICKET_MISSING',
+  'ISS_UNEXPECTED_ERROR',
+  'ISS_ATTENDANCE_NOT_UPDATING',
+  'ISS_DATA_INTEGRITY',
+  'ISS_PERFORMANCE_LAG',
+  'ISS_WRONG_SUMMARY',
+  'ISS_LOGBOOK_EXPORT_FAILS'
+]
+
 interface SystemFeedback {
   feedback_id: string
   incident_id: string
@@ -54,6 +68,8 @@ interface Incident {
   submitted_at: string
   updated_at: string
   resolved_at?: string
+  escalated_to_support?: boolean
+  escalated_at?: string
 }
 
 interface IncidentNote {
@@ -120,7 +136,6 @@ const getPriorityBadgeColors = (priority: string) => {
   }
 }
 
-// NEW: Utility to get color for string ratings (without border)
 const getRatingBadgeColors = (rating: string) => {
   const normalized = rating.toLowerCase().trim()
   if (normalized.includes("excellent") || normalized.includes("completely")) {
@@ -134,7 +149,6 @@ const getRatingBadgeColors = (rating: string) => {
   }
   return "bg-gray-100 text-gray-800 hover:bg-opacity-100"
 }
-
 
 export function AdminTicketDetailsModal({
   isOpen,
@@ -157,13 +171,13 @@ export function AdminTicketDetailsModal({
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([])
   const [loadingUsers, setLoadingUsers] = useState(false)
   const [showResolveConfirm, setShowResolveConfirm] = useState(false)
+  const [showEscalateConfirm, setShowEscalateConfirm] = useState(false)
+  const [isEscalating, setIsEscalating] = useState(false)
   const [adminUserId, setAdminUserId] = useState<string | null>(null)
   
-  // NEW: State for Feedback Tab
   const [feedback, setFeedback] = useState<SystemFeedback | null>(null)
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false)
   
-  // Dropdown open states
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false)
   const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false)
   const [assigneeDropdownOpen, setAssigneeDropdownOpen] = useState(false)
@@ -197,8 +211,8 @@ export function AdminTicketDetailsModal({
       }
     } else {
       document.body.style.overflow = 'unset'
-      setFeedback(null) // Clear feedback on close
-      setActiveTab("details") // Reset tab
+      setFeedback(null)
+      setActiveTab("details")
     }
     return () => {
       document.body.style.overflow = 'unset'
@@ -211,11 +225,9 @@ export function AdminTicketDetailsModal({
     setSelectedAssignee(incident.assignee_user_id || "unassigned")
   }, [incident])
 
-  // Effect to close dropdowns on outside click (Z-Index fix logic)
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement
-      // Check if click is outside all dropdown containers
       if (!target.closest('.dropdown-container')) {
         setStatusDropdownOpen(false)
         setPriorityDropdownOpen(false)
@@ -232,11 +244,9 @@ export function AdminTicketDetailsModal({
     }
   }, [isOpen])
 
-  // NEW: Feedback Fetching Logic (Admin side uses /api/support/user-tickets/feedback)
   const fetchFeedback = async (incidentId: string) => {
     setIsFeedbackLoading(true)
     try {
-      // NOTE: Assuming the client-side API route for fetching feedback is reused for the admin view
       const response = await fetch(`/api/support/user-tickets/feedback?incident_id=${incidentId}`)
       const result = await response.json()
 
@@ -254,11 +264,9 @@ export function AdminTicketDetailsModal({
     }
   }
 
-
   const fetchAssignableUsers = async () => {
     try {
       setLoadingUsers(true)
-      // NOTE: Using the /api/incidents route to fetch R04 users
       const response = await fetch('/api/incidents?type=assignable_users')
       if (!response.ok) throw new Error('Failed to fetch assignable users')
       
@@ -276,12 +284,52 @@ export function AdminTicketDetailsModal({
     }
   }
 
-  // --- ERROR FIX: Conditional return must come before modalContent definition ---
   if (!isOpen || !mounted) return null
   
   const isResolved = incident.status === "Resolved"
   const isCancelled = incident.status === "Cancelled"
   const isFinalized = isResolved || isCancelled
+  const isAutoEscalated = AUTO_ESCALATION_ISSUE_TYPES.includes(incident.issue_type_id)
+  const canEscalate = !isAutoEscalated && !isFinalized && !incident.escalated_to_support
+
+  const handleEscalateToSupport = async () => {
+    try {
+      setIsEscalating(true)
+      
+      const response = await fetch("/api/incidents/escalate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          incident_id: incident.incident_id,
+          escalated_by_user_id: adminUserId || 'admin'
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.details || "Failed to escalate incident")
+      }
+
+      toast({ 
+        title: "Success", 
+        description: "Incident escalated to Support Team successfully" 
+      })
+      
+      await onUpdate()
+      
+    } catch (error) {
+      console.error("Error escalating incident:", error)
+      toast({
+        title: "Escalation Failed",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+        variant: "destructive",
+      })
+    } finally {
+      setIsEscalating(false)
+      setShowEscalateConfirm(false)
+    }
+  }
 
   const handleUpdateIncident = async (confirmResolve: boolean = false) => {
     const hasStatusChange = selectedStatus !== incident.status
@@ -298,7 +346,6 @@ export function AdminTicketDetailsModal({
       return
     }
     
-    // Prevent modification of Cancelled tickets, but allow changes to Resolved status (via PUT)
     if (incident.status === "Cancelled" && (hasStatusChange || hasPriorityChange || hasAssigneeChange)) {
       toast({
         title: "Action Blocked",
@@ -310,6 +357,8 @@ export function AdminTicketDetailsModal({
 
     if (hasStatusChange && selectedStatus === "Resolved" && !confirmResolve) {
       setShowResolveConfirm(true)
+      // 🐛 FIX: Resetting isUpdating so the button is not disabled when AlertDialog is shown
+      setIsUpdating(false); 
       return
     }
 
@@ -347,10 +396,7 @@ export function AdminTicketDetailsModal({
         description: `Incident updated successfully. ${result.changes?.join(', ') || 'Changes applied'}` 
       })
       
-      // 1. Fetch fresh data (including the new note)
       await onUpdate()
-      
-      // 2. Clear the note input after successful update
       setNoteBody("")
       
     } catch (error) {
@@ -428,7 +474,6 @@ export function AdminTicketDetailsModal({
     return assignee ? assignee.name : (incident.assignee_user_email || 'Select assignee')
   }
 
-  // --- modalContent definition ---
   const modalContent = (
     <>
       <div 
@@ -464,6 +509,16 @@ export function AdminTicketDetailsModal({
                     <Badge variant="destructive" className="flex items-center gap-1">
                       <AlertTriangle className="w-3 h-3" />
                       Manual Review Required
+                    </Badge>
+                  )}
+                  {isAutoEscalated && (
+                    <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">
+                      Auto-Escalated
+                    </Badge>
+                  )}
+                  {incident.escalated_to_support && (
+                    <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
+                      Escalated to Support
                     </Badge>
                   )}
                 </div>
@@ -507,7 +562,7 @@ export function AdminTicketDetailsModal({
                 <Paperclip className="w-4 h-4" />
                 Attachments ({attachments?.length || 0})
               </button>
-              {isFinalized && ( // Show Feedback tab only if finalized
+              {isFinalized && (
                 <button
                   onClick={() => setActiveTab("feedback")}
                   className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
@@ -582,7 +637,6 @@ export function AdminTicketDetailsModal({
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">Incident Management</h3>
                   
                   <div className="grid grid-cols-3 gap-4">
-                    {/* Status Dropdown */}
                     <div className="relative dropdown-container">
                       <label className="text-sm font-medium text-gray-700 mb-2 block">
                         Status
@@ -600,7 +654,8 @@ export function AdminTicketDetailsModal({
                       </button>
                       {statusDropdownOpen && !isCancelled && (
                         <div className="absolute z-[100000] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
-                          {["Pending", "In Progress", "Resolved", "Cancelled"].map((status) => (
+                          {/* 🟢 MODIFIED: Removed "Resolved" status */}
+                          {["Pending", "In Progress", "Cancelled"].map((status) => (
                             <button
                               key={status}
                               type="button"
@@ -617,7 +672,6 @@ export function AdminTicketDetailsModal({
                       )}
                     </div>
 
-                    {/* Priority Dropdown */}
                     <div className="relative dropdown-container">
                       <label className="text-sm font-medium text-gray-700 mb-2 block">
                         Priority
@@ -652,7 +706,6 @@ export function AdminTicketDetailsModal({
                       )}
                     </div>
 
-                    {/* Assignee Dropdown */}
                     <div className="relative dropdown-container">
                       <label className="text-sm font-medium text-gray-700 mb-2 block">
                         Assign To
@@ -722,11 +775,20 @@ export function AdminTicketDetailsModal({
                       </p>
                     </div>
                   )}
+
+                  {isAutoEscalated && (
+                    <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                      <p className="text-sm text-orange-800 font-medium flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4" />
+                        This incident was automatically escalated to the Support Team due to its critical nature.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-        {activeTab === "notes" && (
+            {activeTab === "notes" && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Notes History</h3>
                 {notes?.length > 0 ? (
@@ -785,7 +847,7 @@ export function AdminTicketDetailsModal({
                   </div>
                 </div>
 
-<div>
+                <div>
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">Attached Files</h3>
                   {attachments?.length > 0 ? (
                     <div className="space-y-2">
@@ -840,7 +902,6 @@ export function AdminTicketDetailsModal({
               </div>
             )}
             
-            {/* NEW: Feedback Tab */}
             {activeTab === "feedback" && isFinalized && (
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold text-gray-800">Reporter Feedback</h3>
@@ -852,7 +913,6 @@ export function AdminTicketDetailsModal({
                 ) : feedback ? (
                   <div className="bg-gray-50 rounded-lg p-6 border space-y-4">
                     
-                    {/* Rating Fields */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-1">
                         <p className="font-medium text-gray-700">Overall Experience</p>
@@ -876,7 +936,6 @@ export function AdminTicketDetailsModal({
                       </div>
                     </div>
                     
-                    {/* Comments Field */}
                     <div className="pt-2">
                       <p className="font-medium text-gray-700 mb-2">Additional Comments</p>
                       <p className="text-gray-800 bg-white p-3 rounded border border-gray-200 min-h-[80px] whitespace-pre-wrap">
@@ -901,25 +960,38 @@ export function AdminTicketDetailsModal({
             )}
           </div>
 
-          {/* Footer with Update Button */}
-          <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-            <Button 
-              variant="outline" 
-              onClick={onClose} 
-              disabled={isUpdating}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => handleUpdateIncident()}
-              disabled={isUpdating || isCancelled} // Lock update if Cancelled
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              {isUpdating ? "Updating..." : "Update Incident"}
-            </Button>
+          <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-between items-center gap-3">
+            <div>
+              {canEscalate && (
+                <Button
+                  onClick={() => setShowEscalateConfirm(true)}
+                  disabled={isEscalating}
+                  variant="outline"
+                  className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                >
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  {isEscalating ? "Escalating..." : "Escalate to Support Team"}
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                onClick={onClose} 
+                disabled={isUpdating}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => handleUpdateIncident()}
+                disabled={isUpdating || isCancelled}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {isUpdating ? "Updating..." : "Update Incident"}
+              </Button>
+            </div>
           </div>
 
-          {/* Resolve Confirmation Dialog */}
           <AlertDialog open={showResolveConfirm} onOpenChange={setShowResolveConfirm}>
             <AlertDialogContent>
               <AlertDialogHeader>
@@ -941,6 +1013,31 @@ export function AdminTicketDetailsModal({
                   className="bg-red-600 hover:bg-red-700"
                 >
                   Confirm Resolve
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog open={showEscalateConfirm} onOpenChange={setShowEscalateConfirm}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2 text-orange-600">
+                  <AlertCircle className="w-5 h-5" />
+                  Escalate to Support Team
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to escalate this incident to the Support Team? This will send all ticket details to the support team for assistance. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setShowEscalateConfirm(false)}>
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleEscalateToSupport}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  Confirm Escalation
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

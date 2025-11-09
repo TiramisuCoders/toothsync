@@ -15,9 +15,45 @@ const RESTRICTED_MODULES = [
     'System Operations'
 ];
 
+// 🟢 NEW CONSTANT: The specific support team email used in the frontend
+const SUPPORT_TEAM_EMAIL = "judeemmanuel.flores.cics@ust.edu.ph";
+
+
 // ===============================================
 // HELPER FUNCTIONS
 // ===============================================
+
+// 🟢 NEW HELPER: Get the specific user ID for the SUPPORT_TEAM_EMAIL
+async function getSupportTeamUser(supabase: any): Promise<{ id: string, email: string } | null> {
+    try {
+        console.log('🔍 Searching for designated Support Team User...');
+        
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('auth_user_id, email')
+            .eq('email', SUPPORT_TEAM_EMAIL.toLowerCase())
+            .single();
+
+        if (error) {
+            console.error('Error finding Support Team User:', error);
+            return null;
+        }
+
+        if (!user) {
+            console.warn('⚠️ Designated Support Team User not found in DB.');
+            return null;
+        }
+
+        return {
+            id: user.auth_user_id,
+            email: user.email
+        };
+
+    } catch (error) {
+        console.error('💥 Error in getSupportTeamUser:', error);
+        return null;
+    }
+}
 
 // Get an available user with role 'R04' to be the assignee
 async function findAssignee(supabase: any): Promise<{ id: string, email: string } | null> {
@@ -245,6 +281,9 @@ export async function POST(request: NextRequest) {
         const description = formData.get('description') as string;
         const reportedBy = formData.get('reportedBy') as string;
         const files = formData.getAll('files') as File[];
+        // 🟢 NEW: Read the flag from the frontend (SubmitTicketForm.tsx)
+        const isChiefOfCliniciansFlag = formData.get('isChiefOfClinicians') === 'true';
+
 
         if (!title || !affectedModule || !category || !description || !reportedBy) {
             return NextResponse.json(
@@ -300,17 +339,37 @@ export async function POST(request: NextRequest) {
         const ticketNumber = ticketNumResult as string;
         console.log('Generated ticket number:', ticketNumber);
         
-        // Find assignee
-        const assignee = await findAssignee(supabasePrivileged);
+        // 🟢 MODIFIED ASSIGNEE LOGIC
+        let assigneeUserId = null;
+        let assigneeUserEmail = null;
 
-        let assigneeUserId = assignee ? assignee.id : null;
-        let assigneeUserEmail = assignee ? assignee.email : null;
+        if (isChiefOfCliniciansFlag) {
+            // LOGIC 1: If R04 flag is present, assign to the specific Support Team User
+            const supportTeamUser = await getSupportTeamUser(supabasePrivileged);
+            if (supportTeamUser) {
+                assigneeUserId = supportTeamUser.id;
+                assigneeUserEmail = supportTeamUser.email;
+                console.log(`👑 R04 Ticket: FORCING assignment to Support Team: ${assigneeUserEmail}`);
+            } else {
+                // FALLBACK
+                const defaultAssignee = await findAssignee(supabasePrivileged);
+                assigneeUserId = defaultAssignee ? defaultAssignee.id : null;
+                assigneeUserEmail = defaultAssignee ? defaultAssignee.email : null;
+                console.warn('⚠️ Designated Support Team User not found. Falling back to default R04 assignee.');
+            }
+        } else {
+            // LOGIC 2: For non-R04 tickets, use the default random R04 assignment
+            const defaultAssignee = await findAssignee(supabasePrivileged);
+            assigneeUserId = defaultAssignee ? defaultAssignee.id : null;
+            assigneeUserEmail = defaultAssignee ? defaultAssignee.email : null;
+        }
 
         if (assigneeUserId) {
-            console.log(`✅ Assigning ticket to: ${assigneeUserEmail} (${assigneeUserId})`);
+            console.log(`✅ Final Assigning ticket to: ${assigneeUserEmail} (${assigneeUserId})`);
         } else {
-            console.log('⚠️ Could not find a default assignee. Ticket will be unassigned (Pending).');
+            console.log('⚠️ Could not find an assignee. Ticket will be unassigned (Pending).');
         }
+
 
         // Insert incident
         const { data: newIncident, error: incidentInsertError } = await supabasePrivileged
@@ -327,6 +386,7 @@ export async function POST(request: NextRequest) {
                 priority: 'Medium Priority', 
                 requires_manual_severity_review: true,
                 submitted_at: new Date().toISOString(),
+                // ⬅️ These now hold the correct assigned user/email based on the R04 flag
                 assignee_user_id: assigneeUserId,
                 assignee_user_email: assigneeUserEmail, 
             })

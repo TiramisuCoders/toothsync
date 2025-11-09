@@ -4,7 +4,7 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { X, Paperclip } from "lucide-react"
+import { X, Paperclip, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -27,6 +27,8 @@ const INITIAL_FORM_DATA = {
     attachments: null as File[] | null,
 };
 
+const SUPPORT_TEAM_EMAIL = "judeemmanuel.flores.cics@ust.edu.ph";
+
 export default function SubmitTicketForm() {
   const router = useRouter()
   const { toast } = useToast()
@@ -45,6 +47,7 @@ export default function SubmitTicketForm() {
   const [isLoadingIssueTypes, setIsLoadingIssueTypes] = useState(false)
   const [selectedModuleId, setSelectedModuleId] = useState("")
   const [isLoadingUser, setIsLoadingUser] = useState(true)
+  const [isChiefOfClinicians, setIsChiefOfClinicians] = useState(false)
 
   // Initialize Supabase client
   const supabase = createBrowserClient(
@@ -52,11 +55,13 @@ export default function SubmitTicketForm() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
-  // --- Fetch Current User ---
+  // --- Fetch Current User and Role ---
   useEffect(() => {
     const fetchCurrentUser = async () => {
       try {
         setIsLoadingUser(true)
+        
+        // Get user from Supabase
         const { data: { user }, error } = await supabase.auth.getUser()
         
         if (error) {
@@ -83,6 +88,21 @@ export default function SubmitTicketForm() {
             variant: "destructive" 
           })
         }
+
+        // Check if user is Chief of Clinicians (R04)
+        const roleCookie = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('role='))
+          ?.split('=')[1];
+        
+        console.log('🔍 [DEBUG] Role Cookie Value:', roleCookie);
+        console.log('🔍 [DEBUG] Is Chief?:', roleCookie === 'chief-of-clinicians');
+        
+        if (roleCookie === 'chief-of-clinicians') {
+          console.log('👑 User is Chief of Clinicians (R04)')
+          setIsChiefOfClinicians(true)
+        }
+
       } catch (error) {
         console.error('Error in fetchCurrentUser:', error)
       } finally {
@@ -178,6 +198,19 @@ export default function SubmitTicketForm() {
       submitFormData.append('category', formData.category)
       submitFormData.append('description', formData.description)
       submitFormData.append('reportedBy', formData.reportedBy)
+      
+      // Flag for R04 users
+      console.log('🔍 [DEBUG] isChiefOfClinicians state:', isChiefOfClinicians);
+      if (isChiefOfClinicians) {
+        console.log('✅ Adding isChiefOfClinicians flag to FormData');
+        submitFormData.append('isChiefOfClinicians', 'true')
+      }
+
+      // Debug: Log all FormData entries
+      console.log('📦 [DEBUG] FormData entries:');
+      for (let [key, value] of submitFormData.entries()) {
+        console.log(`  ${key}:`, value);
+      }
 
       if (formData.attachments && formData.attachments.length > 0) {
         formData.attachments.forEach((file) => {
@@ -211,10 +244,10 @@ export default function SubmitTicketForm() {
     }
   }
 
-const handleSuccessClose = () => {
-  setShowSuccessModal(false)
-  router.push("/support/faq/my-ticket") 
-}
+  const handleSuccessClose = () => {
+    setShowSuccessModal(false)
+    router.push("/support/faq/my-ticket") 
+  }
 
   const handleFailureClose = () => {
     setShowFailureModal(false)
@@ -251,6 +284,20 @@ const handleSuccessClose = () => {
         </div>
       ) : (
         <>
+          {/* R04 Support Team Notice */}
+          {isChiefOfClinicians && (
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-blue-900 mb-1">Support Team Assignment</h3>
+                <p className="text-sm text-blue-800">
+                  As Chief of Clinicians, your tickets will be automatically assigned to our support team at{" "}
+                  <span className="font-medium">{SUPPORT_TEAM_EMAIL}</span>
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* 1. Ticket Title */}
@@ -355,6 +402,25 @@ const handleSuccessClose = () => {
                 </p>
               )}
             </div>
+
+            {/* R04 Assignment Display */}
+            {isChiefOfClinicians && (
+              <div>
+                <label htmlFor="assignedTo" className="block text-sm font-medium text-gray-700 mb-2">
+                  Assigned to (Support Team)
+                </label>
+                <Input
+                  id="assignedTo"
+                  type="text"
+                  value={SUPPORT_TEAM_EMAIL}
+                  className="w-full bg-gray-100 text-gray-600 cursor-not-allowed"
+                  readOnly={true}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Your ticket will be handled by our support team
+                </p>
+              </div>
+            )}
 
             {/* 6. Attachments */}
             <div>

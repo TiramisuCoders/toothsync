@@ -326,8 +326,9 @@ export async function POST(request: NextRequest) {
                 description: description,
                 
                 status: assigneeUserId ? 'In Progress' : 'Pending', 
-                priority: 'Medium Priority', 
-                requires_manual_severity_review: true,
+                // ❌ REMOVE THESE TWO LINES - Let triggers handle it
+                // priority: 'Medium Priority', 
+                // requires_manual_severity_review: true,
                 submitted_at: new Date().toISOString(),
                 
                 assignee_user_id: assigneeUserId,
@@ -335,7 +336,6 @@ export async function POST(request: NextRequest) {
             })
             .select()
             .single();
-
         if (incidentInsertError) {
             console.error('🚨 Error creating incident (Supabase error):', incidentInsertError.message, incidentInsertError.details); 
             return NextResponse.json(
