@@ -3,7 +3,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, Check, ChevronsUpDown } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
 
 interface Clerk {
   id: string
@@ -44,6 +47,7 @@ export default function ClerksPage() {
   const [availableUsers, setAvailableUsers] = useState<any[]>([])
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([])
   const [selectedUser, setSelectedUser] = useState<any>(null)
+  const [openUserCombobox, setOpenUserCombobox] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState("")
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -446,33 +450,70 @@ export default function ClerksPage() {
                   <DialogTitle>Promote User to Clerk</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                  <div className="space-y-2">
+                  {/* Searchable User Selection with Combobox */}
+                  <div className="space-y-2 z - 99999">
                     <Label>Select User (R01 - Clinicians)</Label>
-                    <Select 
-                      value={selectedUser?.auth_user_id || ""} 
-                      onValueChange={(value) => {
-                        const user = availableUsers.find(u => u.auth_user_id === value)
-                        setSelectedUser(user)
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a clinician to promote to clerk" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableUsers.map((user) => (
-                          <SelectItem key={user.auth_user_id} value={user.auth_user_id}>
-                            <div className="flex flex-col">
+                    <Popover open={openUserCombobox} onOpenChange={setOpenUserCombobox}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={openUserCombobox}
+                          className="w-full justify-between"
+                        >
+                          {selectedUser ? (
+                            <span className="flex items-center gap-2">
                               <span className="font-medium">
-                                {user.first_name} {user.last_name}
+                                {selectedUser.first_name} {selectedUser.last_name}
                               </span>
                               <span className="text-sm text-gray-500">
-                                {user.email} • {user.sex}
+                                • {selectedUser.email}
                               </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                            </span>
+                          ) : (
+                            "Choose a clinician to promote to clerk"
+                          )}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[550px] p-0">
+                        <Command>
+                          <CommandInput placeholder="Search clinicians by name or email..." />
+                          <CommandList>
+                            <CommandEmpty>No clinicians found.</CommandEmpty>
+                            <CommandGroup>
+                              {availableUsers.map((user) => (
+                                <CommandItem
+                                  key={user.auth_user_id}
+                                  value={`${user.first_name} ${user.last_name} ${user.email}`}
+                                  onSelect={() => {
+                                    setSelectedUser(user)
+                                    setOpenUserCombobox(false)
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selectedUser?.auth_user_id === user.auth_user_id
+                                        ? "opacity-100"
+                                        : "opacity-0"
+                                    )}
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">
+                                      {user.first_name} {user.last_name}
+                                    </span>
+                                    <span className="text-sm text-gray-500">
+                                      {user.email} • {user.sex}
+                                    </span>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                     {availableUsers.length === 0 && (
                       <p className="text-sm text-gray-500">
                         No R01 (Clinician) users available for promotion.

@@ -74,6 +74,138 @@ async function logActivity({
 // =====================================================
 // AUTHENTICATION ACTIONS
 // =====================================================
+// =====================================================
+// INSTRUCTOR MANAGEMENT ACTIONS
+// =====================================================
+
+export async function logInstructorCreated(
+  adminUserId: string,
+  adminRoleId: string,
+  adminEmail: string,
+  instructorName: string,
+  instructorEmail: string,
+  clientIp?: string
+) {
+  const adminUsername = adminEmail.split("@")[0];
+
+  await logActivity({
+    actionKey: "instructor_created",
+    userId: adminUserId,
+    roleId: adminRoleId,
+    placeholders: {
+      admin_username: adminUsername,
+      instructor_name: instructorName,
+      email: instructorEmail,
+    },
+    metadata: {
+      admin_email: adminEmail,
+      instructor_email: instructorEmail,
+    },
+    clientIp,
+  });
+}
+
+export async function logInstructorUpdated(
+  adminUserId: string,
+  adminRoleId: string,
+  adminEmail: string,
+  instructorName: string,
+  clientIp?: string
+) {
+  const adminUsername = adminEmail.split("@")[0];
+
+  await logActivity({
+    actionKey: "instructor_updated",
+    userId: adminUserId,
+    roleId: adminRoleId,
+    placeholders: {
+      admin_username: adminUsername,
+      instructor_name: instructorName,
+    },
+    metadata: {
+      admin_email: adminEmail,
+    },
+    clientIp,
+  });
+}
+
+export async function logInstructorArchived(
+  adminUserId: string,
+  adminRoleId: string,
+  adminEmail: string,
+  instructorName: string,
+  clientIp?: string
+) {
+  const adminUsername = adminEmail.split("@")[0];
+
+  await logActivity({
+    actionKey: "instructor_archived",
+    userId: adminUserId,
+    roleId: adminRoleId,
+    placeholders: {
+      admin_username: adminUsername,
+      instructor_name: instructorName,
+    },
+    metadata: {
+      admin_email: adminEmail,
+    },
+    clientIp,
+  });
+}
+
+export async function logInstructorUnarchived(
+  adminUserId: string,
+  adminRoleId: string,
+  adminEmail: string,
+  instructorName: string,
+  clientIp?: string
+) {
+  const adminUsername = adminEmail.split("@")[0];
+
+  await logActivity({
+    actionKey: "instructor_unarchived",
+    userId: adminUserId,
+    roleId: adminRoleId,
+    placeholders: {
+      admin_username: adminUsername,
+      instructor_name: instructorName,
+    },
+    metadata: {
+      admin_email: adminEmail,
+    },
+    clientIp,
+  });
+}
+
+export async function logInstructorStatusChanged(
+  adminUserId: string,
+  adminRoleId: string,
+  adminEmail: string,
+  instructorName: string,
+  oldStatus: string,
+  newStatus: string,
+  clientIp?: string
+) {
+  const adminUsername = adminEmail.split("@")[0];
+
+  await logActivity({
+    actionKey: "instructor_status_changed",
+    userId: adminUserId,
+    roleId: adminRoleId,
+    placeholders: {
+      admin_username: adminUsername,
+      instructor_name: instructorName,
+      old_status: oldStatus,
+      new_status: newStatus,
+    },
+    metadata: {
+      admin_email: adminEmail,
+      old_status: oldStatus,
+      new_status: newStatus,
+    },
+    clientIp,
+  });
+}
 
 export async function logSuccessfulLogin(
   userId: string,
