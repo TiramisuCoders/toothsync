@@ -1,5 +1,7 @@
+//app/api/instructors/route.ts
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { cookies } from "next/headers"
 
 // Helper to parse gender string to match DB enum
 const parseSex = (gender: string): "Male" | "Female" | "Other" => {
@@ -15,6 +17,144 @@ const generatePassword = (firstName: string, lastName: string, contactNumber: st
   const lastInitial = lastName.charAt(0).toUpperCase()
   const lastFourDigits = contactNumber.replace(/\D/g, "").slice(-4)
   return `${firstInitial}${lastInitial}${lastFourDigits}`
+}
+
+// Helper to get current user from session - simplified approach
+async function getCurrentUser() {
+  try {
+    const cookieStore = await cookies()
+    
+    // Try to find the auth token cookie
+    const authToken = cookieStore.get('sb-access-token')?.value || 
+                     cookieStore.get('sb-127-0-0-1-3000-auth-token')?.value ||
+                     cookieStore.get('sb-localhost-3000-auth-token')?.value
+
+    if (!authToken) {
+      console.log("No auth token found in cookies")
+      // Try to get all cookies and find any that look like auth tokens
+      const allCookies = cookieStore.getAll()
+      console.log("Available cookies:", allCookies.map(c => c.name))
+      
+      // Find the Supabase auth cookie
+      const sbAuthCookie = allCookies.find(c => 
+        c.name.startsWith('sb-') && c.name.includes('auth-token')
+      )
+      
+      if (sbAuthCookie) {
+        console.log("Found auth cookie:", sbAuthCookie.name)
+        try {
+          // Parse the cookie value (it's JSON)
+          const authData = JSON.parse(sbAuthCookie.value)
+          const accessToken = authData?.access_token || authData
+          
+          if (accessToken && typeof accessToken === 'string') {
+            const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken)
+            
+            if (error) {
+              console.error("Error verifying token:", error)
+              return null
+            }
+
+            if (user) {
+              // Get user details from users table
+              const { data: userData, error: dbError } = await supabaseAdmin
+                .from('users')
+                .select('auth_user_id, email, role, first_name, last_name')
+                .eq('auth_user_id', user.id)
+                .single()
+
+              if (dbError || !userData) {
+                console.error("DB error:", dbError)
+                return null
+              }
+
+              return userData
+            }
+          }
+        } catch (parseError) {
+          console.error("Error parsing auth cookie:", parseError)
+        }
+      }
+      
+      return null
+    }
+
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(authToken)
+    
+    if (error) {
+      console.error("Error verifying token:", error)
+      return null
+    }
+
+    if (!user) {
+      console.log("No user found from token")
+      return null
+    }
+
+    // Get user details from users table
+    const { data: userData, error: dbError } = await supabaseAdmin
+      .from('users')
+      .select('auth_user_id, email, role, first_name, last_name')
+      .eq('auth_user_id', user.id)
+      .single()
+
+    if (dbError || !userData) {
+      console.error("DB error:", dbError)
+      return null
+    }
+
+    console.log("User found:", userData.email)
+    return userData
+  } catch (error) {
+    console.error("Error getting current user:", error)
+    return null
+  }
+}
+
+// Helper to map role code to role name
+const mapRoleToName = (roleCode: string): string => {
+  const roleMap: { [key: string]: string } = {
+    'R01': 'clinician',
+    'R02': 'clerk',
+    'R03': 'clinical-instructor',
+    'R04': 'chief-of-clinicians'
+  }
+  return roleMap[roleCode] || 'unknown'
+}
+
+// Helper to log activity
+async function logActivity(
+  userId: string,
+  role: string,
+  action: string,
+  actionKey: string,
+  details: any
+) {
+  try {
+    const roleName = mapRoleToName(role)
+    
+    const { error } = await supabaseAdmin
+      .from('activity_logs')
+      .insert({
+        user_id: userId,
+        role: roleName,
+        action: action,
+        action_key: actionKey,
+        category: 'USER_ACTION',
+        severity: actionKey.includes('archive') ? 'WARN' : 'INFO',
+        details: JSON.stringify(details),
+        ip_address: 'system',
+        created_at: new Date().toISOString()
+      })
+    
+    if (error) {
+      console.error('Error logging activity:', error)
+    } else {
+      console.log('Activity logged successfully:', actionKey)
+    }
+  } catch (error) {
+    console.error('Exception logging activity:', error)
+  }
 }
 
 // GET /api/instructors - Fetch all instructors with their department specializations
@@ -88,7 +228,7 @@ export async function GET() {
       proceduresByDepartment.get(proc.department).push(proc.name)
     })
 
-    // Fetch instructors
+    // Fetch instructors - including archived ones
     const { data: instructorsData, error: instructorsError } = await supabaseAdmin
       .from("instructors")
       .select("instructor_id, user_id, status")
@@ -163,11 +303,11 @@ export async function GET() {
           firstName: userData?.first_name || "",
           lastName: userData?.last_name || "",
           gender: userData?.sex || "Other",
-          status: instructor.status || "Not Available",
+          status: instructor.status === "Archived" ? "Not Available" : instructor.status || "Not Available",
           email: userData?.email || "",
           contactNumber: userData?.contact_number || "",
-          expertise: allProceduresForInstructor, // All procedures from their departments
-          departments: departmentIds.map((id: string) => departmentMap.get(id)).filter(Boolean), // Department names
+          expertise: allProceduresForInstructor,
+          departments: departmentIds.map((id: string) => departmentMap.get(id)).filter(Boolean),
           archived: instructor.status === "Archived",
         }
       }) || []
@@ -202,6 +342,15 @@ export async function POST(req: Request) {
         { message: "Missing required fields" },
         { status: 400 },
       )
+    }
+
+    // Get current user for logging
+    const currentUser = await getCurrentUser()
+    console.log("Current user:", currentUser)
+    
+    if (!currentUser) {
+      console.error("Unable to get current user - proceeding without activity log")
+      // Don't block the operation, just skip logging
     }
 
     let authUserId: string | null = null
@@ -311,7 +460,6 @@ export async function POST(req: Request) {
         .in("name", expertise)
 
       if (proceduresData && proceduresData.length > 0) {
-        // Get unique departments
         const uniqueDepartments = [...new Set(proceduresData.map((p: any) => p.department).filter(Boolean))]
         
         const specializationPayload = uniqueDepartments.map((deptId) => ({
@@ -330,7 +478,29 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ message: "Instructor added successfully!" }, { status: 200 })
+    // Log the activity if we have a current user
+    if (currentUser) {
+      await logActivity(
+        currentUser.auth_user_id,
+        currentUser.role,
+        `User ${currentUser.email} created instructor account for ${firstName} ${lastName} (${email})`,
+        'instructors_insert',
+        {
+          admin_email: currentUser.email,
+          admin_name: `${currentUser.first_name} ${currentUser.last_name}`,
+          instructor_id: instructorId,
+          instructor_name: `${firstName} ${lastName}`,
+          instructor_email: email,
+          status: status,
+          expertise: expertise
+        }
+      )
+    }
+
+    return NextResponse.json({ 
+      message: "Instructor added successfully!",
+      instructorId: instructorId
+    }, { status: 200 })
   } catch (error: any) {
     console.error("Unexpected error in POST /api/instructors:", error)
     return NextResponse.json({ message: "Internal server error", error: error.message }, { status: 500 })
@@ -355,6 +525,22 @@ export async function PUT(req: Request) {
     if (!id) {
       return NextResponse.json({ message: "Instructor ID is required" }, { status: 400 })
     }
+
+    // Get current user for logging
+    const currentUser = await getCurrentUser()
+    console.log("Current user (PUT):", currentUser)
+    
+    if (!currentUser) {
+      console.error("Unable to get current user - proceeding without activity log")
+      // Don't block the operation, just skip logging
+    }
+
+    // Get old instructor data for comparison
+    const { data: oldInstructorData } = await supabaseAdmin
+      .from("instructors")
+      .select("status, user_id")
+      .eq("instructor_id", Number.parseInt(id))
+      .single()
 
     const instructorPayload = {
       status: status || "Available",
@@ -401,7 +587,6 @@ export async function PUT(req: Request) {
           .in("name", expertise)
 
         if (proceduresData && proceduresData.length > 0) {
-          // Get unique departments
           const uniqueDepartments = [...new Set(proceduresData.map((p: any) => p.department).filter(Boolean))]
           
           const specializationPayload = uniqueDepartments.map((deptId) => ({
@@ -415,9 +600,163 @@ export async function PUT(req: Request) {
       }
     }
 
+    // Prepare details for activity log
+    const changes: any = {
+      instructor_id: id,
+      instructor_name: `${firstName} ${lastName}`,
+      instructor_email: email
+    }
+
+    if (oldInstructorData && oldInstructorData.status !== status) {
+      changes.old_status = oldInstructorData.status
+      changes.new_status = status
+    }
+
+    // Log the activity if we have a current user
+    if (currentUser) {
+      await logActivity(
+        currentUser.auth_user_id,
+        currentUser.role,
+        `User ${currentUser.email} updated instructor ${firstName} ${lastName}`,
+        'instructors_update',
+        {
+          admin_email: currentUser.email,
+          admin_name: `${currentUser.first_name} ${currentUser.last_name}`,
+          ...changes
+        }
+      )
+    }
+
     return NextResponse.json({ message: "Instructor updated successfully!" }, { status: 200 })
   } catch (error: any) {
     console.error("Unexpected error in PUT /api/instructors:", error)
+    return NextResponse.json({ message: "Internal server error", error: error.message }, { status: 500 })
+  }
+}
+
+// DELETE /api/instructors - Archive/Unarchive an instructor
+export async function DELETE(req: Request) {
+  try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        {
+          message: "Database Configuration Required",
+          error: "Server-side environment variables are missing.",
+        },
+        { status: 500 },
+      )
+    }
+
+    const { id, action } = await req.json()
+
+    if (!id || !action) {
+      return NextResponse.json(
+        { message: "Instructor ID and action are required" },
+        { status: 400 },
+      )
+    }
+
+    // Get current user for logging
+    const currentUser = await getCurrentUser()
+    console.log("Current user (DELETE):", currentUser)
+    
+    if (!currentUser) {
+      console.error("Unable to get current user - proceeding without activity log")
+      // Don't block the operation, just skip logging
+    }
+
+    // Get instructor details before updating
+    const { data: instructorData, error: fetchError } = await supabaseAdmin
+      .from("instructors")
+      .select("user_id, status")
+      .eq("instructor_id", Number.parseInt(id))
+      .single()
+
+    if (fetchError || !instructorData) {
+      console.error("Error fetching instructor:", fetchError)
+      return NextResponse.json(
+        { message: "Instructor not found" },
+        { status: 404 },
+      )
+    }
+
+    let instructorName = "Unknown"
+    if (instructorData) {
+      const { data: userData } = await supabaseAdmin
+        .from("users")
+        .select("first_name, last_name")
+        .eq("auth_user_id", instructorData.user_id)
+        .single()
+      
+      if (userData) {
+        instructorName = `${userData.first_name} ${userData.last_name}`
+      }
+    }
+
+    // Determine new status based on action
+    let newStatus: string
+    if (action === 'archive') {
+      newStatus = 'Archived'
+    } else if (action === 'unarchive') {
+      // When unarchiving, set to "Not Available" as default, they can change it later
+      newStatus = 'Not Available'
+    } else {
+      return NextResponse.json(
+        { message: "Invalid action. Must be 'archive' or 'unarchive'" },
+        { status: 400 },
+      )
+    }
+
+    console.log(`Updating instructor ${id} from ${instructorData.status} to ${newStatus}`)
+
+    // Update instructor status
+    const { error: updateError } = await supabaseAdmin
+      .from("instructors")
+      .update({ status: newStatus })
+      .eq("instructor_id", Number.parseInt(id))
+
+    if (updateError) {
+      console.error("Error updating instructor status:", updateError)
+      return NextResponse.json(
+        { message: `Failed to ${action} instructor: ${updateError.message}` },
+        { status: 500 },
+      )
+    }
+
+    // Verify the update
+    const { data: verifyData } = await supabaseAdmin
+      .from("instructors")
+      .select("status")
+      .eq("instructor_id", Number.parseInt(id))
+      .single()
+
+    console.log(`Verified instructor ${id} status is now: ${verifyData?.status}`)
+
+    // Log the activity if we have a current user
+    if (currentUser) {
+      await logActivity(
+        currentUser.auth_user_id,
+        currentUser.role,
+        `User ${currentUser.email} ${action}d instructor ${instructorName}`,
+        action === 'archive' ? 'instructors_archive' : 'instructors_unarchive',
+        {
+          admin_email: currentUser.email,
+          admin_name: `${currentUser.first_name} ${currentUser.last_name}`,
+          instructor_id: id,
+          instructor_name: instructorName,
+          action: action,
+          old_status: instructorData.status,
+          new_status: newStatus
+        }
+      )
+    }
+
+    return NextResponse.json({ 
+      message: `Instructor ${action}d successfully!`,
+      status: newStatus
+    }, { status: 200 })
+  } catch (error: any) {
+    console.error("Unexpected error in DELETE /api/instructors:", error)
     return NextResponse.json({ message: "Internal server error", error: error.message }, { status: 500 })
   }
 }
