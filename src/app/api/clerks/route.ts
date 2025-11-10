@@ -1,5 +1,13 @@
 // api/clerks/route.ts
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { createClient } from "@supabase/supabase-js";
+import { headers } from 'next/headers';
+import {
+  logClerkPromoted,
+  logClerkStatusChanged,
+  logClerkArchived,
+  logClerkUnarchived,
+} from "@/app/utils/activityLogger";
 
 // Helper function to check if user is authorized (R04 = Chief Clinician)
 async function checkAuthorization(supabase: any) {
@@ -11,7 +19,7 @@ async function checkAuthorization(supabase: any) {
 
   const { data: userRole, error: roleError } = await supabase
     .from('users')
-    .select('role')
+    .select('role, email')
     .eq('auth_user_id', data.user.id)
     .single()
 
@@ -19,24 +27,115 @@ async function checkAuthorization(supabase: any) {
     return { authorized: false, error: 'Insufficient permissions. Only Chief Clinicians can manage clerks.', status: 403 }
   }
 
-  return { authorized: true, user: data.user }
+  return { authorized: true, user: data.user, userInfo: userRole }
 }
 
-// GET - Fetch all clerks
-export async function GET() {
+// Create admin client for privileged operations
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  
+  return createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
+}
+
+// Helper to get client IP
+async function getClientIp() {
+  const headersList = await headers();
+  return headersList.get('x-forwarded-for')?.split(',')[0] || 
+         headersList.get('x-real-ip') || 
+         'unknown';
+}
+
+// GET - Fetch all clerks OR available users OR academic years
+export async function GET(request: Request) {
   const supabase = await createSupabaseServerClient()
   
   try {
-    console.log('🔍 Starting clerk fetch process...')
+    const { searchParams } = new URL(request.url)
+    const type = searchParams.get('type')
     
     const authResult = await checkAuthorization(supabase)
     if (!authResult.authorized) {
       return Response.json({ error: authResult.error }, { status: authResult.status })
     }
 
-    console.log("✅ User authorized, fetching clerks...")
+    // Fetch academic years
+    if (type === 'academic-years') {
+      console.log('📅 Fetching academic years...')
+      
+      const { data: academicYears, error: yearError } = await supabase
+        .from('academic_year')
+        .select('id, academic_year, semester, status')
+        .eq('status', 'active')
+        .order('id', { ascending: false })
 
-    // Get clerk records (include ALL clerks - both archived and active)
+      if (yearError) {
+        return Response.json({ 
+          error: 'Failed to fetch academic years',
+          details: yearError.message
+        }, { status: 500 })
+      }
+
+      console.log(`✅ Found ${academicYears?.length || 0} academic years`)
+      
+      return Response.json({ 
+        success: true, 
+        data: academicYears || [],
+        count: academicYears?.length || 0
+      })
+    }
+
+    // Fetch available users for promotion
+    if (type === 'available-users') {
+      console.log('👥 Fetching available users for clerk promotion...')
+      
+      const { data: availableUsers, error: usersError } = await supabase
+        .from('users')
+        .select(`
+          auth_user_id,
+          first_name,
+          last_name,
+          email,
+          role,
+          sex,
+          contact_number
+        `)
+        .eq('role', 'R01')
+        .order('first_name', { ascending: true })
+
+      if (usersError) {
+        return Response.json({ 
+          error: 'Failed to fetch users',
+          details: usersError.message
+        }, { status: 500 })
+      }
+
+      const { data: currentClerks } = await supabase
+        .from('clerks')
+        .select('user_id')
+
+      const currentClerkIds = currentClerks?.map(clerk => clerk.user_id) || []
+      const filteredUsers = availableUsers?.filter(user => 
+        !currentClerkIds.includes(user.auth_user_id)
+      ) || []
+
+      console.log(`✅ Found ${filteredUsers.length} users available for clerk promotion`)
+      
+      return Response.json({ 
+        success: true, 
+        data: filteredUsers,
+        count: filteredUsers.length
+      })
+    }
+
+    // Default: Fetch all clerks
+    console.log('🔍 Starting clerk fetch process...')
+
     const { data: clerksData, error: clerksError } = await supabase
       .from("clerks")
       .select(`
@@ -48,12 +147,7 @@ export async function GET() {
         archived
       `);
 
-    console.log('📊 All clerks from database:', clerksData)
-    console.log('📊 Archived clerks:', clerksData?.filter(c => c.archived).length)
-    console.log('📊 Active clerks:', clerksData?.filter(c => !c.archived).length)
-
     if (clerksError) {
-      console.log('❌ Clerks query failed:', clerksError.message)
       return Response.json({ 
         error: 'Failed to fetch clerks', 
         details: clerksError.message 
@@ -68,7 +162,6 @@ export async function GET() {
       })
     }
 
-    // Get user info for all clerk user_ids
     const userIds = clerksData.map(clerk => clerk.user_id)
     const { data: usersData, error: usersError } = await supabase
       .from("users")
@@ -88,31 +181,24 @@ export async function GET() {
       }, { status: 500 })
     }
 
-    // Combine and filter data
-    // IMPORTANT: Include ALL clerks from clerks table, regardless of current role
-    // Archived clerks will have R01 role, active clerks will have R02 role
-    const combinedData = clerksData.map(clerk => {
-      const userInfo = usersData?.find(u => u.auth_user_id === clerk.user_id)
-      return {
-        ...clerk,
-        users: userInfo
-      }
-    }).filter(clerk => {
-      // Only filter out if user data is missing entirely
-      if (!clerk.users) {
-        console.log(`⚠️ Skipping clerk with user_id ${clerk.user_id} - no user data found`)
-        return false
-      }
-      
-      // Include ALL clerks regardless of role (R01 or R02)
-      // Archived clerks have R01, active clerks have R02
-      console.log(`✅ Including clerk: ${clerk.users.first_name} ${clerk.users.last_name} (Role: ${clerk.users.role}, Archived: ${clerk.archived})`)
-      return true
-    })
+    const academicYearIds = [...new Set(clerksData.map(c => c.academic_year).filter(Boolean))]
+    const { data: academicYearsData } = await supabase
+      .from('academic_year')
+      .select('id, academic_year, semester')
+      .in('id', academicYearIds)
 
-    console.log('🔍 Combined clerk data:', combinedData)
+    const combinedData = clerksData
+      .map(clerk => {
+        const userInfo = usersData?.find(u => u.auth_user_id === clerk.user_id)
+        const yearInfo = academicYearsData?.find(y => y.id === clerk.academic_year)
+        return {
+          ...clerk,
+          users: userInfo,
+          academic_year_info: yearInfo
+        }
+      })
+      .filter(clerk => clerk.users)
 
-    // Transform data
     const transformedData = combinedData.map((clerk: any, index: number) => ({
       id: `CLK${String(index + 1).padStart(3, '0')}`,
       clerk_id: clerk.user_id,
@@ -121,7 +207,9 @@ export async function GET() {
       firstName: clerk.users?.first_name || '',
       lastName: clerk.users?.last_name || '',
       email: clerk.users?.email || '',
-      year: clerk.academic_year || 'AY2024-1', // Use correct format
+      year: clerk.academic_year || '',
+      yearDisplay: clerk.academic_year_info?.academic_year || clerk.academic_year || '',
+      semester: clerk.academic_year_info?.semester || '',
       section: ['A', 'B', 'C', 'D'][index % 4],
       status: clerk.status === 'Active' ? 'On Duty' : 'Not On Duty',
       archived: clerk.archived || false
@@ -147,6 +235,7 @@ export async function GET() {
 // POST - Add new clerk (promote existing user to clerk role)
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient()
+  const adminClient = getAdminClient()
   
   try {
     console.log('📝 Promoting user to clerk...')
@@ -159,7 +248,8 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { user_id, academic_year, status } = body
 
-    // Validate required fields (removed section - not stored in database)
+    console.log('Request body:', { user_id, academic_year, status })
+
     if (!user_id || !academic_year) {
       return Response.json({ 
         error: 'Missing required fields',
@@ -167,7 +257,22 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    console.log(`Promoting user ${user_id} to clerk with academic year ${academic_year}`)
+    // Validate academic year exists
+    const { data: yearExists, error: yearCheckError } = await supabase
+      .from('academic_year')
+      .select('id, academic_year')
+      .eq('id', academic_year)
+      .single()
+
+    if (yearCheckError || !yearExists) {
+      console.log('Academic year validation failed:', yearCheckError?.message)
+      return Response.json({ 
+        error: 'Invalid academic year',
+        details: 'Selected academic year does not exist'
+      }, { status: 400 })
+    }
+
+    console.log('Academic year validated:', yearExists)
 
     // Check if user exists
     const { data: existingUser, error: userCheckError } = await supabase
@@ -184,7 +289,7 @@ export async function POST(request: Request) {
       }, { status: 404 })
     }
 
-    console.log('Found user:', existingUser)
+    console.log('User found:', existingUser)
 
     // Check if user is already a clerk
     const { data: existingClerk } = await supabase
@@ -200,27 +305,28 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    // Start a transaction-like approach
-    console.log('Updating user role to R02...')
-    
-    // Update user role to R02 (clerk)
-    const { error: roleUpdateError } = await supabase
+    console.log('User is not yet a clerk, proceeding...')
+
+    // STEP 1: Update user role to R02 (clerk) FIRST
+    console.log('Step 1: Updating user role to R02...')
+    const { error: roleUpdateError } = await adminClient
       .from('users')
       .update({ role: 'R02' })
       .eq('auth_user_id', user_id)
 
     if (roleUpdateError) {
-      console.log('Failed to update user role:', roleUpdateError.message)
+      console.log('Failed to update user role:', roleUpdateError)
       return Response.json({ 
         error: 'Failed to update user role',
         details: roleUpdateError.message
       }, { status: 500 })
     }
 
-    console.log('Adding user to clerks table...')
+    console.log('✅ User role updated successfully to R02')
 
-    // Add to clerks table
-    const { data: newClerk, error: insertError } = await supabase
+    // STEP 2: Add to clerks table (now the trigger will have the correct role)
+    console.log('Step 2: Adding clerk record...')
+    const { data: newClerk, error: insertError } = await adminClient
       .from('clerks')
       .insert({
         user_id: user_id,
@@ -232,12 +338,13 @@ export async function POST(request: Request) {
       .single()
 
     if (insertError) {
-      console.log('Failed to add to clerks table:', insertError.message)
+      console.log('Failed to add to clerks table:', insertError)
       
       // Rollback the role change
-      await supabase
+      console.log('Rolling back role change to R01...')
+      await adminClient
         .from('users')
-        .update({ role: existingUser.role }) // Restore original role
+        .update({ role: existingUser.role })
         .eq('auth_user_id', user_id)
       
       return Response.json({ 
@@ -246,7 +353,22 @@ export async function POST(request: Request) {
       }, { status: 500 })
     }
 
-    console.log('✅ Successfully promoted user to clerk:', newClerk)
+    console.log('✅ Clerk record added successfully:', newClerk)
+
+    // STEP 3: Log the activity via edge function
+    console.log('Step 3: Logging promotion activity...')
+    const clientIp = await getClientIp();
+    await logClerkPromoted(
+      authResult.user.id,
+      'R04',
+      authResult.userInfo.email,
+      user_id,
+      existingUser.email,
+      yearExists.academic_year,
+      clientIp
+    );
+
+    console.log('✅ Successfully promoted user to clerk')
 
     return Response.json({ 
       success: true, 
@@ -266,12 +388,13 @@ export async function POST(request: Request) {
   }
 }
 
-// PUT - Update clerk
-export async function PUT(request: Request) {
+// PATCH - Update clerk status
+export async function PATCH(request: Request) {
   const supabase = await createSupabaseServerClient()
+  const adminClient = getAdminClient()
   
   try {
-    console.log('✏️ Updating clerk...')
+    console.log('🔄 Updating clerk status...')
     
     const authResult = await checkAuthorization(supabase)
     if (!authResult.authorized) {
@@ -279,81 +402,81 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json()
-    const { clerk_id, firstName, lastName, email, year, section, status, archived } = body
+    const { clerk_id, status } = body
 
-    if (!clerk_id) {
+    if (!clerk_id || !status) {
       return Response.json({ 
-        error: 'Missing clerk_id',
-        details: 'clerk_id is required for updates'
+        error: 'Missing required fields',
+        details: 'clerk_id and status are required'
       }, { status: 400 })
     }
 
-    console.log('Updating clerk with ID:', clerk_id)
-    console.log('Update data:', { firstName, lastName, email, year, section, status, archived })
-
-    // Check if clerk exists
+    // Check if clerk exists and get current status
     const { data: existingClerk, error: clerkCheckError } = await supabase
       .from('clerks')
-      .select('user_id')
+      .select('user_id, status')
       .eq('user_id', clerk_id)
       .single()
 
     if (clerkCheckError || !existingClerk) {
-      console.log('Clerk not found:', clerkCheckError?.message)
       return Response.json({ 
         error: 'Clerk not found',
         details: 'No clerk found with the provided ID'
       }, { status: 404 })
     }
 
-    // For now, only update clerk-specific info to avoid permission issues
-    // User info (name, email) updates require proper RLS policies
-    // Section is not stored in database, so we skip it
-    console.log('Skipping user info update due to RLS restrictions')
-    console.log('Note: Section is not stored in database - it is display-only')
-    
-    // Update clerk info only (exclude section since it's not in database)
-    const clerkUpdates: any = {}
-    if (status) clerkUpdates.status = status === 'On Duty' ? 'Active' : 'Inactive'
-    if (year) clerkUpdates.academic_year = year
-    if (typeof archived === 'boolean') clerkUpdates.archived = archived
-    // Note: section is not stored in clerks table, it's just for display
+    // Get user info for logging
+    const { data: userInfo } = await supabase
+      .from('users')
+      .select('first_name, last_name, email')
+      .eq('auth_user_id', clerk_id)
+      .single()
 
-    console.log('Updating clerk info only:', clerkUpdates)
+    const oldStatus = existingClerk.status === 'Active' ? 'On Duty' : 'Not On Duty';
+    const newStatus = status;
 
-    if (Object.keys(clerkUpdates).length === 0) {
-      return Response.json({ 
-        error: 'No valid updates provided',
-        details: 'Only clerk status, academic year, and archived status can be updated'
-      }, { status: 400 })
-    }
-
-    const { data: updatedClerk, error: clerkUpdateError } = await supabase
+    // Update clerk status using admin client
+    const dbStatus = status === 'On Duty' ? 'Active' : 'Inactive'
+    const { data: updatedClerk, error: updateError } = await adminClient
       .from('clerks')
-      .update(clerkUpdates)
+      .update({ 
+        status: dbStatus,
+        updatedat: new Date().toISOString()
+      })
       .eq('user_id', clerk_id)
       .select()
       .single()
 
-    if (clerkUpdateError) {
-      console.log('Failed to update clerk info:', clerkUpdateError.message)
+    if (updateError) {
       return Response.json({ 
-        error: 'Failed to update clerk',
-        details: clerkUpdateError.message
+        error: 'Failed to update clerk status',
+        details: updateError.message
       }, { status: 500 })
     }
 
-    console.log('✅ Successfully updated clerk:', updatedClerk)
+    // Log the activity
+    const clientIp = await getClientIp();
+    await logClerkStatusChanged(
+      authResult.user.id,
+      'R04',
+      authResult.userInfo.email,
+      clerk_id,
+      userInfo?.email || 'unknown',
+      oldStatus,
+      newStatus,
+      clientIp
+    );
+
+    console.log('✅ Successfully updated clerk status:', updatedClerk)
 
     return Response.json({ 
       success: true, 
-      message: 'Clerk status updated successfully (Note: Section is display-only and not stored)',
-      data: updatedClerk,
-      note: 'User personal info (name, email) and section updates require additional database changes'
+      message: 'Clerk status updated successfully',
+      data: updatedClerk
     })
 
   } catch (error) {
-    console.error('💥 Error in PUT /api/clerks:', error)
+    console.error('💥 Error in PATCH /api/clerks:', error)
     return Response.json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -364,6 +487,7 @@ export async function PUT(request: Request) {
 // DELETE - Archive/Unarchive clerk
 export async function DELETE(request: Request) {
   const supabase = await createSupabaseServerClient()
+  const adminClient = getAdminClient()
   
   try {
     console.log('🗃️ Archiving/Unarchiving clerk...')
@@ -374,7 +498,7 @@ export async function DELETE(request: Request) {
     }
 
     const body = await request.json()
-    const { clerk_id, action } = body // action: 'archive' or 'unarchive'
+    const { clerk_id, action } = body
 
     if (!clerk_id || !action) {
       return Response.json({ 
@@ -397,57 +521,88 @@ export async function DELETE(request: Request) {
       }, { status: 404 })
     }
 
-    const newArchivedStatus = action === 'archive'
-
-    // Update archived status in clerks table
-    const { data: updatedClerk, error: updateError } = await supabase
-      .from('clerks')
-      .update({ 
-        archived: newArchivedStatus,
-        status: newArchivedStatus ? 'Inactive' : 'Active' // Archived clerks are inactive
-      })
-      .eq('user_id', clerk_id)
-      .select()
+    // Get user info for logging
+    const { data: userInfo } = await supabase
+      .from('users')
+      .select('first_name, last_name, email, role')
+      .eq('auth_user_id', clerk_id)
       .single()
 
-    if (updateError) {
-      return Response.json({ 
-        error: `Failed to ${action} clerk`,
-        details: updateError.message
-      }, { status: 500 })
-    }
-
-    // Update user role: archive = R01 (Clinician), unarchive = R02 (Clerk)
+    const newArchivedStatus = action === 'archive'
     const newRole = newArchivedStatus ? 'R01' : 'R02'
-    console.log(`Updating user role to ${newRole} (${newArchivedStatus ? 'archived' : 'active'})`)
 
-    const { error: roleUpdateError } = await supabase
+    // STEP 1: Update user role first
+    console.log(`Step 1: Updating user role to ${newRole}...`)
+    const { error: roleUpdateError } = await adminClient
       .from('users')
       .update({ role: newRole })
       .eq('auth_user_id', clerk_id)
 
     if (roleUpdateError) {
-      console.log('Failed to update user role:', roleUpdateError.message)
-      // Rollback clerk update if role update fails
-      await supabase
-        .from('clerks')
-        .update({ 
-          archived: existingClerk.archived,
-          status: existingClerk.archived ? 'Inactive' : 'Active'
-        })
-        .eq('user_id', clerk_id)
-      
       return Response.json({ 
         error: 'Failed to update user role',
         details: roleUpdateError.message
       }, { status: 500 })
     }
 
-    console.log(`✅ Successfully ${action}d clerk and updated role to ${newRole}:`, updatedClerk)
+    console.log(`✅ User role updated to ${newRole}`)
+
+    // STEP 2: Update archived status in clerks table
+    console.log('Step 2: Updating clerk archived status...')
+    const { data: updatedClerk, error: updateError } = await adminClient
+      .from('clerks')
+      .update({ 
+        archived: newArchivedStatus,
+        status: newArchivedStatus ? 'Inactive' : 'Active',
+        updatedat: new Date().toISOString()
+      })
+      .eq('user_id', clerk_id)
+      .select()
+      .single()
+
+    if (updateError) {
+      // Rollback role update if clerk update fails
+      console.log('Clerk update failed, rolling back role change...')
+      await adminClient
+        .from('users')
+        .update({ role: userInfo?.role })
+        .eq('auth_user_id', clerk_id)
+      
+      return Response.json({ 
+        error: `Failed to ${action} clerk`,
+        details: updateError.message
+      }, { status: 500 })
+    }
+
+    console.log(`✅ Clerk ${action}d successfully`)
+
+    // STEP 3: Log the activity
+    const clientIp = await getClientIp();
+    if (action === 'archive') {
+      await logClerkArchived(
+        authResult.user.id,
+        'R04',
+        authResult.userInfo.email,
+        clerk_id,
+        userInfo?.email || 'unknown',
+        clientIp
+      );
+    } else {
+      await logClerkUnarchived(
+        authResult.user.id,
+        'R04',
+        authResult.userInfo.email,
+        clerk_id,
+        userInfo?.email || 'unknown',
+        clientIp
+      );
+    }
+
+    console.log(`✅ Successfully ${action}d clerk and updated role to ${newRole}`)
 
     return Response.json({ 
       success: true, 
-      message: `Clerk ${action}d successfully. Role changed to ${newRole} (${newRole === 'R01' ? 'Clinician' : 'Clerk'})`,
+      message: `Clerk ${action}d successfully. Role changed to ${newRole}`,
       data: updatedClerk
     })
 

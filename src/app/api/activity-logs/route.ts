@@ -1,14 +1,17 @@
 // app/api/activity-logs/route.ts
-// Fixed to return correct column mapping with location data
 
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await createSupabaseServerClient()
+    
+    // Get query parameters for filtering
+    const { searchParams } = new URL(request.url)
+    const severityFilter = searchParams.get('severity') // 'INFO', 'WARN', 'ERROR', or null for all
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("activity_logs")
       .select(
         `
@@ -22,33 +25,43 @@ export async function GET() {
         ip_address,
         city,
         country,
-        users:users(first_name, last_name)
+        severity,
+        category,
+        users:users(first_name, last_name, email)
         `
       )
       .order("created_at", { ascending: false })
+
+    // Apply severity filter if provided
+    if (severityFilter && severityFilter !== 'All') {
+      query = query.eq('severity', severityFilter)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error("[ActivityLogs] Supabase error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Map to frontend format:
-    // FE "Action" = BE "action_key" 
-    // FE "Details" = BE "action" (the formatted template message)
+    // Map to frontend format
     const mappedData = data.map((log: any) => ({
       id: log.id,
       created_at: log.created_at,
       user_id: log.user_id,
-      action: log.action_key,  // ✅ FE displays action_key as "Action"
-      details: log.action,      // ✅ FE displays formatted message as "Details"
+      action: log.action,           // Display the formatted action message
+      action_key: log.action_key,   // Include action_key for reference
+      details: log.details || '{}', // Raw JSON details
       role: log.role || "unknown",
+      severity: log.severity || "INFO",
+      category: log.category || "USER_ACTION",
       user_display: log.users 
         ? `${log.users.first_name} ${log.users.last_name}` 
         : "Unknown User",
-      ip_address: log.ip_address,
-      city: log.city,
-      country: log.country,
-      metadata: log.details || null, // Extra JSON data if needed
+      user_email: log.users?.email || "N/A",
+      ip_address: log.ip_address || "N/A",
+      city: log.city || "Unknown",
+      country: log.country || "Unknown",
     }))
 
     return NextResponse.json(mappedData)
