@@ -1,6 +1,13 @@
-[build]
-command = "npm run build"
-publish = ".next"
+[[redirects]]
+from = "/functions/log-activity/*"
+to = "/.netlify/functions/log-activity/:splat"
+status = 200
+force = true
 
-[[plugins]]
-package = "@netlify/plugin-nextjs"
+[[headers]]
+for = "/functions/log-activity"
+[headers.values]
+  X-Forwarded-For = ":req.headers.x-forwarded-for"
+  X-Real-IP = ":req.headers.x-real-ip"
+  CF-Connecting-IP = ":req.headers.cf-connecting-ip"
+  True-Client-IP = ":req.headers.true-client-ip"
