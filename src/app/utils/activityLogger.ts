@@ -41,6 +41,7 @@ async function logActivity({
       headers["apikey"] = SUPABASE_ANON_KEY;
     }
 
+    // ✅ Pass client IP in headers as well (fallback)
     if (clientIp) {
       headers["X-Forwarded-For"] = clientIp;
       headers["X-Real-IP"] = clientIp;
@@ -52,6 +53,7 @@ async function logActivity({
       role_id: roleId,
       placeholders,
       metadata,
+      client_ip: clientIp, // ✅ Primary: client_ip in body
     };
 
     const response = await fetch(EDGE_LOG_ACTIVITY_URL, {
