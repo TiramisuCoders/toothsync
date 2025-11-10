@@ -245,7 +245,7 @@ if (authError || !user) {
       description: incident.description,
       submitted_at: incident.submitted_at,
       updated_at: incident.updated_at,
-      resolved_at: incident.resolved_at
+      resolved_at: incident.resolved_at,
     })) || []
     // END OF CHANGES
 

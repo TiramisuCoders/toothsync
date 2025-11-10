@@ -173,6 +173,8 @@ export function AdminTicketDetailsModal({
   const [showResolveConfirm, setShowResolveConfirm] = useState(false)
   const [showEscalateConfirm, setShowEscalateConfirm] = useState(false)
   const [isEscalating, setIsEscalating] = useState(false)
+  // 🟢 NEW STATE: Track escalation success in the current session
+  const [hasBeenEscalatedThisSession, setHasBeenEscalatedThisSession] = useState(false)
   const [adminUserId, setAdminUserId] = useState<string | null>(null)
   
   const [feedback, setFeedback] = useState<SystemFeedback | null>(null)
@@ -201,7 +203,8 @@ export function AdminTicketDetailsModal({
     }
     getAdminUser()
   }, [])
-
+  
+  // 🟢 MODIFIED: Reset hasBeenEscalatedThisSession when modal opens/closes
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden'
@@ -209,10 +212,12 @@ export function AdminTicketDetailsModal({
       if (incident.status === "Resolved" || incident.status === "Cancelled") {
         fetchFeedback(incident.incident_id)
       }
+      setHasBeenEscalatedThisSession(false) // Reset on opening a new/existing incident
     } else {
       document.body.style.overflow = 'unset'
       setFeedback(null)
       setActiveTab("details")
+      setHasBeenEscalatedThisSession(false) // Reset on close
     }
     return () => {
       document.body.style.overflow = 'unset'
@@ -290,46 +295,61 @@ export function AdminTicketDetailsModal({
   const isCancelled = incident.status === "Cancelled"
   const isFinalized = isResolved || isCancelled
   const isAutoEscalated = AUTO_ESCALATION_ISSUE_TYPES.includes(incident.issue_type_id)
-  const canEscalate = !isAutoEscalated && !isFinalized && !incident.escalated_to_support
+  
+  // 🟢 MODIFIED: The canEscalate logic now checks the new state variable as well
+  const isAlreadyEscalated = incident.escalated_to_support || hasBeenEscalatedThisSession;
+  const canEscalate = !isAutoEscalated && !isFinalized && !isAlreadyEscalated;
 
-  const handleEscalateToSupport = async () => {
-    try {
-      setIsEscalating(true)
-      
-      const response = await fetch("/api/incidents/escalate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          incident_id: incident.incident_id,
-          escalated_by_user_id: adminUserId || 'admin'
-        }),
-      })
+// 🟢 MODIFIED: handleEscalateToSupport function to update the new state and change the toast message
+const handleEscalateToSupport = async () => {
+  try {
+    // 1. Close dialog and set loading state
+    setShowEscalateConfirm(false)
+    setIsEscalating(true)
+    
+    console.log('🚨 CLIENT: Starting escalation API call...')
 
-      const result = await response.json()
+    // 2. Make the API call
+    const response = await fetch("/api/incidents/escalate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        incident_id: incident.incident_id,
+        escalated_by_user_id: adminUserId || 'admin'
+      }),
+    })
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || result.details || "Failed to escalate incident")
-      }
+    const result = await response.json()
 
-      toast({ 
-        title: "Success", 
-        description: "Incident escalated to Support Team successfully" 
-      })
-      
-      await onUpdate()
-      
-    } catch (error) {
-      console.error("Error escalating incident:", error)
-      toast({
-        title: "Escalation Failed",
-        description: error instanceof Error ? error.message : "An unexpected error occurred",
-        variant: "destructive",
-      })
-    } finally {
-      setIsEscalating(false)
-      setShowEscalateConfirm(false)
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || result.details || "Failed to escalate incident")
     }
+
+    // 3. Success - show toast and update state
+    setHasBeenEscalatedThisSession(true)
+    toast({ 
+      title: "Success", 
+      // 🟢 NEW TOAST MESSAGE: Per requirement
+      description: "Incident successfully escalated. You may close the modal and refresh the page to see the full update." 
+    })
+    
+    // 4. Refresh the incident data (onUpdate is kept for consistency but doesn't immediately change incident props)
+    // The key change here is relying on hasBeenEscalatedThisSession for the button state.
+    await onUpdate()
+    
+  } catch (error) {
+    console.error("Error escalating incident:", error)
+    toast({
+      title: "Escalation Failed",
+      description: error instanceof Error ? error.message : "An unexpected error occurred",
+      variant: "destructive",
+    })
+  } finally {
+    // 5. Always cleanup
+    setIsEscalating(false)
   }
+}
+
 
   const handleUpdateIncident = async (confirmResolve: boolean = false) => {
     const hasStatusChange = selectedStatus !== incident.status
@@ -355,6 +375,7 @@ export function AdminTicketDetailsModal({
       return
     }
 
+    // NOTE: This check remains, but the dropdown ensures selectedStatus can never be "Resolved" if it wasn't already.
     if (hasStatusChange && selectedStatus === "Resolved" && !confirmResolve) {
       setShowResolveConfirm(true)
       // 🐛 FIX: Resetting isUpdating so the button is not disabled when AlertDialog is shown
@@ -474,11 +495,28 @@ export function AdminTicketDetailsModal({
     return assignee ? assignee.name : (incident.assignee_user_email || 'Select assignee')
   }
 
+  // 🟢 NEW: Logic for the Escalation button state/text
+  let escalateButtonText = "Escalate to Support Team"
+  let escalateButtonDisabled = !canEscalate || isEscalating
+  let escalateButtonClass = "border-orange-300 text-orange-700 hover:bg-orange-50"
+  let escalateButtonVariant = "outline"
+
+  if (isEscalating) {
+    escalateButtonText = "Escalating..."
+    escalateButtonDisabled = true
+  } else if (isAlreadyEscalated) {
+    escalateButtonText = "Already Escalated"
+    escalateButtonDisabled = true
+    escalateButtonClass = "bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed hover:bg-gray-200"
+    escalateButtonVariant = "outline"
+  }
+
+
   const modalContent = (
     <>
       <div 
         className="fixed inset-0 flex items-center justify-center p-4"
-        style={{ zIndex: 99999 }}
+        style={{ zIndex: 50 }}
       >
         <div 
           className="absolute inset-0 bg-black/50" 
@@ -501,7 +539,7 @@ export function AdminTicketDetailsModal({
           <div className="border-b border-gray-200 bg-white p-6 pr-16">
             <div className="flex items-start gap-4">
               <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-3 mb-2 flex-wrap">
                   <h2 className="text-2xl font-bold text-gray-900">{incident.ticket_num}</h2>
                   <Badge className={getStatusBadgeColors(incident.status)}>{incident.status}</Badge>
                   <Badge className={getPriorityBadgeColors(incident.priority)}>{incident.priority}</Badge>
@@ -512,17 +550,31 @@ export function AdminTicketDetailsModal({
                     </Badge>
                   )}
                   {isAutoEscalated && (
-                    <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">
+                    <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
                       Auto-Escalated
                     </Badge>
                   )}
-                  {incident.escalated_to_support && (
-                    <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
+                  {incident.escalated_to_support && !isAutoEscalated && (
+                    <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100 flex items-center gap-1 animate-pulse">
+                      <AlertCircle className="w-3 h-3" />
+                      Manually Escalated to Support
+                    </Badge>
+                  )}
+                  {incident.escalated_to_support && isAutoEscalated && (
+                    <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
                       Escalated to Support
                     </Badge>
                   )}
                 </div>
                 <h3 className="text-lg text-gray-700 font-medium">{incident.title}</h3>
+                {incident.escalated_to_support && incident.escalated_at && (
+                  <p className="text-sm text-purple-600 mt-2 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" />
+                    Escalated on {new Date(incident.escalated_at).toLocaleString()}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -654,7 +706,7 @@ export function AdminTicketDetailsModal({
                       </button>
                       {statusDropdownOpen && !isCancelled && (
                         <div className="absolute z-[100000] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
-                          {/* 🟢 MODIFIED: Removed "Resolved" status */}
+                          {/* 🟢 MODIFIED: Removed "Resolved" status to restrict admin changes */}
                           {["Pending", "In Progress", "Cancelled"].map((status) => (
                             <button
                               key={status}
@@ -962,17 +1014,16 @@ export function AdminTicketDetailsModal({
 
           <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-between items-center gap-3">
             <div>
-              {canEscalate && (
-                <Button
-                  onClick={() => setShowEscalateConfirm(true)}
-                  disabled={isEscalating}
-                  variant="outline"
-                  className="border-orange-300 text-orange-700 hover:bg-orange-50"
-                >
-                  <AlertCircle className="w-4 h-4 mr-2" />
-                  {isEscalating ? "Escalating..." : "Escalate to Support Team"}
-                </Button>
-              )}
+              {/* 🟢 MODIFIED: Apply new button logic/state/style */}
+              <Button
+                onClick={() => setShowEscalateConfirm(true)}
+                disabled={escalateButtonDisabled}
+                variant={escalateButtonVariant as "outline" | "default"} // Cast needed due to custom variants
+                className={escalateButtonClass}
+              >
+                <AlertCircle className="w-4 h-4 mr-2" />
+                {escalateButtonText}
+              </Button>
             </div>
             <div className="flex gap-3">
               <Button 
