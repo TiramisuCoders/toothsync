@@ -55,6 +55,12 @@ interface DashboardSummary {
   instructorsOnDuty2nd: number;
 }
 
+interface Instructor {
+  name: string;
+  departments: string;
+  shift: string;
+}
+
 export default function ClinicianDashboard() {
   const [showTimeoutDialog, setShowTimeoutDialog] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -65,6 +71,8 @@ export default function ClinicianDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [clinicianToTimeout, setClinicianToTimeout] = useState<Activity | null>(null)
   const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false)
+  const [presentInstructors, setPresentInstructors] = useState<Instructor[]>([])
+  const [loadingInstructors, setLoadingInstructors] = useState(false)
   const [summary, setSummary] = useState<DashboardSummary>({
     todayCount: 0,
     availableChair1st: 0,
@@ -101,9 +109,11 @@ export default function ClinicianDashboard() {
           setTodaysActivities(records.data)
           setSummary(records.dashboard)
           setClinicianInfo(records.user)
+          setPresentInstructors(records.availableInstructors)
         } else {
           throw new Error(records.error || "Failed to fetch records")
         }
+
 
       } catch (err) {
         // console.error("Error fetching data:", err)
@@ -118,6 +128,7 @@ export default function ClinicianDashboard() {
     }
     
     fetchData()
+    console.log(presentInstructors)
   }, [])
 
   const today = new Date()
@@ -131,6 +142,38 @@ export default function ClinicianDashboard() {
   } else if (hour >= 17) {
     greeting = "Good evening"
   }
+
+  // const fetchPresentInstructors = async () => {
+  //   setLoadingInstructors(true)
+  //   try {
+  //     // TODO: Replace with your actual API endpoint
+  //     const response = await fetch("/api/instructors/present", {
+  //       method: "GET",
+  //       credentials: "include",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //       },
+  //     })
+
+  //     if (!response.ok) {
+  //       throw new Error(`HTTP error! status: ${response.status}`)
+  //     }
+
+  //     const data = await response.json()
+      
+  //     if (data.success) {
+  //       setPresentInstructors(data.instructors || [])
+  //     } else {
+  //       throw new Error(data.error || "Failed to fetch instructors")
+  //     }
+  //   } catch (err) {
+  //     console.error("Error fetching present instructors:", err)
+  //     // Don't show error toast for instructors, just log it
+  //     setPresentInstructors([])
+  //   } finally {
+  //     setLoadingInstructors(false)
+  //   }
+  // }
 
   const canTimeOut =
     todaysActivities.every((activity) => activity.status === "Completed" || activity.status === "Cancelled") ||
@@ -269,93 +312,128 @@ export default function ClinicianDashboard() {
         )} */}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-
-        {/* <Card className="shadow-sm border rounded-lg">
-          <CardContent className="p-6">
-          <p className="text-sm font-medium text-gray-500 uppercase">Today's Activities</p>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-4xl font-bold mt-2 text-gray-800">{summary.todayCount}</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* LEFT COLUMN - Summary Cards */}
+        <div className="space-y-6">
+          {/* Available Chairs Card */}
+          <Card className="shadow-sm border rounded-lg">
+            <CardContent className="p-6">
+              <p className="text-sm font-medium text-gray-500 uppercase mb-4">Available Chairs</p>
+              <div className="grid grid-cols-2 gap-6">
+                {/* Shift 1 */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Shift 1</p>
+                    <h3 className="text-3xl font-bold mt-1 text-gray-800">
+                      {summary.availableChair1st}
+                    </h3>
+                  </div>
+                </div>
+                {/* Shift 2 */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Shift 2</p>
+                    <h3 className="text-3xl font-bold mt-1 text-gray-800">
+                      {summary.availableChair2nd}
+                    </h3>
+                  </div>
+                  <div className="bg-[#e6f7eb] p-3 rounded-full">
+                    <RockingChair className="h-5 w-5 text-[#5C8E77]" />
+                  </div>
+                </div>
               </div>
-              <div className="bg-[#e6f7eb] p-4 rounded-full">
-                <Calendar className="h-6 w-6 text-[#5C8E77]" />
+            </CardContent>
+          </Card>
+
+          {/* Instructors on Duty Summary Card */}
+          <Card className="shadow-sm border rounded-lg">
+            <CardContent className="p-6">
+              <p className="text-sm font-medium text-gray-500 uppercase mb-4">Instructors on Duty</p>
+              <div className="grid grid-cols-2 gap-6">
+                {/* Shift 1 */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Shift 1</p>
+                    <h3 className="text-3xl font-bold mt-1 text-gray-800">
+                      {summary.instructorsOnDuty1st}
+                    </h3>
+                  </div>
+                </div>
+                {/* Shift 2 */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Shift 2</p>
+                    <h3 className="text-3xl font-bold mt-1 text-gray-800">
+                      {summary.instructorsOnDuty2nd}
+                    </h3>
+                  </div>
+                  <div className="bg-[#e6f7eb] p-3 rounded-full">
+                    <Users className="h-5 w-5 text-[#5C8E77]" />
+                  </div>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card> */}
+            </CardContent>
+          </Card>
+        </div>
 
-        <Card className="shadow-sm border rounded-lg">
-          <CardContent className="p-6">
-            <p className="text-sm font-medium text-gray-500 uppercase mb-4">Available Chairs</p>
+        {/* RIGHT COLUMN - Detailed Instructor List */}
+        <div>
+          <Card className="shadow-sm border rounded-lg">
+            <CardHeader className="flex flex-row items-center justify-between px-6 py-4">
+              <CardTitle className="text-l font-medium text-gray-500 uppercase mt-4">
+                Instructors on Duty
+              </CardTitle>
+            </CardHeader>
 
-            <div className="grid grid-cols-2 gap-6">
-              {/* Shift 1 */}
-              <div className="flex items-center justify-between">
+            <CardContent className="pb-4 px-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-4">
+                {/* Shift 1 */}
                 <div>
-                  <p className="text-xs font-medium text-gray-500">Shift 1</p>
-                  <h3 className="text-3xl font-bold mt-1 text-gray-800">
-                    {summary.availableChair1st}
-                  </h3>
+                  <h3 className="text-sm font-semibold mb-4 text-gray-500">Shift 1</h3>
+                  {presentInstructors.filter((i) => i.shift === "Shift 1").length > 0 ? (
+                    <div className="grid gap-4">
+                      {presentInstructors
+                        .filter((i) => i.shift === "Shift 1")
+                        .map((instructor) => (
+                          <div key={instructor.name} className="rounded-lg bg-white">
+                            <h4 className="font-normal text-sm pl-4 text-gray-800">
+                              {instructor.name}
+                            </h4>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">
+                      No instructors for this shift
+                    </p>
+                  )}
                 </div>
-                {/* <div className="bg-[#e6f7eb] p-3 rounded-full">
-                  <RockingChair className="h-5 w-5 text-[#5C8E77]" />
-                </div> */}
-              </div>
 
-              {/* Shift 2 */}
-              <div className="flex items-center justify-between">
+                {/* Shift 2 */}
                 <div>
-                  <p className="text-xs font-medium text-gray-500">Shift 2</p>
-                  <h3 className="text-3xl font-bold mt-1 text-gray-800">
-                    {summary.availableChair2nd}
-                  </h3>
-                </div>
-                <div className="bg-[#e6f7eb] p-3 rounded-full">
-                  <RockingChair className="h-5 w-5 text-[#5C8E77]" />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-
-        <Card className="shadow-sm border rounded-lg">
-          <CardContent className="p-6">
-            <p className="text-sm font-medium text-gray-500 uppercase mb-4">
-              Instructors On Duty
-            </p>
-
-            <div className="grid grid-cols-2 gap-6">
-              {/* Shift 1 */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-gray-500">Shift 1</p>
-                  <h3 className="text-3xl font-bold mt-1 text-gray-800">
-                    {summary.instructorsOnDuty1st}
-                  </h3>
-                </div>
-                {/* <div className="bg-[#e6f7eb] p-3 rounded-full">
-                  <Users className="h-5 w-5 text-[#5C8E77]" />
-                </div> */}
-              </div>
-
-              {/* Shift 2 */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-gray-500">Shift 2</p>
-                  <h3 className="text-3xl font-bold mt-1 text-gray-800">
-                    {summary.instructorsOnDuty2nd}
-                  </h3>
-                </div>
-                <div className="bg-[#e6f7eb] p-3 rounded-full">
-                  <Users className="h-5 w-5 text-[#5C8E77]" />
+                  <h3 className="text-sm font-semibold mb-4 text-gray-500">Shift 2</h3>
+                  {presentInstructors.filter((i) => i.shift === "Shift 2").length > 0 ? (
+                    <div className="grid gap-4">
+                      {presentInstructors
+                        .filter((i) => i.shift === "Shift 2")
+                        .map((instructor) => (
+                          <div key={instructor.name} className="rounded-lg bg-white">
+                            <h4 className="font-normal text-sm pl-4 text-s text-gray-800">
+                              {instructor.name}
+                            </h4>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">
+                      No instructors for this shift
+                    </p>
+                  )}
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Table */}

@@ -4,3 +4,17 @@ publish = ".next"
 
 [[plugins]]
 package = "@netlify/plugin-nextjs"
+
+[[redirects]]
+from = "/functions/log-activity/*"
+to = "/.netlify/functions/log-activity/:splat"
+status = 200
+force = true
+
+[[headers]]
+for = "/functions/log-activity"
+[headers.values]
+  X-Forwarded-For = ":req.headers.x-forwarded-for"
+  X-Real-IP = ":req.headers.x-real-ip"
+  CF-Connecting-IP = ":req.headers.cf-connecting-ip"
+  True-Client-IP = ":req.headers.true-client-ip"

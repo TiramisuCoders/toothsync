@@ -1,7 +1,8 @@
+//app/instructor/chief-of-clinicians/page.tsx
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Edit, Info } from "lucide-react"
+import { Plus, Edit } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -29,10 +30,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 
-// Type definitions moved inline
 interface Instructor {
   id: string
   firstName: string
@@ -65,12 +64,6 @@ interface FormErrors {
   expertise?: string
 }
 
-interface NotificationState {
-  show: boolean
-  type: "success" | "error"
-  message: string
-}
-
 type FilterType = "all" | "available" | "not-available"
 
 export default function InstructorPage() {
@@ -89,17 +82,14 @@ export default function InstructorPage() {
   })
 
   const [formErrors, setFormErrors] = useState<FormErrors>({})
-  const [notification, setNotification] = useState<NotificationState>({ show: false, type: "success", message: "" })
   const [showArchived, setShowArchived] = useState(false)
   const [showStatusConfirmation, setShowStatusConfirmation] = useState(false)
   const [pendingStatusChange, setPendingStatusChange] = useState<string | null>(null)
   const [originalStatus, setOriginalStatus] = useState<string>("")
+  const [loading, setLoading] = useState(false)
   const { toast } = useToast()
-
-  // Sample data for instructors
   const [instructors, setInstructors] = useState<Instructor[]>([])
 
-  // Available dental services/expertise
   const dentalServices = [
     "Endodontics",
     "Extraction",
@@ -146,7 +136,6 @@ export default function InstructorPage() {
     return Object.keys(errors).length === 0
   }
 
-  // Reset form data
   const resetFormData = () => {
     setFormData({
       firstName: "",
@@ -160,7 +149,6 @@ export default function InstructorPage() {
     setFormErrors({})
   }
 
-  // Function to handle edit button click
   const handleEditClick = (instructor: Instructor) => {
     setCurrentInstructor(instructor)
     setOriginalStatus(instructor.status)
@@ -199,7 +187,6 @@ export default function InstructorPage() {
     setPendingStatusChange(null)
   }
 
-  // Function to update instructor
   const handleUpdateInstructor = async () => {
     if (!currentInstructor) return
 
@@ -213,6 +200,7 @@ export default function InstructorPage() {
     }
 
     try {
+      setLoading(true)
       const response = await fetch("/api/instructors", {
         method: "PUT",
         headers: {
@@ -225,7 +213,7 @@ export default function InstructorPage() {
       })
 
       if (response.ok) {
-        await fetchInstructors() // Refresh the list
+        await fetchInstructors()
         setIsEditModalOpen(false)
         setCurrentInstructor(null)
         resetFormData()
@@ -250,10 +238,11 @@ export default function InstructorPage() {
         description: "Failed to update instructor",
         variant: "destructive",
       })
+    } finally {
+      setLoading(false)
     }
   }
 
-  // Function to add new instructor
   const handleAddInstructor = async () => {
     if (!validateForm()) {
       toast({
@@ -265,6 +254,7 @@ export default function InstructorPage() {
     }
 
     try {
+      setLoading(true)
       const response = await fetch("/api/instructors", {
         method: "POST",
         headers: {
@@ -274,7 +264,7 @@ export default function InstructorPage() {
       })
 
       if (response.ok) {
-        await fetchInstructors() // Refresh the list
+        await fetchInstructors()
         setIsAddModalOpen(false)
         resetFormData()
         setFormErrors({})
@@ -298,15 +288,15 @@ export default function InstructorPage() {
         description: "Failed to add instructor",
         variant: "destructive",
       })
+    } finally {
+      setLoading(false)
     }
   }
 
-  // Handle form field changes
   const handleInputChange = (field: keyof InstructorFormData, value: string) => {
     setFormData((prev: InstructorFormData) => ({ ...prev, [field]: value }))
   }
 
-  // Handle expertise checkbox changes
   const handleExpertiseChange = (service: string, checked: boolean) => {
     setFormData((prev: InstructorFormData) => ({
       ...prev,
@@ -314,7 +304,6 @@ export default function InstructorPage() {
     }))
   }
 
-  // Function to archive/unarchive instructor
   const handleArchiveInstructor = (instructorId: string) => {
     setInstructors(
       instructors.map((instructor: Instructor) =>
@@ -322,29 +311,44 @@ export default function InstructorPage() {
       ),
     )
 
-    const instructor = instructors.find((i) => i.id === instructorId)
-    if (instructor) {
+    const result = await response.json()
+    console.log(`${action} response:`, result)
+
+    if (response.ok) {
+      await fetchInstructors() // Refresh the list
       toast({
         title: "Success",
-        description: `Instructor ${instructor.firstName} ${instructor.lastName} has been ${instructor.archived ? "unarchived" : "archived"}.`,
+        description: `Instructor ${instructor.firstName} ${instructor.lastName} has been ${action}d.`,
+      })
+    } else {
+      toast({
+        title: "Error",
+        description: result.message || `Failed to ${action} instructor`,
+        variant: "destructive",
       })
     }
+  } catch (error) {
+    console.error("Error archiving instructor:", error)
+    toast({
+      title: "Error",
+      description: "Failed to archive instructor",
+      variant: "destructive",
+    })
+  } finally {
+    setLoading(false)
   }
+}
 
-  // Filter instructors based on active filter
   const filteredInstructors = instructors.filter((instructor) => {
-    // First filter by archived status
     if (showArchived && !instructor.archived) return false
     if (!showArchived && instructor.archived) return false
 
-    // Then filter by availability status
     if (activeFilter === "all") return true
     if (activeFilter === "available") return instructor.status === "Available"
     if (activeFilter === "not-available") return instructor.status === "Not Available"
     return true
   })
 
-  // Handle modal close
   const handleAddModalClose = () => {
     setIsAddModalOpen(false)
     resetFormData()
@@ -360,9 +364,9 @@ export default function InstructorPage() {
     return formErrors[field] ? <p className="text-sm text-red-600 mt-1">{formErrors[field]}</p> : null
   }
 
-  // API integration functions
   const fetchInstructors = async () => {
     try {
+      setLoading(true)
       const response = await fetch("/api/instructors")
       if (response.ok) {
         const data = await response.json()
@@ -381,24 +385,34 @@ export default function InstructorPage() {
         description: "Failed to fetch instructors",
         variant: "destructive",
       })
+    } finally {
+      setLoading(false)
     }
   }
 
   useEffect(() => {
     fetchInstructors()
+    
+    // Show info toast when page loads
+    toast({
+      title: "Assignment Information",
+      description: "Only Available instructors can be automatically assigned to students who confirmed attendance and are assigned to chairs.",
+      duration: 5000,
+    })
   }, [])
+
+  if (loading && instructors.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] p-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#5C8E77]"></div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-6">
-      {/* Information Alert */}
-      <Alert className="mb-6 bg-[#5C8E77]/10 border-[#5C8E77]/20">
-        <Info className="h-4 w-4 text-[#5C8E77]" />
-        <AlertDescription className="text-[#333]">
-          Only <span className="font-semibold">Available</span> instructors can be automatically assigned to students
-          who confirmed attendance and are assigned to chairs.
-        </AlertDescription>
-      </Alert>
-
       {/* Instructors Table */}
       <Card className="bg-white border border-gray-200 shadow-sm mb-6">
         <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
@@ -437,13 +451,14 @@ export default function InstructorPage() {
                 onClick={() => setShowArchived(!showArchived)}
                 className="text-gray-600"
               >
-                {showArchived ? "Hide" : "Show"} Archived
+                {showArchived ? "Show Active" : "Show Archived"}
               </Button>
             </div>
           </div>
           <Button
             className="bg-[#5C8E77] hover:bg-[#406E58] text-white border-none flex items-center gap-2"
             onClick={() => setIsAddModalOpen(true)}
+            disabled={loading}
           >
             <Plus className="h-4 w-4" /> Add Instructor
           </Button>
@@ -498,6 +513,7 @@ export default function InstructorPage() {
                           variant="ghost"
                           className="h-8 w-8 text-[#5C8E77] hover:bg-[#e6f7eb]"
                           onClick={() => handleEditClick(instructor)}
+                          disabled={loading}
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -505,7 +521,8 @@ export default function InstructorPage() {
                           size="icon"
                           variant="ghost"
                           className={`h-8 w-8 ${instructor.archived ? "text-green-600 hover:bg-green-50" : "text-orange-600 hover:bg-orange-50"}`}
-                          onClick={() => handleArchiveInstructor(instructor.id)}
+                          onClick={() => handleArchiveInstructor(instructor)}
+                          disabled={loading}
                           title={instructor.archived ? "Unarchive instructor" : "Archive instructor"}
                         >
                           {instructor.archived ? (
@@ -535,7 +552,7 @@ export default function InstructorPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12 text-gray-500">
-                    No instructors found.
+                    {showArchived ? "No archived instructors found." : "No instructors found."}
                   </TableCell>
                 </TableRow>
               )}
@@ -662,8 +679,7 @@ export default function InstructorPage() {
                     Service Expertise <span className="text-red-500">*</span>
                   </Label>
                   <p className="text-sm text-gray-500">
-                    Select the dental services this instructor is qualified to supervise. The system will only assign
-                    instructors to students if both the instructor is available and the case matches their expertise.
+                    Select the dental services this instructor is qualified to supervise.
                   </p>
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     {dentalServices.map((service) => (
@@ -688,8 +704,12 @@ export default function InstructorPage() {
             <Button variant="outline" onClick={handleAddModalClose} className="border-gray-300 bg-transparent">
               Cancel
             </Button>
-            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={handleAddInstructor}>
-              Add Instructor
+            <Button 
+              className="bg-[#5C8E77] hover:bg-[#406E58] text-white" 
+              onClick={handleAddInstructor}
+              disabled={loading}
+            >
+              {loading ? "Adding..." : "Add Instructor"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -811,9 +831,7 @@ export default function InstructorPage() {
                         Service Expertise <span className="text-red-500">*</span>
                       </Label>
                       <p className="text-sm text-gray-500">
-                        Select the dental services this instructor is qualified to supervise. The system will only
-                        assign instructors to students if both the instructor is available and the case matches their
-                        expertise.
+                        Select the dental services this instructor is qualified to supervise.
                       </p>
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         {dentalServices.map((service) => (
@@ -838,8 +856,12 @@ export default function InstructorPage() {
                 <Button variant="outline" onClick={handleEditModalClose} className="border-gray-300 bg-transparent">
                   Cancel
                 </Button>
-                <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={handleUpdateInstructor}>
-                  Update Instructor
+                <Button 
+                  className="bg-[#5C8E77] hover:bg-[#406E58] text-white" 
+                  onClick={handleUpdateInstructor}
+                  disabled={loading}
+                >
+                  {loading ? "Updating..." : "Update Instructor"}
                 </Button>
               </DialogFooter>
             </>

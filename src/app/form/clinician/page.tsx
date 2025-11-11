@@ -1,23 +1,42 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { Toaster } from "@/components/ui/toaster"
 import { getUserData, getProcedures, submitAttendanceAction } from "@/app/api/form/clinician/action"
-import { ChevronDown, ChevronUp, Clock, Plus, RefreshCw, Eye } from "lucide-react"
-
-
-interface Procedure {
-  procedure_id: string
-  name: string
-  department: string
-}
+import {
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Plus,
+  RefreshCw,
+  Eye,
+  Calendar,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  XIcon,
+} from "lucide-react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 export interface ProcedureStatus {
   procedure: string
@@ -38,26 +57,28 @@ export interface Activity {
   id: string
   patientName: string
   patientType: string
-  dateStarted: string | null
-  dateEnded: string | null
   procedures: string[]
-  procedureDetails?: any[]
-  clinicianName: string
+  status: string
   date: string
   timeIn: string
-  timeOut: string
-  instructorName: string
-  chair: string
-  status: string
-  grade?: string
-  remarks?: string
-  allRecords: RecordInstance[]
   recordCount: number
+  dateStarted?: string
+  dateEnded?: string
+  allRecords: RecordInstance[]
+}
+
+export interface Procedure {
+  procedure_id: string
+  name: string
+  department: string
 }
 
 export default function ClinicianForm() {
+  const [mainTab, setMainTab] = useState<"submit" | "submissions">("submit")
+  const [submissionTab, setSubmissionTab] = useState<"in-progress" | "confirmed" | "cancelled" | "all">("in-progress")
+
   const [formData, setFormData] = useState({
-    firstName: "", 
+    firstName: "",
     lastName: "",
     shift: "",
     patient_type: "",
@@ -67,40 +88,49 @@ export default function ClinicianForm() {
     chair: "Auto-assigned",
     instructor: "Auto-assigned",
     clinicianUserId: "",
-    record_id: "", // Track if this is for an existing record
+    record_id: "",
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [submitProgress, setSubmitProgress] = useState(0)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [showConfirmation, setShowConfirmation] = useState(false)
   const [allProcedures, setAllProcedures] = useState<Procedure[]>([])
   const [expandedDepartments, setExpandedDepartments] = useState<Set<string>>(new Set())
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
-  const [isRequestAgainMode, setIsRequestAgainMode] = useState(false) // Track if in "request again" mode
+  const [isRequestAgainMode, setIsRequestAgainMode] = useState(false)
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
 
-  // In-progress activities
   const [inProgressActivities, setInProgressActivities] = useState<Activity[]>([])
   const [isLoadingActivities, setIsLoadingActivities] = useState(false)
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null)
   const [isActivityDetailModalOpen, setIsActivityDetailModalOpen] = useState(false)
-  
 
-  // Group procedures by department
+  const [submittedRequests, setSubmittedRequests] = useState<Activity[]>([])
+  const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const [inProgressCurrentPage, setInProgressCurrentPage] = useState(1)
+  const [inProgressItemsPerPage, setInProgressItemsPerPage] = useState(10)
+  const [submissionsCurrentPage, setSubmissionsCurrentPage] = useState(1)
+  const [submissionsItemsPerPage, setSubmissionsItemsPerPage] = useState(10)
+
+  const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false)
+  const [requestToCancel, setRequestToCancel] = useState<Activity | null>(null)
+  const [isCancelling, setIsCancelling] = useState(false)
+
   const proceduresByDepartment = useMemo(() => {
     const grouped: Record<string, Procedure[]> = {}
-    
-    allProcedures.forEach(procedure => {
-      const dept = procedure.department || 'Other'
+
+    allProcedures.forEach((procedure) => {
+      const dept = procedure.department || "Other"
       if (!grouped[dept]) {
         grouped[dept] = []
       }
       grouped[dept].push(procedure)
     })
 
-    // Sort procedures within each department
-    Object.keys(grouped).forEach(dept => {
+    Object.keys(grouped).forEach((dept) => {
       grouped[dept].sort((a, b) => a.name.localeCompare(b.name))
     })
 
@@ -111,83 +141,18 @@ export default function ClinicianForm() {
     return Object.keys(proceduresByDepartment).sort()
   }, [proceduresByDepartment])
 
-  const fetchInProgressActivities = async (userId: string) => {
-    setIsLoadingActivities(true)
-    try {
-      const response = await fetch('/api/form/pending-activities', {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      })
+  const filteredSubmissions = useMemo(() => {
+    const confirmed = submittedRequests.filter((r) => r.status === "Confirmed")
+    const cancelled = submittedRequests.filter((r) => r.status === "Cancelled")
+    const pending = submittedRequests.filter((r) => r.status === "Pending")
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const records = await response.json()
-
-      if (records.error) {
-        toast("Error", { description: "Failed to load in-progress activities." })
-      } else {
-        setInProgressActivities(records.data || [])
-      }
-    } catch (error) {
-      console.error("Error fetching in-progress activities:", error)
-      toast("Error", { description: "Failed to load in-progress activities." })
-    } finally {
-      setIsLoadingActivities(false)
+    return {
+      confirmed,
+      cancelled,
+      pending,
+      all: submittedRequests,
     }
-  }
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true)
-      try {
-        // Fetch user data using server action
-        const { error: userError, user, clinician } = await getUserData()
-        
-        if (userError || !user) {
-          console.error("User not authenticated:", userError)
-          toast("Authentication Error", { description: "Please log in to continue." })
-          return
-        }
-
-        if (!clinician) {
-          toast("Error", { description: "Failed to load user data." })
-          return
-        }
-
-        // Set user data
-        setFormData((prev) => ({
-          ...prev,
-          clinicianUserId: user.id,
-          firstName: clinician.first_name || "",
-          lastName: clinician.last_name || "",
-        }))
-
-        // Fetch all procedures using server action
-        const { error: procedureError, procedures: procedureData } = await getProcedures()
-        
-        if (procedureError) {
-          toast("Error", { description: "Failed to load procedures." })
-        } else {
-          setAllProcedures(procedureData)
-        }
-
-        // Fetch in-progress activities
-        await fetchInProgressActivities(user.id)
-
-      } catch (error) {
-        toast("Error", { description: "Failed to load form data." })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [])
+  }, [submittedRequests])
 
   const handleShiftChange = (value: string) => {
     setFormData((prev) => ({ ...prev, shift: value }))
@@ -200,7 +165,7 @@ export default function ClinicianForm() {
   }
 
   const toggleDepartment = (department: string) => {
-    setExpandedDepartments(prev => {
+    setExpandedDepartments((prev) => {
       const newSet = new Set(prev)
       if (newSet.has(department)) {
         newSet.delete(department)
@@ -212,7 +177,6 @@ export default function ClinicianForm() {
   }
 
   const handleProcedureChange = (procedure: string, checked: boolean) => {
-    // Don't allow changes in "request again" mode
     if (isRequestAgainMode) {
       return
     }
@@ -283,33 +247,29 @@ export default function ClinicianForm() {
 
     setIsSubmitting(true)
     setSubmitProgress(0)
-    
+
     const progressInterval = simulateProgress()
 
     try {
-      // Prepare submission data
       const submissionData = {
         patientName: `${formData.patientFirstName} ${formData.patientLastName}`.trim(),
         selectedProcedures: formData.selectedProcedures,
         shift: formData.shift,
         patient_type: formData.patient_type,
         clinicianUserId: formData.clinicianUserId,
-        ...(formData.record_id && { record_id: formData.record_id }) // Include record_id if present
+        ...(formData.record_id && { record_id: formData.record_id }),
       }
 
-      // Use server action
       const result = await submitAttendanceAction(submissionData)
 
-      // Complete progress
       clearInterval(progressInterval)
       setSubmitProgress(100)
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to submit attendance')
+        throw new Error(result.error || "Failed to submit attendance")
       }
 
-      // Show success message
-      const successMessage = isRequestAgainMode 
+      const successMessage = isRequestAgainMode
         ? "Your attendance has been added to the existing record and is pending approval."
         : "Your attendance has been submitted and is pending approval."
 
@@ -317,9 +277,6 @@ export default function ClinicianForm() {
         description: successMessage,
       })
 
-      setShowConfirmation(true)
-
-      // Reset form
       setFormData((prev) => ({
         ...prev,
         shift: "",
@@ -331,19 +288,17 @@ export default function ClinicianForm() {
       }))
       setIsRequestAgainMode(false)
 
-      // Refresh in-progress activities
       await fetchInProgressActivities(formData.clinicianUserId)
+      await fetchSubmittedRequests(formData.clinicianUserId)
 
-      // Close modal after brief delay
       setTimeout(() => {
-        setShowConfirmation(false)
         setIsViewModalOpen(false)
+        setIsSuccessModalOpen(true)
       }, 2000)
-
     } catch (error) {
       clearInterval(progressInterval)
       console.error("Submission error:", error)
-      
+
       toast("Submission Failed", {
         description: error instanceof Error ? error.message : "Please try again later.",
       })
@@ -359,42 +314,37 @@ export default function ClinicianForm() {
   }
 
   const handleRequestAgain = (activity: Activity) => {
-    // Pre-fill form with activity data
-    const patientNameParts = activity.patientName.split(' ')
-    const firstName = patientNameParts[0] || ''
-    const lastName = patientNameParts.slice(1).join(' ') || ''
+    const patientNameParts = activity.patientName.split(" ")
+    const firstName = patientNameParts[0] || ""
+    const lastName = patientNameParts.slice(1).join(" ") || ""
 
-    // Find procedure IDs from procedure names
     const procedureIds = allProcedures
-      .filter(p => activity.procedures.includes(p.name))
-      .map(p => p.procedure_id)
-      .slice(0, 2) // Limit to 2
+      .filter((p) => activity.procedures.includes(p.name))
+      .map((p) => p.procedure_id)
+      .slice(0, 2)
 
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       patientFirstName: firstName,
       patientLastName: lastName,
       patient_type: activity.patientType,
       selectedProcedures: procedureIds,
-      record_id: activity.id, // Set the record_id
-      shift: "", // Reset shift - this is the only field they can change
+      record_id: activity.id,
+      shift: "",
     }))
 
-    // Enable "request again" mode to lock fields
     setIsRequestAgainMode(true)
 
-    // Close detail modal and open form modal
     setIsActivityDetailModalOpen(false)
     setIsViewModalOpen(true)
-    
+
     toast("Form Pre-filled", {
-      description: "The form has been pre-filled. Only the shift can be changed."
+      description: "The form has been pre-filled. Only the shift can be changed.",
     })
   }
 
   const handleNewRequest = () => {
-    // Reset form for new request
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       shift: "",
       patientFirstName: "",
@@ -407,16 +357,364 @@ export default function ClinicianForm() {
     setIsViewModalOpen(true)
   }
 
-  // Get selected procedure names for display
   const selectedProcedureNames = useMemo(() => {
     return allProcedures
-      .filter(p => formData.selectedProcedures.includes(p.procedure_id))
-      .map(p => `${p.name} (${p.department})`)
+      .filter((p) => formData.selectedProcedures.includes(p.procedure_id))
+      .map((p) => `${p.name} (${p.department})`)
   }, [formData.selectedProcedures, allProcedures])
+
+  const fetchInProgressActivities = async (userId: string) => {
+    setIsLoadingActivities(true)
+    try {
+      const response = await fetch("/api/form/pending-activities", {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const records = await response.json()
+
+      if (records.error) {
+        toast("Error", { description: "Failed to load in-progress activities." })
+      } else {
+        setInProgressActivities(records.data || [])
+        setInProgressCurrentPage(1)
+      }
+    } catch (error) {
+      console.error("Error fetching in-progress activities:", error)
+      toast("Error", { description: "Failed to load in-progress activities." })
+    } finally {
+      setIsLoadingActivities(false)
+    }
+  }
+
+  const fetchSubmittedRequests = async (userId: string) => {
+    setIsLoadingSubmissions(true)
+    try {
+      const response = await fetch("/api/form/submitted-requests", {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const records = await response.json()
+
+      if (records.error) {
+        toast("Error", { description: "Failed to load submitted requests." })
+      } else {
+        setSubmittedRequests(records.data || [])
+        setSubmissionsCurrentPage(1)
+      }
+    } catch (error) {
+      console.error("Error fetching submitted requests:", error)
+      toast("Error", { description: "Failed to load submitted requests." })
+    } finally {
+      setIsLoadingSubmissions(false)
+    }
+  }
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true)
+      try {
+        const { error: userError, user, clinician } = await getUserData()
+
+        if (userError || !user) {
+          console.error("User not authenticated:", userError)
+          toast("Authentication Error", { description: "Please log in to continue." })
+          return
+        }
+
+        if (!clinician) {
+          toast("Error", { description: "Failed to load user data." })
+          return
+        }
+
+        setFormData((prev) => ({
+          ...prev,
+          clinicianUserId: user.id,
+          firstName: clinician.first_name || "",
+          lastName: clinician.last_name || "",
+        }))
+
+        const { error: procedureError, procedures: procedureData } = await getProcedures()
+
+        if (procedureError) {
+          toast("Error", { description: "Failed to load procedures." })
+        } else {
+          setAllProcedures(procedureData)
+        }
+
+        await fetchInProgressActivities(user.id)
+        await fetchSubmittedRequests(user.id)
+      } catch (error) {
+        toast("Error", { description: "Failed to load form data." })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  const getStatusBadge = (status: string) => {
+    const statusColors = {
+      Pending: "bg-yellow-100 text-yellow-700 border-yellow-200",
+      Confirmed: "bg-green-100 text-green-700 border-green-200",
+      Cancelled: "bg-red-100 text-red-700 border-red-200",
+    }
+    return statusColors[status as keyof typeof statusColors] || "bg-gray-100 text-gray-700 border-gray-200"
+  }
+
+  const handleCancelClick = (activity: Activity) => {
+    setRequestToCancel(activity)
+    setIsCancelConfirmOpen(true)
+  }
+
+  const handleCancelRequest = async () => {
+    if (!requestToCancel) return
+
+    setIsCancelling(true)
+    try {
+      const response = await fetch(`/api/form/submitted-requests`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          request_id: requestToCancel.id
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      if (result.error) {
+        toast("Error", { description: "Failed to cancel request." })
+      } else {
+        toast("Request Cancelled", {
+          description: `Request ${requestToCancel.id} has been successfully cancelled.`,
+        })
+
+        await fetchSubmittedRequests(formData.clinicianUserId)
+      }
+    } catch (error) {
+      console.error("Error cancelling request:", error)
+      toast("Error", { description: "Failed to cancel request. Please try again." })
+    } finally {
+      setIsCancelling(false)
+      setIsCancelConfirmOpen(false)
+      setRequestToCancel(null)
+    }
+  }
+
+  const renderTable = (
+    activities: Activity[],
+    emptyMessage: string,
+    showRequestAgainButton = false,
+    currentPage: number,
+    itemsPerPage: number,
+    onPageChange: (page: number) => void,
+    onItemsPerPageChange: (items: number) => void,
+  ) => {
+    const filteredActivities = activities.filter((activity) => {
+      const searchLower = searchQuery.toLowerCase()
+      return (
+        activity.id.toLowerCase().includes(searchLower) ||
+        activity.patientName.toLowerCase().includes(searchLower) ||
+        activity.patientType.toLowerCase().includes(searchLower) ||
+        activity.procedures.some((p) => p.toLowerCase().includes(searchLower))
+      )
+    })
+
+    if (filteredActivities.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600">{searchQuery ? "No matching results found" : emptyMessage}</p>
+        </div>
+      )
+    }
+
+    const totalPages = Math.ceil(filteredActivities.length / itemsPerPage)
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+    const currentRecords = filteredActivities.slice(startIndex, endIndex)
+
+    return (
+      <div className="border rounded-lg overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-gray-50">
+              <TableHead className="font-semibold">Request ID</TableHead>
+              <TableHead className="font-semibold">Patient Name</TableHead>
+              <TableHead className="font-semibold">Patient Type</TableHead>
+              <TableHead className="font-semibold">Procedures</TableHead>
+              <TableHead className="font-semibold">Date</TableHead>
+              <TableHead className="font-semibold">Status</TableHead>
+              <TableHead className="font-semibold text-center">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {currentRecords.map((activity) => (
+              <TableRow key={activity.id} className="hover:bg-gray-50">
+                <TableCell className="font-medium">{activity.id}</TableCell>
+                <TableCell className="font-medium">{activity.patientName}</TableCell>
+                <TableCell>{activity.patientType}</TableCell>
+                <TableCell>{activity.date}</TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1 max-w-[150px]">
+                    {activity.procedures.slice(0, 2).map((proc, idx) => (
+                      <span key={idx} className="inline-flex items-center px-2 py-1 break-words">
+                        {proc}
+                      </span>
+                    ))}
+                    {activity.procedures.length > 2 && (
+                      <span className="inline-flex items-center px-2 py-1 break-words">
+                        +{activity.procedures.length - 2} more
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge className={`${getStatusBadge(activity.status)} border`}>{activity.status}</Badge>
+                </TableCell>
+                <TableCell className="text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    {/* 👁️ Show only if status is In Progress */}
+                    {activity.status === "In Progress" && (
+                      <Button
+                        onClick={() => handleViewActivity(activity)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-[#5C8E77] hover:text-[#406E58] hover:bg-[#5C8E77]/10"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* ➕ Show only if showRequestAgainButton is true */}
+                    {showRequestAgainButton && (
+                      <Button
+                        onClick={() => handleRequestAgain(activity)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-[#5C8E77] hover:text-[#406E58] hover:bg-[#5C8E77]/10"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* ❌ Show only if status is Pending */}
+                    {activity.status === "Pending" && (
+                      <Button
+                        onClick={() => handleCancelClick(activity)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <XIcon className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
+
+
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+
+        {filteredActivities.length > 0 && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Show</span>
+              <Select value={itemsPerPage.toString()} onValueChange={(value) => onItemsPerPageChange(Number(value))}>
+                <SelectTrigger className="w-[70px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-sm text-gray-600">entries</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">
+                Showing {startIndex + 1} to {Math.min(endIndex, filteredActivities.length)} of{" "}
+                {filteredActivities.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((page) => {
+                    if (totalPages <= 7) return true
+                    if (page === 1 || page === totalPages) return true
+                    if (Math.abs(page - currentPage) <= 1) return true
+                    return false
+                  })
+                  .map((page, index, array) => (
+                    <div key={page} className="flex items-center">
+                      {index > 0 && array[index - 1] !== page - 1 && <span className="px-2 text-gray-400">...</span>}
+                      <Button
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => onPageChange(page)}
+                        className={`h-8 w-8 p-0 ${currentPage === page ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}`}
+                      >
+                        {page}
+                      </Button>
+                    </div>
+                  ))}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="p-6 max-w-6xl mx-auto">
         <Card className="shadow-sm border border-gray-200">
           <CardContent className="p-6 flex items-center justify-center">
             <div className="text-center">
@@ -430,132 +728,326 @@ export default function ClinicianForm() {
   }
 
   return (
-    <div className="mx-auto space-y-6">
+    <div className="space-y-6 mx-auto">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-800">Requests</h1>
+        </div>
+        <Button onClick={handleNewRequest} className="bg-[#5C8E77] hover:bg-[#406E58] text-white">
+          <Plus className="h-4 w-4 mr-2" />
+          New Request
+        </Button>
+      </div>
 
-      {/* In-Progress Activities Card */}
-      <Card className="shadow-sm">
-        <CardHeader className="bg-gray-50 border-b">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-xl font-semibold text-[#5C8E77] flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                In-Progress Activities
-              </CardTitle>
-              <CardDescription className="text-gray-600">
-                Your activities to be completed.
-              </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fetchInProgressActivities(formData.clinicianUserId)}
-                disabled={isLoadingActivities}
-                className="flex items-center gap-2"
-              >
-                <RefreshCw className={`h-4 w-4 ${isLoadingActivities ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleNewRequest}
-                className="flex items-center gap-2 bg-[#5C8E77] hover:bg-[#4a7c65] text-white"
-              >
-                <Plus className="h-4 w-4" />
-                New Request
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-6">
-          {isLoadingActivities ? (
-            <div className="text-center py-8">
-              <div className="w-8 h-8 border-4 border-[#5C8E77] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-              <p className="text-gray-600">Loading activities...</p>
-            </div>
-          ) : inProgressActivities.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Clock className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>No in-progress activities found.</p>
-              <p className="text-sm mt-1">Create a new request to get started.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {inProgressActivities.map((activity) => (
-                <div
-                  key={activity.id}
-                  className="border border-gray-200 rounded-lg p-4 hover:border-[#5C8E77] transition-colors"
+      <Tabs
+        value={mainTab}
+        onValueChange={(value) => setMainTab(value as "submit" | "submissions")}
+        className="space-y-6"
+      >
+        <TabsList className="grid grid-cols-2">
+          <TabsTrigger value="submit">In Progress Activities</TabsTrigger>
+          <TabsTrigger value="submissions">My Requests</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="submit">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-[#5C8E77]">
+                    <Clock className="h-5 w-5" />
+                    In-Progress Activities
+                  </CardTitle>
+                  <CardDescription className="text-gray-600">
+                    Your activities to be completed. Create a new request or add to an existing one.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchInProgressActivities(formData.clinicianUserId)}
+                  disabled={isLoadingActivities}
+                  className="flex items-center gap-2"
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-gray-900">
-                          {activity.patientName}
-                        </h3>
-                        <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
-                          {activity.status}
-                        </span>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-3 text-sm mb-3">
-                        <div>
-                          <span className="text-gray-500">Patient Type:</span>{' '}
-                          <span className="font-medium text-gray-700">{activity.patientType}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Records:</span>{' '}
-                          <span className="font-medium text-gray-700">{activity.recordCount}</span>
-                        </div>
-                      </div>
-
-                      <div className="mb-3">
-                        <p className="text-sm text-gray-500 mb-2">Procedures:</p>
-                        <div className="flex flex-wrap gap-2">
-                          {activity.procedures.map((proc, idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center px-2 py-1 rounded-md bg-gray-100 text-gray-700 text-xs"
-                            >
-                              {proc}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <p className="text-xs text-gray-500">
-                        Latest: {activity.date} at {activity.timeIn}
-                      </p>
-                    </div>
-
-                    <div className="flex gap-2 ml-4">
-                      <Button
-                        onClick={() => handleViewActivity(activity)}
-                        variant="outline"
-                        size="sm"
-                        className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                      <Button
-                        onClick={() => handleRequestAgain(activity)}
-                        variant="outline"
-                        size="sm"
-                        className="border-[#5C8E77] text-[#5C8E77] hover:bg-[#5C8E77] hover:text-white"
-                      >
-                        Request Again
-                      </Button>
+                  <RefreshCw className={`h-4 w-4 ${isLoadingActivities ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoadingActivities ? (
+                <div className="text-center py-12">
+                  <div className="w-8 h-8 border-4 border-[#5C8E77] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-gray-600">Loading activities...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search by request ID, patient name, type, or procedures..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10"
+                      />
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  {renderTable(
+                    inProgressActivities,
+                    "No in-progress activities found. Create a new request to get started.",
+                    true,
+                    inProgressCurrentPage,
+                    inProgressItemsPerPage,
+                    setInProgressCurrentPage,
+                    setInProgressItemsPerPage,
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      {/* Activity Detail Modal */}
+        <TabsContent value="submissions">
+          <Tabs value={submissionTab} onValueChange={(value) => setSubmissionTab(value as any)} className="space-y-6">
+            <TabsList className="grid grid-cols-4">
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="in-progress">Pending</TabsTrigger>
+              <TabsTrigger value="confirmed">Confirmed</TabsTrigger>
+              <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="in-progress">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-[#5C8E77]">
+                        <Clock className="h-5 w-5" />
+                        Pending Approval
+                      </CardTitle>
+                      <CardDescription className="text-gray-600">Requests awaiting review</CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchSubmittedRequests(formData.clinicianUserId)}
+                      disabled={isLoadingSubmissions}
+                      className="flex items-center gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoadingSubmissions ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingSubmissions ? (
+                    <div className="text-center py-12">
+                      <div className="w-8 h-8 border-4 border-[#5C8E77] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                      <p className="text-gray-600">Loading submissions...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Search by request ID, patient name, type, or procedures..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      {renderTable(
+                        filteredSubmissions.pending,
+                        "No pending submissions found",
+                        false,
+                        submissionsCurrentPage,
+                        submissionsItemsPerPage,
+                        setSubmissionsCurrentPage,
+                        setSubmissionsItemsPerPage,
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="confirmed">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-[#5C8E77]">
+                        <Clock className="h-5 w-5" />
+                        Confirmed Submissions
+                      </CardTitle>
+                      <CardDescription className="text-gray-600">Approved requests</CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchSubmittedRequests(formData.clinicianUserId)}
+                      disabled={isLoadingSubmissions}
+                      className="flex items-center gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoadingSubmissions ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingSubmissions ? (
+                    <div className="text-center py-12">
+                      <div className="w-8 h-8 border-4 border-[#5C8E77] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                      <p className="text-gray-600">Loading submissions...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Search by request ID, patient name, type, or procedures..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      {renderTable(
+                        filteredSubmissions.confirmed,
+                        "No confirmed submissions found",
+                        false,
+                        submissionsCurrentPage,
+                        submissionsItemsPerPage,
+                        setSubmissionsCurrentPage,
+                        setSubmissionsItemsPerPage,
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="cancelled">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-[#5C8E77]">
+                        <Clock className="h-5 w-5" />
+                        Cancelled Submissions
+                      </CardTitle>
+                      <CardDescription className="text-gray-600">Declined requests</CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchSubmittedRequests(formData.clinicianUserId)}
+                      disabled={isLoadingSubmissions}
+                      className="flex items-center gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoadingSubmissions ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingSubmissions ? (
+                    <div className="text-center py-12">
+                      <div className="w-8 h-8 border-4 border-[#5C8E77] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                      <p className="text-gray-600">Loading submissions...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Search by request ID, patient name, type, or procedures..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      {renderTable(
+                        filteredSubmissions.cancelled,
+                        "No cancelled submissions found",
+                        false,
+                        submissionsCurrentPage,
+                        submissionsItemsPerPage,
+                        setSubmissionsCurrentPage,
+                        setSubmissionsItemsPerPage,
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="all">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-[#5C8E77]">
+                        <Clock className="h-5 w-5" />
+                        All Submissions
+                      </CardTitle>
+                      <CardDescription className="text-gray-600">All your submitted requests</CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchSubmittedRequests(formData.clinicianUserId)}
+                      disabled={isLoadingSubmissions}
+                      className="flex items-center gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoadingSubmissions ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingSubmissions ? (
+                    <div className="text-center py-12">
+                      <div className="w-8 h-8 border-4 border-[#5C8E77] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                      <p className="text-gray-600">Loading submissions...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Search by request ID, patient name, type, or procedures..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      {renderTable(
+                        filteredSubmissions.all,
+                        "No submissions found",
+                        false,
+                        submissionsCurrentPage,
+                        submissionsItemsPerPage,
+                        setSubmissionsCurrentPage,
+                        setSubmissionsItemsPerPage,
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </TabsContent>
+      </Tabs>
+
       <Dialog open={isActivityDetailModalOpen} onOpenChange={setIsActivityDetailModalOpen}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -563,10 +1055,9 @@ export default function ClinicianForm() {
               Activity Details: {selectedActivity?.patientName}
             </DialogTitle>
           </DialogHeader>
-          
+
           {selectedActivity && (
             <div className="space-y-6 mt-4">
-              {/* Summary */}
               <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
                 <div>
                   <p className="text-sm text-gray-500">Patient Type</p>
@@ -578,30 +1069,25 @@ export default function ClinicianForm() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Date Started</p>
-                  <p className="font-medium">{selectedActivity.dateStarted || 'N/A'}</p>
+                  <p className="font-medium">{selectedActivity.dateStarted || "N/A"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Latest Date</p>
-                  <p className="font-medium">{selectedActivity.dateEnded || 'N/A'}</p>
+                  <p className="font-medium">{selectedActivity.dateEnded || "N/A"}</p>
                 </div>
               </div>
 
-              {/* Procedures */}
               <div>
                 <h3 className="font-semibold mb-2">Procedures</h3>
                 <div className="flex flex-wrap gap-2">
                   {selectedActivity.procedures.map((proc, idx) => (
-                    <span
-                      key={idx}
-                      className="px-3 py-1 rounded-md bg-[#5C8E77] text-white text-sm"
-                    >
+                    <span key={idx} className="px-3 py-1 rounded-md bg-[#5C8E77] text-white text-sm">
                       {proc}
                     </span>
                   ))}
                 </div>
               </div>
 
-              {/* All Records */}
               <div>
                 <h3 className="font-semibold mb-3">Session History</h3>
                 <div className="space-y-4">
@@ -615,26 +1101,32 @@ export default function ClinicianForm() {
                           </p>
                         </div>
                         <div className="text-right text-sm">
-                          <p className="text-gray-500">Instructor: <span className="font-medium text-gray-700">{record.instructorName}</span></p>
-                          <p className="text-gray-500">Chair: <span className="font-medium text-gray-700">{record.chair}</span></p>
+                          <p className="text-gray-500">
+                            Instructor: <span className="font-medium text-gray-700">{record.instructorName}</span>
+                          </p>
+                          <p className="text-gray-500">
+                            Chair: <span className="font-medium text-gray-700">{record.chair}</span>
+                          </p>
                         </div>
                       </div>
-                      
+
                       <div className="space-y-2">
                         {record.procedureStatuses.map((ps, psIdx) => (
                           <div key={psIdx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                             <span className="text-sm font-medium">{ps.procedure}</span>
                             <div className="flex items-center gap-3">
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                ps.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                                ps.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
-                                'bg-gray-100 text-gray-700'
-                              }`}>
+                              <span
+                                className={`px-2 py-1 rounded text-xs font-medium ${
+                                  ps.status === "Completed"
+                                    ? "bg-green-100 text-green-700"
+                                    : ps.status === "In Progress"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-gray-100 text-gray-700"
+                                }`}
+                              >
                                 {ps.status}
                               </span>
-                              {ps.remarks && (
-                                <span className="text-xs text-gray-500">{ps.remarks}</span>
-                              )}
+                              {ps.remarks && <span className="text-xs text-gray-500">{ps.remarks}</span>}
                             </div>
                           </div>
                         ))}
@@ -657,55 +1149,20 @@ export default function ClinicianForm() {
         </DialogContent>
       </Dialog>
 
-      {/* New Request Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col overflow-hidden border-gray-200 rounded-xl [&>button]:hidden">
-          
-          {/* Sticky Header */}
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col overflow-hidden border-gray-200 rounded-xl">
           <DialogHeader className="border-b px-6 py-4 sticky top-0 z-10 bg-white">
             <DialogTitle className="text-xl font-semibold text-[#5C8E77]">
               {isRequestAgainMode ? "Request Again - Add to Existing Record" : "Submit Attendance"}
             </DialogTitle>
             <p className="text-sm text-gray-600">
-              {isRequestAgainMode 
+              {isRequestAgainMode
                 ? "This will add a new session to the existing record. Only the shift can be changed."
-                : "Fill out this form to initiate attendance. Chair and instructor will be auto-assigned."
-              }
+                : "Fill out this form to initiate attendance. Chair and instructor will be auto-assigned."}
             </p>
-            {/* {isRequestAgainMode && (
-              <div className="flex items-center gap-2 mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-                <Lock className="h-4 w-4 text-blue-600" />
-                <span className="text-xs text-blue-700">Most fields are locked. Only shift can be changed.</span>
-              </div>
-            )} */}
           </DialogHeader>
 
-          {/* Scrollable Form Body */}
           <div className="overflow-y-auto px-6 py-4 space-y-8">
-
-            {/* Success Banner */}
-            {showConfirmation && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
-                <svg className="h-5 w-5 text-green-500 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <div>
-                  <h3 className="text-sm font-medium text-green-800">Attendance Submitted Successfully!</h3>
-                  <p className="text-sm text-green-700 mt-1">
-                    {isRequestAgainMode 
-                      ? "Your attendance has been added to the existing record and is pending approval."
-                      : "Your attendance is pending approval. Chair and instructor have been auto-assigned."
-                    }
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Section 1: Student Info */}
             <div>
               <h3 className="text-md font-semibold text-gray-700 mb-3 border-b pb-1">Clinician Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -720,13 +1177,9 @@ export default function ClinicianForm() {
               </div>
             </div>
 
-            {/* Section 2: Patient Info*/}
             <div className="space-y-5">
-              <h3 className="text-md font-semibold text-gray-700 border-b pb-1">
-                Patient Information
-              </h3>    
+              <h3 className="text-md font-semibold text-gray-700 border-b pb-1">Patient Information</h3>
 
-              {/* Patient Name */}
               <div className="space-y-2">
                 <Label>Patient Name</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -734,39 +1187,34 @@ export default function ClinicianForm() {
                     <Input
                       placeholder="Patient first name"
                       value={formData.patientFirstName}
-                      onChange={(e) => !isRequestAgainMode && setFormData({ ...formData, patientFirstName: e.target.value })}
+                      onChange={(e) =>
+                        !isRequestAgainMode && setFormData({ ...formData, patientFirstName: e.target.value })
+                      }
                       disabled={isRequestAgainMode}
                       className={`${errors.patientFirstName ? "border-red-500" : "focus:border-[#5C8E77]"} ${isRequestAgainMode ? "bg-gray-50 text-gray-500 cursor-not-allowed" : ""}`}
                     />
-                    {/* {isRequestAgainMode && (
-                      <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    )} */}
                   </div>
                   <div className="relative">
                     <Input
                       placeholder="Patient last name"
                       value={formData.patientLastName}
-                      onChange={(e) => !isRequestAgainMode && setFormData({ ...formData, patientLastName: e.target.value })}
+                      onChange={(e) =>
+                        !isRequestAgainMode && setFormData({ ...formData, patientLastName: e.target.value })
+                      }
                       disabled={isRequestAgainMode}
                       className={`${errors.patientLastName ? "border-red-500" : "focus:border-[#5C8E77]"} ${isRequestAgainMode ? "bg-gray-50 text-gray-500 cursor-not-allowed" : ""}`}
                     />
-                    {/* {isRequestAgainMode && (
-                      <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    )} */}
                   </div>
                 </div>
               </div>
 
-              {/* Patient Type */}
               <div className="space-y-2">
                 <Label>Patient Type</Label>
                 <div className="relative">
-                  <Select 
-                    value={formData.patient_type} 
-                    onValueChange={handlePatientType}
-                    disabled={isRequestAgainMode}
-                  >
-                    <SelectTrigger className={`${errors.patient_type ? "border-red-500" : "focus:border-[#5C8E77]"} ${isRequestAgainMode ? "bg-gray-50 text-gray-500 cursor-not-allowed" : ""}`}>
+                  <Select value={formData.patient_type} onValueChange={handlePatientType} disabled={isRequestAgainMode}>
+                    <SelectTrigger
+                      className={`${errors.patient_type ? "border-red-500" : "focus:border-[#5C8E77]"} ${isRequestAgainMode ? "bg-gray-50 text-gray-500 cursor-not-allowed" : ""}`}
+                    >
                       <SelectValue placeholder="Select patient type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -774,18 +1222,14 @@ export default function ClinicianForm() {
                       <SelectItem value="Individual">Individual</SelectItem>
                     </SelectContent>
                   </Select>
-                  {/* {isRequestAgainMode && (
-                    <Lock className="absolute right-10 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  )} */}
                 </div>
                 {errors.patient_type && <p className="text-sm text-red-500">{errors.patient_type}</p>}
               </div>
             </div>
 
-            {/* Section 3: Procedures */}
             <div className="space-y-5">
               <h3 className="text-md font-semibold text-gray-700 mb-3 border-b pb-1">Activity Details</h3>
-              
+
               <div className="space-y-2">
                 <Label>Shift</Label>
                 <Select value={formData.shift} onValueChange={handleShiftChange}>
@@ -803,26 +1247,28 @@ export default function ClinicianForm() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Procedure</Label>
-                  {/* {isRequestAgainMode && (
-                    <span className="text-xs text-gray-500 flex items-center gap-1">
-                      <Lock className="h-3 w-3" />
-                      Locked
-                    </span>
-                  )} */}
                 </div>
                 <p className="text-sm text-gray-500">
-                  {isRequestAgainMode 
+                  {isRequestAgainMode
                     ? "Procedures are locked and cannot be changed."
-                    : "Select up to 2 procedures across any department."
-                  }
+                    : "Select up to 2 procedures across any department."}
                 </p>
 
                 {formData.selectedProcedures.length > 0 && (
-                  <div className={`p-3 border rounded-md ${isRequestAgainMode ? "bg-gray-50 border-gray-200" : "bg-[#5C8E77]/5 border-[#5C8E77]/20"}`}>
-                    <p className={`text-xs font-medium mb-2 ${isRequestAgainMode ? "text-gray-600" : "text-[#5C8E77]"}`}>Selected:</p>
+                  <div
+                    className={`p-3 border rounded-md ${isRequestAgainMode ? "bg-gray-50 border-gray-200" : "bg-[#5C8E77]/5 border-[#5C8E77]/20"}`}
+                  >
+                    <p
+                      className={`text-xs font-medium mb-2 ${isRequestAgainMode ? "text-gray-600" : "text-[#5C8E77]"}`}
+                    >
+                      Selected:
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {selectedProcedureNames.map((name, i) => (
-                        <span key={i} className={`px-2 py-1 rounded text-xs ${isRequestAgainMode ? "bg-gray-200 text-gray-700" : "bg-[#5C8E77] text-white"}`}>
+                        <span
+                          key={i}
+                          className={`px-2 py-1 rounded text-xs ${isRequestAgainMode ? "bg-gray-200 text-gray-700" : "bg-[#5C8E77] text-white"}`}
+                        >
                           {name}
                         </span>
                       ))}
@@ -831,10 +1277,9 @@ export default function ClinicianForm() {
                 )}
               </div>
 
-              {/* Accordion */}
               {!isRequestAgainMode && (
                 <div className="border border-gray-200 rounded-lg divide-y">
-                  {departments.map((dept, i) => {
+                  {departments.map((dept) => {
                     const expanded = expandedDepartments.has(dept)
                     const procedures = proceduresByDepartment[dept]
                     return (
@@ -869,7 +1314,6 @@ export default function ClinicianForm() {
               )}
             </div>
 
-            {/* Section 4: Auto-assigned */}
             <div>
               <h3 className="text-md font-semibold text-gray-700 mb-3 border-b pb-1">Auto-assigned Details</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -884,7 +1328,6 @@ export default function ClinicianForm() {
               </div>
             </div>
 
-            {/* Progress Bar */}
             {isSubmitting && (
               <div>
                 <div className="flex justify-between text-sm text-gray-600 mb-1">
@@ -898,13 +1341,12 @@ export default function ClinicianForm() {
             )}
           </div>
 
-          {/* Sticky Footer */}
           <div className="border-t bg-white px-6 py-4 sticky bottom-0">
             <Button
               type="submit"
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="w-full bg-[#5C8E77] hover:bg-[#4a7c65] text-white font-medium py-3"
+              className="w-full bg-[#5C8E77] hover:bg-[#406E58] text-white font-medium py-3"
             >
               {isSubmitting ? "Submitting..." : isRequestAgainMode ? "Submit to Existing Record" : "Submit Attendance"}
             </Button>
@@ -913,6 +1355,58 @@ export default function ClinicianForm() {
       </Dialog>
 
       <Toaster />
+
+      <Dialog open={isSuccessModalOpen} onOpenChange={setIsSuccessModalOpen}>
+        <DialogContent className="max-w-md text-center space-y-4 py-8">
+          <DialogHeader>
+            <DialogTitle className="text-green-700 text-lg font-semibold">
+              Attendance Submitted Successfully!
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col items-center space-y-3">
+            <svg className="h-12 w-12 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <p className="text-gray-600">
+              {isRequestAgainMode
+                ? "Your attendance has been added to the existing record and is pending approval."
+                : "Your attendance has been submitted and is pending approval. Chair and instructor have been auto-assigned."}
+            </p>
+          </div>
+
+          <DialogFooter className="flex justify-center">
+            <Button
+              onClick={() => setIsSuccessModalOpen(false)}
+              className="bg-[#5C8E77] hover:bg-[#406E58] text-white px-6"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isCancelConfirmOpen} onOpenChange={setIsCancelConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogTitle>Cancel Request</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to cancel request <strong>{requestToCancel?.id}</strong> for patient{" "}
+            <strong>{requestToCancel?.patientName}</strong>?
+            <br />
+            This action cannot be undone.
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Request</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelRequest}
+              disabled={isCancelling}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isCancelling ? "Cancelling..." : "Cancel Request"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

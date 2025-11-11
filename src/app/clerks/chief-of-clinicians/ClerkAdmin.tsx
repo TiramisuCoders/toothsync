@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Edit, Search } from 'lucide-react'
+import { Plus, Search, Check, ChevronsUpDown, Edit } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -11,17 +11,29 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
 interface Clerk {
   id: string
-  clerk_id: string  // Added this for API operations
+  clerk_id: string
   firstName: string
   lastName: string
   email: string
   year: string
-  section: string
-  status: "On Duty" | "Not On Duty"
+  yearDisplay: string
+  semester: string
+  status: "On Duty" | "Not On Duty" | "For Approval"
   archived?: boolean
+}
+
+interface AcademicYear {
+  id: string
+  academic_year: string
+  semester: string
+  status: string
 }
 
 interface FormErrors {
@@ -29,52 +41,84 @@ interface FormErrors {
   lastName?: string
   email?: string
   year?: string
-  section?: string
   status?: string
 }
 
 export default function ClerksPage() {
   const [clerks, setClerks] = useState<Clerk[]>([])
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
-  const [debugInfo, setDebugInfo] = useState<string>("")
+  const { toast } = useToast()
 
-  // Available users for promotion to clerk
   const [availableUsers, setAvailableUsers] = useState<any[]>([])
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([])
   const [selectedUser, setSelectedUser] = useState<any>(null)
+  const [openUserCombobox, setOpenUserCombobox] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState("")
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [selectedClerk, setSelectedClerk] = useState<Clerk | null>(null)
-  const [formData, setFormData] = useState({
+
+  const [clerkFormData, setClerkFormData] = useState({
+    academic_year: "",
+    status: "Not On Duty" as "On Duty" | "Not On Duty" | "For Approval",
+  })
+
+  const [editFormData, setEditFormData] = useState({
     firstName: "",
     lastName: "",
     email: "",
     year: "",
-    section: "",
-    status: "Not On Duty" as "On Duty" | "Not On Duty",
+    status: "Not On Duty" as "On Duty" | "Not On Duty" | "For Approval",
   })
-  const [clerkFormData, setClerkFormData] = useState({
-    academic_year: "",
-    status: "Not On Duty" as "On Duty" | "Not On Duty",
-  })
+
   const [formErrors, setFormErrors] = useState<FormErrors>({})
   const [showArchived, setShowArchived] = useState(false)
 
-  type FilterType = "all" | "on-duty" | "not-on-duty"
+  type FilterType = "all" | "on-duty" | "not-on-duty" | "for-approval"
   const [activeFilter, setActiveFilter] = useState<FilterType>("all")
 
   useEffect(() => {
     fetchClerks()
     fetchAvailableUsers()
+    fetchAcademicYears()
   }, [])
+
+  const getStatusBadge = (status: "On Duty" | "Not On Duty" | "For Approval") => {
+    switch (status) {
+      case "On Duty":
+        return <Badge className="bg-[#5C8E77] hover:bg-[#406E58] text-white">On Duty</Badge>
+      case "Not On Duty":
+        return <Badge variant="outline" className="text-red-600 border-red-600">Not On Duty</Badge>
+      case "For Approval":
+        return <Badge variant="outline" className="text-amber-600 border-amber-600">For Approval</Badge>
+      default:
+        return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  const fetchAcademicYears = async () => {
+    try {
+      const response = await fetch("/api/clerks?type=academic-years", {
+        method: "GET",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch academic years")
+      }
+
+      const result = await response.json()
+      setAcademicYears(result.data || [])
+    } catch (err) {
+      console.error("Failed to fetch academic years:", err)
+    }
+  }
 
   const fetchAvailableUsers = async () => {
     try {
-      console.log("👥 Fetching available users...")
-
-      const response = await fetch("/api/clerks/available-users", {
+      const response = await fetch("/api/clerks?type=available-users", {
         method: "GET",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -86,20 +130,14 @@ export default function ClerksPage() {
 
       const result = await response.json()
       setAvailableUsers(result.data || [])
-      console.log("✅ Fetched available users:", result.data?.length || 0)
-      
     } catch (err) {
-      console.error("❌ Failed to fetch available users:", err)
-      // Don't set main error for this, it's not critical
+      console.error("Failed to fetch available users:", err)
     }
   }
 
   const fetchClerks = async () => {
     try {
       setLoading(true)
-      setError(null)
-      setDebugInfo("")
-      console.log("🔄 Fetching clerks from admin side...")
 
       const response = await fetch("/api/clerks", {
         method: "GET",
@@ -108,16 +146,10 @@ export default function ClerksPage() {
         headers: { "Content-Type": "application/json" },
       })
 
-      console.log("- Response status:", response.status)
-      console.log("- Response ok:", response.ok)
-
-      // Get response text first to handle both JSON and text responses
       const responseText = await response.text()
-      console.log("- Response body (raw):", responseText)
 
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}`
-        
         try {
           const errorData = JSON.parse(responseText)
           errorMessage = errorData.error || errorData.message || errorMessage
@@ -127,109 +159,83 @@ export default function ClerksPage() {
         } catch {
           errorMessage += `: ${responseText}`
         }
-        
-        setDebugInfo(`Status: ${response.status}, Response: ${responseText}`)
         throw new Error(errorMessage)
       }
 
-      // Parse the response
       let raw
       try {
         raw = JSON.parse(responseText)
       } catch (parseError) {
-        console.error("Failed to parse JSON response:", parseError)
         throw new Error("Invalid JSON response from server")
       }
 
-      console.log("- Parsed response:", raw)
-
-      // Support both shapes: direct array or { data: Clerk[] }
       const payload = Array.isArray(raw) ? raw : raw?.data || []
 
       if (!Array.isArray(payload)) {
         throw new Error("Expected array of clerks from API")
       }
 
-      // Normalize data - ensure clerk_id is properly mapped
       const normalized: Clerk[] = (payload as any[]).map((c, i) => {
+        // Map the status directly from DB without modification
+        let statusValue: "On Duty" | "Not On Duty" | "For Approval" = "Not On Duty"
+        
+        if (c?.status === "On Duty") statusValue = "On Duty"
+        else if (c?.status === "Not On Duty") statusValue = "Not On Duty"
+        else if (c?.status === "For Approval") statusValue = "For Approval"
+
         return {
           id: String(c?.id ?? `CLK${String(i + 1).padStart(3, '0')}`),
-          clerk_id: String(c?.clerk_id ?? c?.user_id ?? ''), // Map user_id to clerk_id
+          clerk_id: String(c?.clerk_id ?? c?.user_id ?? ''),
           firstName: c?.firstName ?? c?.first_name ?? '',
           lastName: c?.lastName ?? c?.last_name ?? '',
           email: c?.email ?? '',
-          year: c?.year ?? '1st Year',
-          section: c?.section ?? 'A',
-          status: (c?.status === "On Duty" || c?.status === "Not On Duty") ? c.status : "Not On Duty",
+          year: c?.year ?? '',
+          yearDisplay: c?.yearDisplay ?? c?.year ?? '',
+          semester: c?.semester ?? '',
+          status: statusValue,
           archived: c?.archived ?? false,
         }
       })
 
-      console.log("✅ Normalized clerks data:", normalized)
-      console.log("📝 Sample clerk object:", normalized[0])
-      console.log("📊 Archived clerks count:", normalized.filter(c => c.archived).length)
-      console.log("📊 Active clerks count:", normalized.filter(c => !c.archived).length)
       setClerks(normalized)
-      setDebugInfo(`Successfully loaded ${normalized.length} clerks`)
-      
+      toast({
+        title: "Success",
+        description: `Successfully loaded ${normalized.length} clerks`,
+      })
     } catch (err) {
-      console.error("❌ Clerk fetch error:", err)
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch clerks"
-      setError(errorMessage)
-      
-      // Add debug info for different error types
-      if (err instanceof TypeError && err.message.includes('fetch')) {
-        setDebugInfo("Network error - check if the server is running")
-      } else if (err instanceof Error && err.message.includes('401')) {
-        setDebugInfo("Authentication error - user may not be logged in")
-      } else if (err instanceof Error && err.message.includes('403')) {
-        setDebugInfo("Permission error - user may not have required role")
-      }
+      toast({
+        variant: "destructive",
+        title: "Error Loading Clerks",
+        description: errorMessage,
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  // Test authentication helper function
-  const testAuth = async () => {
-    try {
-      const response = await fetch('/api/auth/user', { credentials: 'include' })
-      const data = await response.json()
-      console.log('Auth test result:', data)
-      setDebugInfo(`Auth test: ${response.status} - ${JSON.stringify(data)}`)
-    } catch (error) {
-      console.error('Auth test failed:', error)
-      setDebugInfo(`Auth test failed: ${error}`)
-    }
-  }
-
-  // Validation function
-const validateForm = (_isEdit: boolean = false): boolean => {
+  const validateEditForm = (): boolean => {
     const errors: FormErrors = {}
-    
-    if (!formData.firstName.trim()) {
+
+    if (!editFormData.firstName.trim()) {
       errors.firstName = "First name is required"
     }
-    
-    if (!formData.lastName.trim()) {
+
+    if (!editFormData.lastName.trim()) {
       errors.lastName = "Last name is required"
     }
-    
-    if (!formData.email.trim()) {
+
+    if (!editFormData.email.trim()) {
       errors.email = "Email is required"
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editFormData.email)) {
       errors.email = "Please enter a valid email address"
     }
-    
-    if (!formData.year) {
+
+    if (!editFormData.year) {
       errors.year = "Year is required"
     }
-    
-    if (!formData.section) {
-      errors.section = "Section is required"
-    }
-    
-    if (!formData.status) {
+
+    if (!editFormData.status) {
       errors.status = "Status is required"
     }
 
@@ -237,22 +243,17 @@ const validateForm = (_isEdit: boolean = false): boolean => {
     return Object.keys(errors).length === 0
   }
 
-  // Filter clerks based on search term, archived status, and duty status
   const filteredClerks = clerks.filter((clerk) => {
-    // Filter by archived status - show archived when showArchived is true
     if (showArchived) {
-      // When showing archived, only show archived clerks
       if (!clerk.archived) return false
     } else {
-      // When not showing archived, only show non-archived clerks
       if (clerk.archived) return false
     }
-    
-    // Then filter by duty status
+
     if (activeFilter === "on-duty" && clerk.status !== "On Duty") return false
     if (activeFilter === "not-on-duty" && clerk.status !== "Not On Duty") return false
-    
-    // Finally filter by search term
+    if (activeFilter === "for-approval" && clerk.status !== "For Approval") return false
+
     return (
       clerk.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       clerk.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -261,29 +262,27 @@ const validateForm = (_isEdit: boolean = false): boolean => {
     )
   })
 
-  // Debug logging for filtered results
-  console.log("🔍 Filter Debug:", {
-    showArchived,
-    activeFilter,
-    totalClerks: clerks.length,
-    filteredClerks: filteredClerks.length,
-    archivedInData: clerks.filter(c => c.archived).length
-  })
-
   const handleAddClerk = async () => {
     if (!selectedUser) {
-      setError("Please select a user to promote to clerk")
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please select a user to promote to clerk",
+      })
       return
     }
 
     if (!clerkFormData.academic_year) {
-      setError("Please fill in academic year")
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please fill in academic year",
+      })
       return
     }
 
     try {
       setLoading(true)
-      setError(null)
 
       const response = await fetch("/api/clerks", {
         method: "POST",
@@ -302,32 +301,48 @@ const validateForm = (_isEdit: boolean = false): boolean => {
         throw new Error(result.error || result.details || "Failed to add clerk")
       }
 
-      // Refresh both lists
       await fetchClerks()
       await fetchAvailableUsers()
-      
-      // Reset form and close modal
+
       setSelectedUser(null)
       setClerkFormData({
         academic_year: "",
         status: "Not On Duty",
       })
       setIsAddModalOpen(false)
-      setDebugInfo(`Successfully promoted ${selectedUser.first_name} ${selectedUser.last_name} to clerk`)
-      
+
+      toast({
+        title: "Success",
+        description: `Successfully promoted ${selectedUser.first_name} ${selectedUser.last_name} to clerk`,
+      })
     } catch (err) {
-      console.error("Error adding clerk:", err)
-      setError(err instanceof Error ? err.message : "Failed to add clerk")
+      toast({
+        variant: "destructive",
+        title: "Error Adding Clerk",
+        description: err instanceof Error ? err.message : "Failed to add clerk",
+      })
     } finally {
       setLoading(false)
     }
   }
 
+  const openEditModal = (clerk: Clerk) => {
+    setSelectedClerk(clerk)
+    setEditFormData({
+      firstName: clerk.firstName,
+      lastName: clerk.lastName,
+      email: clerk.email,
+      year: clerk.year,
+      status: clerk.status,
+    })
+    setFormErrors({})
+    setIsEditModalOpen(true)
+  }
+
   const handleEditClerk = async () => {
-    if (selectedClerk && validateForm(true)) {
+    if (selectedClerk && validateEditForm()) {
       try {
         setLoading(true)
-        setError(null)
 
         if (!selectedClerk.clerk_id) {
           throw new Error("Clerk ID is missing. Cannot update clerk.")
@@ -339,12 +354,11 @@ const validateForm = (_isEdit: boolean = false): boolean => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             clerk_id: selectedClerk.clerk_id,
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            email: formData.email,
-            year: formData.year,
-            section: formData.section,
-            status: formData.status,
+            firstName: editFormData.firstName,
+            lastName: editFormData.lastName,
+            email: editFormData.email,
+            year: editFormData.year,
+            status: editFormData.status,
           })
         })
 
@@ -354,58 +368,45 @@ const validateForm = (_isEdit: boolean = false): boolean => {
           throw new Error(result.error || result.details || "Failed to update clerk")
         }
 
-        // Refresh the clerks list
         await fetchClerks()
-        
-        // Reset form and close modal
+
         setIsEditModalOpen(false)
         setSelectedClerk(null)
-        setFormData({
+        setEditFormData({
           firstName: "",
           lastName: "",
           email: "",
           year: "",
-          section: "",
           status: "Not On Duty",
         })
         setFormErrors({})
-        setDebugInfo("Clerk updated successfully")
-        
+
+        toast({
+          title: "Success",
+          description: "Clerk updated successfully",
+        })
       } catch (err) {
-        console.error("Error updating clerk:", err)
-        setError(err instanceof Error ? err.message : "Failed to update clerk")
+        toast({
+          variant: "destructive",
+          title: "Error Updating Clerk",
+          description: err instanceof Error ? err.message : "Failed to update clerk",
+        })
       } finally {
         setLoading(false)
       }
     }
   }
 
-  const openEditModal = (clerk: Clerk) => {
-    setSelectedClerk(clerk)
-    setFormData({
-      firstName: clerk.firstName,
-      lastName: clerk.lastName,
-      email: clerk.email,
-      year: clerk.year,
-      section: clerk.section,
-      status: clerk.status,
-    })
-    setFormErrors({})
-    setIsEditModalOpen(true)
-  }
-
-  // Function to archive/unarchive clerk
   const handleArchiveClerk = async (clerk: Clerk) => {
     try {
       setLoading(true)
-      setError(null)
-      
+
       if (!clerk.clerk_id) {
         throw new Error("Clerk ID is missing. Cannot archive/unarchive clerk.")
       }
-      
+
       const action = clerk.archived ? 'unarchive' : 'archive'
-      
+
       const response = await fetch("/api/clerks", {
         method: "DELETE",
         credentials: "include",
@@ -422,27 +423,24 @@ const validateForm = (_isEdit: boolean = false): boolean => {
         throw new Error(result.error || result.details || `Failed to ${action} clerk`)
       }
 
-      // Refresh the clerks list
       await fetchClerks()
-      setDebugInfo(`Clerk ${action}d successfully`)
-      
+
+      toast({
+        title: "Success",
+        description: `Clerk ${action}d successfully`,
+      })
     } catch (err) {
-      console.error(`Error ${clerk.archived ? 'unarchiving' : 'archiving'} clerk:`, err)
-      setError(err instanceof Error ? err.message : `Failed to ${clerk.archived ? 'unarchive' : 'archive'} clerk`)
+      toast({
+        variant: "destructive",
+        title: `Error ${clerk.archived ? 'Unarchiving' : 'Archiving'} Clerk`,
+        description: err instanceof Error ? err.message : `Failed to ${clerk.archived ? 'unarchive' : 'archive'} clerk`,
+      })
     } finally {
       setLoading(false)
     }
   }
 
   const resetForm = () => {
-    setFormData({
-      firstName: "",
-      lastName: "",
-      email: "",
-      year: "",
-      section: "",
-      status: "Not On Duty",
-    })
     setClerkFormData({
       academic_year: "",
       status: "Not On Duty",
@@ -451,7 +449,7 @@ const validateForm = (_isEdit: boolean = false): boolean => {
     setFormErrors({})
   }
 
-  if (loading) {
+  if (loading && clerks.length === 0) {
     return (
       <div className="space-y-6">
         <div>
@@ -467,7 +465,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Clerks Management</h1>
@@ -475,48 +472,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
         </div>
       </div>
 
-      {/* Error Alert with Debug Info */}
-      {error && (
-        <Alert className="bg-red-50 border-red-200">
-          <AlertDescription className="text-red-800">
-            <div className="mb-2">
-              <strong>Error:</strong> {error}
-            </div>
-            {debugInfo && (
-              <div className="text-sm text-red-600 mb-2">
-                <strong>Debug Info:</strong> {debugInfo}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Button
-                variant="link"
-                className="p-0 h-auto text-red-600"
-                onClick={fetchClerks}
-              >
-                Try again
-              </Button>
-              <Button
-                variant="link"
-                className="p-0 h-auto text-red-600"
-                onClick={testAuth}
-              >
-                Test Auth
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Success Debug Info */}
-      {!error && debugInfo && (
-        <Alert className="bg-green-50 border-green-200">
-          <AlertDescription className="text-green-800">
-            {debugInfo}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Search */}
       <div className="flex justify-start">
         <div className="relative w-80">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -530,7 +485,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
         </div>
       </div>
 
-      {/* Clerks Table */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-start">
@@ -564,6 +518,14 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                   Not On Duty
                 </Button>
                 <Button
+                  variant={activeFilter === "for-approval" ? "default" : "ghost"}
+                  size="sm"
+                  className={activeFilter === "for-approval" ? "bg-[#5C8E77] hover:bg-[#4a7a63]" : ""}
+                  onClick={() => setActiveFilter("for-approval")}
+                >
+                  For Approval
+                </Button>
+                <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowArchived(!showArchived)}
@@ -574,11 +536,10 @@ const validateForm = (_isEdit: boolean = false): boolean => {
               </div>
             </div>
             <div className="flex flex-col items-end">
-              {/* Add Clerk Button - Disabled for now since we only have GET endpoint */}
               <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
                 <DialogTrigger asChild>
-                  <Button 
-                    className="bg-[#5C8E77] hover:bg-[#4a7a63] text-white" 
+                  <Button
+                    className="bg-[#5C8E77] hover:bg-[#4a7a63] text-white"
                     onClick={resetForm}
                     disabled={loading}
                   >
@@ -591,42 +552,77 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                     <DialogTitle>Promote User to Clerk</DialogTitle>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
-                    {/* User Selection */}
+                    {/* Searchable User Selection with Combobox */}
                     <div className="space-y-2">
                       <Label>Select User (R01 - Clinicians)</Label>
-                      <Select 
-                        value={selectedUser?.auth_user_id || ""} 
-                        onValueChange={(value) => {
-                          const user = availableUsers.find(u => u.auth_user_id === value)
-                          setSelectedUser(user)
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose a clinician to promote to clerk" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableUsers.map((user) => (
-                            <SelectItem key={user.auth_user_id} value={user.auth_user_id}>
-                              <div className="flex flex-col">
+                      <Popover open={openUserCombobox} onOpenChange={setOpenUserCombobox}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={openUserCombobox}
+                            className="w-full justify-between"
+                          >
+                            {selectedUser ? (
+                              <span className="flex items-center gap-2">
                                 <span className="font-medium">
-                                  {user.first_name} {user.last_name}
+                                  {selectedUser.first_name} {selectedUser.last_name}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                  {user.email} • {user.sex}
+                                  • {selectedUser.email}
                                 </span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                              </span>
+                            ) : (
+                              "Choose a clinician to promote to clerk"
+                            )}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[550px] p-0">
+                          <Command>
+                            <CommandInput placeholder="Search clinicians by name or email..." />
+                            <CommandList>
+                              <CommandEmpty>No clinicians found.</CommandEmpty>
+                              <CommandGroup>
+                                {availableUsers.map((user) => (
+                                  <CommandItem
+                                    key={user.auth_user_id}
+                                    value={`${user.first_name} ${user.last_name} ${user.email}`}
+                                    onSelect={() => {
+                                      setSelectedUser(user)
+                                      setOpenUserCombobox(false)
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        selectedUser?.auth_user_id === user.auth_user_id
+                                          ? "opacity-100"
+                                          : "opacity-0"
+                                      )}
+                                    />
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">
+                                        {user.first_name} {user.last_name}
+                                      </span>
+                                      <span className="text-sm text-gray-500">
+                                        {user.email} • {user.sex}
+                                      </span>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                       {availableUsers.length === 0 && (
                         <p className="text-sm text-gray-500">
-                          No R01 (Clinician) users available for promotion. All clinicians are already assigned as clerks.
+                          No R01 (Clinician) users available for promotion.
                         </p>
                       )}
                     </div>
 
-                    {/* Selected User Display */}
                     {selectedUser && (
                       <div className="bg-gray-50 p-3 rounded-lg">
                         <h4 className="font-medium text-sm text-gray-700 mb-2">Selected Clinician:</h4>
@@ -639,13 +635,9 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                             <div><strong>Contact:</strong> {selectedUser.contact_number}</div>
                           )}
                         </div>
-                        <div className="mt-2 text-xs text-blue-600">
-                          Note: This clinician's role will be changed to R02 (Clerk) when promoted. They can be demoted back to R01 later if needed.
-                        </div>
                       </div>
                     )}
 
-                    {/* Clerk Details */}
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="academicYear">Academic Year</Label>
@@ -657,18 +649,24 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                             <SelectValue placeholder="Select academic year" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="AY2024-1">AY2024-1 (2024-2025, 1st Semester)</SelectItem>
-                            <SelectItem value="AY2024-2">AY2024-2 (2024-2025, 2nd Semester)</SelectItem>
-                            <SelectItem value="AY2025-1">AY2025-1 (2025-2026, 1st Semester)</SelectItem>
-                            <SelectItem value="AY2025-2">AY2025-2 (2025-2026, 2nd Semester)</SelectItem>
+                            {academicYears.map((year) => (
+                              <SelectItem key={year.id} value={year.id}>
+                                {year.academic_year} - {year.semester} Semester
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
+                        {academicYears.length === 0 && (
+                          <p className="text-sm text-gray-500">
+                            No active academic years found.
+                          </p>
+                        )}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="status">Initial Status</Label>
                         <Select
                           value={clerkFormData.status}
-                          onValueChange={(value: "On Duty" | "Not On Duty") =>
+                          onValueChange={(value: "On Duty" | "Not On Duty" | "For Approval") =>
                             setClerkFormData({ ...clerkFormData, status: value })
                           }
                         >
@@ -678,11 +676,9 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                           <SelectContent>
                             <SelectItem value="On Duty">On Duty</SelectItem>
                             <SelectItem value="Not On Duty">Not On Duty</SelectItem>
+                            <SelectItem value="For Approval">For Approval</SelectItem>
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="text-xs text-gray-500 bg-blue-50 p-2 rounded">
-                        <strong>Note:</strong> Section assignment is not required. The system will automatically handle section management.
                       </div>
                     </div>
                   </div>
@@ -694,10 +690,10 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                     }}>
                       Cancel
                     </Button>
-                    <Button 
-                      onClick={handleAddClerk} 
+                    <Button
+                      onClick={handleAddClerk}
                       className="bg-[#5C8E77] hover:bg-[#4a7a63] text-white"
-                      disabled={!selectedUser || loading}
+                      disabled={!selectedUser || !clerkFormData.academic_year || loading}
                     >
                       {loading ? "Promoting..." : "Promote to Clerk"}
                     </Button>
@@ -715,8 +711,6 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                 <TableHead>First Name</TableHead>
                 <TableHead>Last Name</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Year</TableHead>
-                <TableHead>Section</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -724,7 +718,7 @@ const validateForm = (_isEdit: boolean = false): boolean => {
             <TableBody>
               {filteredClerks.length > 0 ? (
                 filteredClerks.map((clerk) => (
-                  <TableRow 
+                  <TableRow
                     key={clerk.id}
                     className={`${clerk.archived ? "bg-gray-50 opacity-75" : ""}`}
                   >
@@ -732,20 +726,9 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                     <TableCell>{clerk.firstName}</TableCell>
                     <TableCell>{clerk.lastName}</TableCell>
                     <TableCell>{clerk.email}</TableCell>
-                    <TableCell>{clerk.year}</TableCell>
-                    <TableCell>{clerk.section}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Badge
-                          variant={clerk.status === "On Duty" ? "default" : "secondary"}
-                          className={
-                            clerk.status === "On Duty"
-                              ? "bg-[#5C8E77] hover:bg-[#4a7a63] text-white"
-                              : "bg-gray-100 text-gray-700"
-                          }
-                        >
-                          {clerk.status}
-                        </Badge>
+                        {getStatusBadge(clerk.status)}
                         {clerk.archived && (
                           <Badge variant="outline" className="text-orange-600 border-orange-600">
                             Archived
@@ -760,7 +743,8 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                           size="sm"
                           onClick={() => openEditModal(clerk)}
                           className="text-[#5C8E77] hover:text-[#4a7a63] hover:bg-[#e6f7eb]"
-                          disabled={loading}
+                          disabled={loading || clerk.archived}
+                          title="Edit clerk details"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -798,7 +782,7 @@ const validateForm = (_isEdit: boolean = false): boolean => {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-gray-500">
+                  <TableCell colSpan={6} className="text-center py-12 text-gray-500">
                     {searchTerm ? "No clerks found matching your search." : "No clerks found."}
                   </TableCell>
                 </TableRow>
@@ -808,57 +792,95 @@ const validateForm = (_isEdit: boolean = false): boolean => {
         </CardContent>
       </Card>
 
-      {/* Edit Modal - Keeping for future functionality */}
+      {/* Edit Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Clerk Information</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            {/* Display current user info (read-only) */}
             <div className="bg-gray-50 p-3 rounded-lg">
               <h4 className="font-medium text-sm text-gray-700 mb-2">User Information (Read Only):</h4>
               <div className="grid gap-2 text-sm">
-                <div><strong>Name:</strong> {selectedClerk?.firstName} {selectedClerk?.lastName}</div>
-                <div><strong>Email:</strong> {selectedClerk?.email}</div>
-                <div><strong>Current Section:</strong> {selectedClerk?.section}</div>
-              </div>
-              <div className="mt-2 text-xs text-blue-600">
-                Note: Personal info and section updates require database schema changes.
+                <div><strong>Clerk ID:</strong> {selectedClerk?.id}</div>
               </div>
             </div>
 
-            {/* Editable fields */}
             <div className="grid gap-4">
               <div className="space-y-2">
+                <Label htmlFor="editFirstName">First Name</Label>
+                <Input
+                  id="editFirstName"
+                  value={editFormData.firstName}
+                  onChange={(e) => setEditFormData({ ...editFormData, firstName: e.target.value })}
+                  className={formErrors.firstName ? "border-red-500" : ""}
+                  disabled={loading}
+                />
+                {formErrors.firstName && (
+                  <p className="text-sm text-red-500">{formErrors.firstName}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editLastName">Last Name</Label>
+                <Input
+                  id="editLastName"
+                  value={editFormData.lastName}
+                  onChange={(e) => setEditFormData({ ...editFormData, lastName: e.target.value })}
+                  className={formErrors.lastName ? "border-red-500" : ""}
+                  disabled={loading}
+                />
+                {formErrors.lastName && (
+                  <p className="text-sm text-red-500">{formErrors.lastName}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editEmail">Email</Label>
+                <Input
+                  id="editEmail"
+                  type="email"
+                  value={editFormData.email}
+                  onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                  className={formErrors.email ? "border-red-500" : ""}
+                  disabled={loading}
+                />
+                {formErrors.email && (
+                  <p className="text-sm text-red-500">{formErrors.email}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="editYear">Academic Year</Label>
-                <Select value={formData.year} onValueChange={(value) => setFormData({ ...formData, year: value })}>
-                  <SelectTrigger className={formErrors.year ? "border-red-500" : ""}>
+                <Select value={editFormData.year} onValueChange={(value) => setEditFormData({ ...editFormData, year: value })}>
+                  <SelectTrigger className={formErrors.year ? "border-red-500" : ""} disabled={loading}>
                     <SelectValue placeholder="Select year" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="AY2024-1">AY2024-1 (2024-2025, 1st Semester)</SelectItem>
-                    <SelectItem value="AY2024-2">AY2024-2 (2024-2025, 2nd Semester)</SelectItem>
-                    <SelectItem value="AY2025-1">AY2025-1 (2025-2026, 1st Semester)</SelectItem>
-                    <SelectItem value="AY2025-2">AY2025-2 (2025-2026, 2nd Semester)</SelectItem>
+                    <SelectItem value="AY2024-1">AY2024-1</SelectItem>
+                    <SelectItem value="AY2024-2">AY2024-2</SelectItem>
+                    <SelectItem value="AY2025-1">AY2025-1</SelectItem>
+                    <SelectItem value="AY2025-2">AY2025-2</SelectItem>
                   </SelectContent>
                 </Select>
                 {formErrors.year && (
                   <p className="text-sm text-red-500">{formErrors.year}</p>
                 )}
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="editStatus">Status</Label>
                 <Select
-                  value={formData.status}
-                  onValueChange={(value: "On Duty" | "Not On Duty") => setFormData({ ...formData, status: value })}
+                  value={editFormData.status}
+                  onValueChange={(value: "On Duty" | "Not On Duty" | "For Approval") => setEditFormData({ ...editFormData, status: value })}
                 >
-                  <SelectTrigger className={formErrors.status ? "border-red-500" : ""}>
+                  <SelectTrigger className={formErrors.status ? "border-red-500" : ""} disabled={loading}>
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="On Duty">On Duty</SelectItem>
                     <SelectItem value="Not On Duty">Not On Duty</SelectItem>
+                    <SelectItem value="For Approval">For Approval</SelectItem>
                   </SelectContent>
                 </Select>
                 {formErrors.status && (
@@ -868,7 +890,7 @@ const validateForm = (_isEdit: boolean = false): boolean => {
             </div>
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
+            <Button variant="outline" onClick={() => setIsEditModalOpen(false)} disabled={loading}>
               Cancel
             </Button>
             <Button onClick={handleEditClerk} className="bg-[#5C8E77] hover:bg-[#4a7a63] text-white" disabled={loading}>

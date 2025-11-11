@@ -61,7 +61,21 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname
 
-const publicRoutes = ["/signup", "/auth/callback", "/landing", "/incident-management", "/api/support", "/api/feedback-form", "/update-password"]
+  // Add /api/instructor-signup to public routes
+ // In middleware.ts, update the publicRoutes array:
+
+const publicRoutes = [
+  "/signup", 
+  "/auth/callback", 
+  "/landing", 
+  "/incident-management", 
+  "/api/support", 
+  "/api/feedback-form",
+  "/update-password",
+  "/api/instructor-signup",
+  "/api/clerk-signup"  // Add this line
+]
+  
   const isPublicRoute = publicRoutes.some((route) => path.startsWith(route))
 
   console.log("[v0] Path:", path, "| Public route:", isPublicRoute, "| User:", !!user)
@@ -69,7 +83,7 @@ const publicRoutes = ["/signup", "/auth/callback", "/landing", "/incident-manage
   if (!user && isRoleBasedRoute(path)) {
     console.log("[v0] Blocking unauthenticated access to role-based route")
     const url = request.nextUrl.clone()
-    url.pathname = "landing"
+    url.pathname = "/landing"
     return NextResponse.redirect(url)
   }
 
@@ -123,7 +137,7 @@ const publicRoutes = ["/signup", "/auth/callback", "/landing", "/incident-manage
       console.log("[v0] User authenticated but no role found in database")
       if (isRoleBasedRoute(path)) {
         const url = request.nextUrl.clone()
-        url.pathname = "landing"
+        url.pathname = "/landing"
         return NextResponse.redirect(url)
       }
     }
