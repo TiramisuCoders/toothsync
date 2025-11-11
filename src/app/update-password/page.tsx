@@ -1,7 +1,6 @@
 // app/update-password/page.tsx
+import UpdatePasswordForm from "./UpdatePasswordForm"
 
-import UpdatePasswordClient from "./UpdatePasswordClient"
-
-export default function UpdatePasswordPage() {
-  return <UpdatePasswordClient />
+export default function Page() {
+  return <UpdatePasswordForm />
 }

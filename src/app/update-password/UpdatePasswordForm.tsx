@@ -1,5 +1,5 @@
-// app/update-password/UpdatePasswordClient.tsx
-"use client"
+// app/update-password/UpdatePasswordForm.tsx
+'use client'
 
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -7,10 +7,10 @@ import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, CheckCircle, Lock, X } from "lucide-react"
 import { createClient } from "@supabase/supabase-js"
 
-export default function UpdatePasswordClient() {
+export default function UpdatePasswordForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const recoveryCode = searchParams.get("code")
+  const recoveryCode = searchParams?.get("code")
   
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [showPassword, setShowPassword] = useState(false)
@@ -36,7 +36,6 @@ export default function UpdatePasswordClient() {
     return () => clearInterval(interval)
   }, [])
 
-  // Password strength validator
   useEffect(() => {
     if (password.length === 0) {
       setPasswordStrength({ score: 0, feedback: "" })
@@ -76,7 +75,6 @@ export default function UpdatePasswordClient() {
     setSuccessMessage("")
     setHasError(false)
 
-    // Validation
     if (password.length < 8) {
       setErrorMessage("Password must be at least 8 characters long")
       setHasError(true)
@@ -101,13 +99,11 @@ export default function UpdatePasswordClient() {
     setIsLoading(true)
 
     try {
-      // Initialize Supabase client
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       )
 
-      // If there's a recovery code, exchange it first to establish a session
       if (recoveryCode) {
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(recoveryCode)
         if (exchangeError) {
@@ -115,7 +111,6 @@ export default function UpdatePasswordClient() {
         }
       }
 
-      // Update the user's password
       const { error } = await supabase.auth.updateUser({
         password: password,
       })
@@ -126,7 +121,6 @@ export default function UpdatePasswordClient() {
 
       setSuccessMessage("Password updated successfully! Redirecting to login...")
       
-      // Redirect to login after 2 seconds
       setTimeout(() => {
         router.push("/landing")
       }, 2000)
