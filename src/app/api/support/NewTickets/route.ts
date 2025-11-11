@@ -113,6 +113,38 @@ async function getOrCreateUser(supabase: any, email: string): Promise<string | n
     return null;
 }
 
+// 🆕 NEW FUNCTION: Send password reset email via Supabase
+async function sendPasswordResetEmail(
+    supabase: any, 
+    userEmail: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        console.log(`📧 Sending password reset email to: ${userEmail}`);
+
+        const { data, error } = await supabase.auth.resetPasswordForEmail(
+            userEmail,
+                {
+                    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/update-password`, // ← Make sure this is correct
+                }
+        );
+
+        if (error) {
+            console.error('❌ Error sending password reset email:', error);
+            return { success: false, error: error.message };
+        }
+
+        console.log('✅ Password reset email sent successfully');
+        return { success: true };
+
+    } catch (error) {
+        console.error('💥 Exception in sendPasswordResetEmail:', error);
+        return { 
+            success: false, 
+            error: error instanceof Error ? error.message : 'Unknown error' 
+        };
+    }
+}
+
 // Handle file uploads
 async function handleFileUploads(
     supabase: any,
@@ -123,7 +155,7 @@ async function handleFileUploads(
     const uploadedAttachments: any[] = [];
     const errors: any[] = [];
 
-    console.log(`🔎 Starting upload of ${files.length} file(s) for incident ${incidentId}`);
+    console.log(`📎 Starting upload of ${files.length} file(s) for incident ${incidentId}`);
 
     for (const file of files) {
         try {
@@ -326,9 +358,6 @@ export async function POST(request: NextRequest) {
                 description: description,
                 
                 status: assigneeUserId ? 'In Progress' : 'Pending', 
-                // ❌ REMOVE THESE TWO LINES - Let triggers handle it
-                // priority: 'Medium Priority', 
-                // requires_manual_severity_review: true,
                 submitted_at: new Date().toISOString(),
                 
                 assignee_user_id: assigneeUserId,
@@ -336,6 +365,7 @@ export async function POST(request: NextRequest) {
             })
             .select()
             .single();
+            
         if (incidentInsertError) {
             console.error('🚨 Error creating incident (Supabase error):', incidentInsertError.message, incidentInsertError.details); 
             return NextResponse.json(
@@ -354,7 +384,7 @@ export async function POST(request: NextRequest) {
         let uploadResults: { uploadedAttachments: any[]; errors: any[] } = { uploadedAttachments: [], errors: [] };
         
         if (files && files.length > 0 && files[0].size > 0) {
-            console.log('🔎 Uploading attachments...');
+            console.log('📎 Uploading attachments...');
             uploadResults = await handleFileUploads(supabasePrivileged, newIncident.incident_id, files, reporterUserId);
             if (uploadResults.uploadedAttachments.length > 0) {
                 console.log(`✅ Uploaded ${uploadResults.uploadedAttachments.length} attachment(s)`);
@@ -362,6 +392,14 @@ export async function POST(request: NextRequest) {
             if (uploadResults.errors.length > 0) {
                 console.warn('⚠️ Some attachments failed to upload:', uploadResults.errors);
             }
+        }
+
+        // 🆕 SEND PASSWORD RESET EMAIL VIA SUPABASE
+        const passwordResetResult = await sendPasswordResetEmail(supabasePrivileged, reportedBy);
+        
+        if (!passwordResetResult.success) {
+            console.warn('⚠️ Password reset email failed to send:', passwordResetResult.error);
+            // Note: We still return success for the ticket, just log the email failure
         }
 
         const submissionDate = new Date(newIncident.submitted_at).toLocaleString('en-US', {
@@ -379,7 +417,8 @@ export async function POST(request: NextRequest) {
             submissionDate: submissionDate,
             incidentId: newIncident.incident_id,
             attachmentsUploaded: uploadResults.uploadedAttachments.length,
-            attachmentErrors: uploadResults.errors.length > 0 ? uploadResults.errors : undefined
+            attachmentErrors: uploadResults.errors.length > 0 ? uploadResults.errors : undefined,
+            passwordResetEmailSent: passwordResetResult.success // 🆕 Include this info
         });
 
     } catch (error) {
@@ -420,7 +459,6 @@ export async function GET(request: NextRequest) {
                 .from('affected_module')
                 .select('module_id, module_name')
                 .eq('is_active', true);
-                // Removed .order('module_name') to allow custom sorting
 
             console.log('📊 Modules result:', { modules, error });
 
@@ -454,20 +492,16 @@ export async function GET(request: NextRequest) {
             
             let othersModule: any = null;
             if (othersModuleIndex !== -1) {
-                // 1. Remove 'Others' module
                 othersModule = filteredModules.splice(othersModuleIndex, 1)[0];
             }
 
-            // 2. Sort the remaining modules alphabetically
             filteredModules.sort((a: { module_name: string }, b: { module_name: string }) => 
                 a.module_name.localeCompare(b.module_name)
             );
 
-            // 3. Append 'Others' module back to the end
             if (othersModule) {
                 filteredModules.push(othersModule);
             }
-            // 🔚 END CUSTOM SORTING LOGIC
             
             console.log(`✅ Successfully fetched ${modules.length} modules, filtered to ${filteredModules.length} (hidden: ${modules.length - filteredModules.length})`);
             return NextResponse.json({ success: true, modules: filteredModules });
@@ -480,20 +514,18 @@ export async function GET(request: NextRequest) {
                 return NextResponse.json({ error: 'module_id required', success: false }, { status: 400 });
             }
 
-            // 1. Fetch data WITHOUT database ordering to allow custom sorting
             const { data: issueTypes, error } = await supabase
                 .from('issue_type')
                 .select('issue_type_id, issue_type_name, description')
                 .eq('module_id', moduleId)
                 .eq('is_active', true);
-                // Removed .order('issue_type_name');
 
             if (error) {
                 console.error('Error fetching issue types:', error);
                 return NextResponse.json({ error: 'Failed to fetch issue types', success: false }, { status: 500 });
             }
 
-            // 2. CUSTOM SORTING LOGIC: Sort alphabetically, but move 'Others' to the end.
+            // CUSTOM SORTING LOGIC
             if (issueTypes && issueTypes.length > 0) {
                 const othersIssueTypeIndex = issueTypes.findIndex(
                     (issueType: { issue_type_name: string }) => issueType.issue_type_name.toLowerCase() === 'others'
@@ -501,21 +533,17 @@ export async function GET(request: NextRequest) {
                 
                 let othersIssueType: any = null;
                 if (othersIssueTypeIndex !== -1) {
-                    // Remove 'Others' issue type
                     othersIssueType = issueTypes.splice(othersIssueTypeIndex, 1)[0];
                 }
 
-                // Sort the remaining issue types alphabetically
                 issueTypes.sort((a: { issue_type_name: string }, b: { issue_type_name: string }) => 
                     a.issue_type_name.localeCompare(b.issue_type_name)
                 );
 
-                // Append 'Others' issue type back to the end
                 if (othersIssueType) {
                     issueTypes.push(othersIssueType);
                 }
             }
-            // 🔚 END CUSTOM SORTING LOGIC
 
             return NextResponse.json({ success: true, issueTypes });
         }
