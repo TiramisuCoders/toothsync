@@ -1,3 +1,5 @@
+//app/activity-logs/chief-of-clinicians/page.tsx
+
 "use client"
 
 import { useEffect, useState } from "react"
@@ -6,17 +8,25 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Download, Search, AlertTriangle, AlertCircle, Info } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 
-type LogLevel = "All" | "Exception" | "Warning" | "Information"
+type SeverityLevel = "All" | "INFO" | "WARN" | "ERROR"
 
 interface ActivityLog {
   id: string
   user_id: string
   user_display: string
+  user_email: string
   role: string
   action: string
+  action_key: string
   details: string
   created_at: string
+  severity: string
+  category: string
+  ip_address: string
+  city: string
+  country: string
 }
 
 export default function ChiefOfClinicianActivityLogs() {
@@ -24,119 +34,139 @@ export default function ChiefOfClinicianActivityLogs() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedLevel, setSelectedLevel] = useState<LogLevel>("All")
+  const [selectedSeverity, setSelectedSeverity] = useState<SeverityLevel>("All")
 
   useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const response = await fetch("/api/activity-logs")
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.message || `HTTP error! status: ${response.status}`)
-        }
-        const data = await response.json()
-        setLogs(data || [])
-        setError(null)
-      } catch (err: any) {
-        console.error("Error fetching activity logs:", err)
-        setError(err.message || "Failed to load logs.")
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchLogs()
-  }, [])
+  }, [selectedSeverity])
 
-  const getLogLevel = (action: string): string => {
-    const actionLower = action?.toLowerCase() || ""
-    if (["delete", "error", "failed"].includes(actionLower)) return "Exception"
-    if (["update", "warning"].includes(actionLower)) return "Warning"
-    if (["login", "logout", "create", "view"].includes(actionLower)) return "Information"
-    return "Information"
+  const fetchLogs = async () => {
+    try {
+      setLoading(true)
+      const url = selectedSeverity === "All" 
+        ? "/api/activity-logs"
+        : `/api/activity-logs?severity=${selectedSeverity}`
+        
+      const response = await fetch(url)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`)
+      }
+      const data = await response.json()
+      setLogs(data || [])
+      setError(null)
+    } catch (err: any) {
+      console.error("Error fetching activity logs:", err)
+      setError(err.message || "Failed to load logs.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const filteredLogs = logs.filter((log) => {
     const matchesSearch =
-      log.details?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.id.toString().includes(searchTerm) ||
-      log.action?.toLowerCase().includes(searchTerm.toLowerCase())
+      log.action?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.action_key?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.user_display?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.user_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.details?.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const logLevel = getLogLevel(log.action)
-    const matchesLevel = selectedLevel === "All" || logLevel === selectedLevel
-
-    return matchesSearch && matchesLevel
+    return matchesSearch
   })
 
-  const getLevelIcon = (action: string) => {
-    const level = getLogLevel(action)
-    if (level === "Exception") return <AlertTriangle className="h-4 w-4 text-red-600" />
-    if (level === "Warning") return <AlertCircle className="h-4 w-4 text-orange-600" />
+  const getSeverityIcon = (severity: string) => {
+    if (severity === "ERROR") return <AlertTriangle className="h-4 w-4 text-red-600" />
+    if (severity === "WARN") return <AlertCircle className="h-4 w-4 text-orange-600" />
     return <Info className="h-4 w-4 text-blue-600" />
   }
 
-  const getLevelBadgeColor = (action: string) => {
-    const level = getLogLevel(action)
-    if (level === "Exception") return "bg-red-50 text-red-700 border border-red-200"
-    if (level === "Warning") return "bg-orange-50 text-orange-700 border border-orange-200"
+  const getSeverityBadgeColor = (severity: string) => {
+    if (severity === "ERROR") return "bg-red-50 text-red-700 border border-red-200"
+    if (severity === "WARN") return "bg-orange-50 text-orange-700 border border-orange-200"
     return "bg-blue-50 text-blue-700 border border-blue-200"
   }
 
   const getCounts = () => ({
     all: logs.length,
-    exception: logs.filter((log) => getLogLevel(log.action) === "Exception").length,
-    warning: logs.filter((log) => getLogLevel(log.action) === "Warning").length,
-    information: logs.filter((log) => getLogLevel(log.action) === "Information").length,
+    error: logs.filter((log) => log.severity === "ERROR").length,
+    warn: logs.filter((log) => log.severity === "WARN").length,
+    info: logs.filter((log) => log.severity === "INFO").length,
   })
 
   const counts = getCounts()
+
+  const handleExport = () => {
+    const csvContent = [
+      ["Timestamp", "User", "Email", "Role", "Severity", "Action"],
+      ...filteredLogs.map(log => [
+        new Date(log.created_at).toLocaleString(),
+        log.user_display,
+        log.user_email,
+        log.role,
+        log.severity,
+        log.action
+      ])
+    ]
+    .map(row => row.map(cell => `"${cell}"`).join(','))
+    .join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `activity-logs-${new Date().toISOString().split('T')[0]}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-semibold text-[#333]">Activity Logs</h2>
-        <p className="text-gray-500">Track all clinician system interactions</p>
+        <p className="text-gray-500">Track all system activities and security events</p>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
         {[
-            { label: "All", level: "All" as LogLevel, count: counts.all, icon: null },
-            { label: "Exception", level: "Exception" as LogLevel, count: counts.exception, icon: <AlertTriangle className="h-4 w-4" /> },
-            { label: "Warning", level: "Warning" as LogLevel, count: counts.warning, icon: <AlertCircle className="h-4 w-4" /> },
-            { label: "Information", level: "Information" as LogLevel, count: counts.information, icon: <Info className="h-4 w-4" /> },
-          ].map((filter) => (
-            <Button
-              key={filter.level}
-              onClick={() => setSelectedLevel(filter.level)}
-              variant={selectedLevel === filter.level ? "default" : "outline"}
-              className={`${
-                selectedLevel === filter.level
-                  ? "bg-[#5C8E77] hover:bg-[#406E58] text-white border-none"
-                  : "border-gray-300 text-[#333] hover:bg-gray-50"
-              } flex items-center gap-2`}
-            >
-              {filter.icon && (
-                <span
-                  className={
-                    selectedLevel === filter.level
-                      ? "text-white"
-                      : filter.level === "Exception"
-                        ? "text-red-600"
-                        : filter.level === "Warning"
-                          ? "text-orange-600"
-                          : filter.level === "Information"
-                            ? "text-blue-600"
-                            : ""
-                  }
-                >
-                  {filter.icon}
-                </span>
-              )}
-              {filter.label} {filter.count > 0 && <span className="text-sm opacity-75">{filter.count}</span>}
-            </Button>
-          ))}
+          { label: "All", level: "All" as SeverityLevel, count: counts.all, icon: null },
+          { label: "Error", level: "ERROR" as SeverityLevel, count: counts.error, icon: <AlertTriangle className="h-4 w-4" /> },
+          { label: "Warning", level: "WARN" as SeverityLevel, count: counts.warn, icon: <AlertCircle className="h-4 w-4" /> },
+          { label: "Info", level: "INFO" as SeverityLevel, count: counts.info, icon: <Info className="h-4 w-4" /> },
+        ].map((filter) => (
+          <Button
+            key={filter.level}
+            onClick={() => setSelectedSeverity(filter.level)}
+            variant={selectedSeverity === filter.level ? "default" : "outline"}
+            className={`${
+              selectedSeverity === filter.level
+                ? "bg-[#5C8E77] hover:bg-[#406E58] text-white border-none"
+                : "border-gray-300 text-[#333] hover:bg-gray-50"
+            } flex items-center gap-2`}
+          >
+            {filter.icon && (
+              <span
+                className={
+                  selectedSeverity === filter.level
+                    ? "text-white"
+                    : filter.level === "ERROR"
+                      ? "text-red-600"
+                      : filter.level === "WARN"
+                        ? "text-orange-600"
+                        : filter.level === "INFO"
+                          ? "text-blue-600"
+                          : ""
+                }
+              >
+                {filter.icon}
+              </span>
+            )}
+            {filter.label} {filter.count > 0 && <span className="text-sm opacity-75">({filter.count})</span>}
+          </Button>
+        ))}
       </div>
 
       {/* Search & Export */}
@@ -144,14 +174,18 @@ export default function ChiefOfClinicianActivityLogs() {
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
-            placeholder="Search by details, ID, or action..."
+            placeholder="Search by action, user, email, or details..."
             className="pl-9 border-gray-300"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white border-none flex items-center gap-2">
-          <Download className="h-4 w-4" /> Export
+        <Button 
+          className="bg-[#5C8E77] hover:bg-[#406E58] text-white border-none flex items-center gap-2"
+          onClick={handleExport}
+          disabled={filteredLogs.length === 0}
+        >
+          <Download className="h-4 w-4" /> Export CSV
         </Button>
       </div>
 
@@ -177,37 +211,42 @@ export default function ChiefOfClinicianActivityLogs() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader className="bg-gray-50 border-b border-gray-200">
-                  <TableRow className="hover:bg-gray-50">
-                    <TableHead className="w-12">Level</TableHead>
-                    <TableHead>Timestamp</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Action</TableHead>
-                    <TableHead>Details</TableHead>
-                  </TableRow>
-                </TableHeader>
+  <TableRow className="hover:bg-gray-50">
+    <TableHead className="flex-1"></TableHead>
+    <TableHead className="flex-1">Timestamp</TableHead>
+    <TableHead className="flex-1">User</TableHead>
+    <TableHead className="flex-1">Action</TableHead>
+  </TableRow>
+</TableHeader>
+
                 <TableBody>
                   {filteredLogs.length > 0 ? (
                     filteredLogs.map((log) => (
                       <TableRow key={log.id} className="hover:bg-gray-50 border-b border-gray-200">
-                        <TableCell>{getLevelIcon(log.action)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {getSeverityIcon(log.severity)}
+                            <Badge className={`${getSeverityBadgeColor(log.severity)} text-xs`}>
+                              {log.severity}
+                            </Badge>
+                          </div>
+                        </TableCell>
                         <TableCell className="text-sm text-gray-600">
                           {new Date(log.created_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-sm">
                           <div className="font-medium text-[#333]">{log.user_display}</div>
-                          <div className="text-xs text-gray-500">{log.role}</div>
+                          <div className="text-xs text-gray-500">{log.user_email}</div>
+                          <div className="text-xs text-gray-400">{log.role}</div>
                         </TableCell>
-                        <TableCell>
-                          <span className={`px-2 py-1 rounded text-sm font-medium ${getLevelBadgeColor(log.action)}`}>
-                            {log.action}
-                          </span>
+                        <TableCell className="text-sm text-[#333]">
+                          {log.action}
                         </TableCell>
-                        <TableCell className="text-sm text-[#333]">{log.details}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-12 text-gray-500">
+                      <TableCell colSpan={4} className="text-center py-12 text-gray-500">
                         {error ? "Unable to load activity logs." : "No activity logs found matching your criteria."}
                       </TableCell>
                     </TableRow>

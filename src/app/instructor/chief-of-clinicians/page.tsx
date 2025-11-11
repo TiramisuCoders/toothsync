@@ -1,3 +1,4 @@
+//app/instructor/chief-of-clinicians/page.tsx
 "use client"
 
 import { useState, useEffect } from "react"
@@ -85,6 +86,7 @@ export default function InstructorPage() {
   const [showStatusConfirmation, setShowStatusConfirmation] = useState(false)
   const [pendingStatusChange, setPendingStatusChange] = useState<string | null>(null)
   const [originalStatus, setOriginalStatus] = useState<string>("")
+  const [loading, setLoading] = useState(false)
   const { toast } = useToast()
   const [instructors, setInstructors] = useState<Instructor[]>([])
 
@@ -198,6 +200,7 @@ export default function InstructorPage() {
     }
 
     try {
+      setLoading(true)
       const response = await fetch("/api/instructors", {
         method: "PUT",
         headers: {
@@ -235,6 +238,8 @@ export default function InstructorPage() {
         description: "Failed to update instructor",
         variant: "destructive",
       })
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -249,6 +254,7 @@ export default function InstructorPage() {
     }
 
     try {
+      setLoading(true)
       const response = await fetch("/api/instructors", {
         method: "POST",
         headers: {
@@ -282,6 +288,8 @@ export default function InstructorPage() {
         description: "Failed to add instructor",
         variant: "destructive",
       })
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -303,14 +311,33 @@ export default function InstructorPage() {
       ),
     )
 
-    const instructor = instructors.find((i) => i.id === instructorId)
-    if (instructor) {
+    const result = await response.json()
+    console.log(`${action} response:`, result)
+
+    if (response.ok) {
+      await fetchInstructors() // Refresh the list
       toast({
         title: "Success",
-        description: `Instructor ${instructor.firstName} ${instructor.lastName} has been ${instructor.archived ? "unarchived" : "archived"}.`,
+        description: `Instructor ${instructor.firstName} ${instructor.lastName} has been ${action}d.`,
+      })
+    } else {
+      toast({
+        title: "Error",
+        description: result.message || `Failed to ${action} instructor`,
+        variant: "destructive",
       })
     }
+  } catch (error) {
+    console.error("Error archiving instructor:", error)
+    toast({
+      title: "Error",
+      description: "Failed to archive instructor",
+      variant: "destructive",
+    })
+  } finally {
+    setLoading(false)
   }
+}
 
   const filteredInstructors = instructors.filter((instructor) => {
     if (showArchived && !instructor.archived) return false
@@ -339,6 +366,7 @@ export default function InstructorPage() {
 
   const fetchInstructors = async () => {
     try {
+      setLoading(true)
       const response = await fetch("/api/instructors")
       if (response.ok) {
         const data = await response.json()
@@ -357,6 +385,8 @@ export default function InstructorPage() {
         description: "Failed to fetch instructors",
         variant: "destructive",
       })
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -370,6 +400,16 @@ export default function InstructorPage() {
       duration: 5000,
     })
   }, [])
+
+  if (loading && instructors.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] p-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#5C8E77]"></div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-6">
@@ -411,13 +451,14 @@ export default function InstructorPage() {
                 onClick={() => setShowArchived(!showArchived)}
                 className="text-gray-600"
               >
-                {showArchived ? "Hide" : "Show"} Archived
+                {showArchived ? "Show Active" : "Show Archived"}
               </Button>
             </div>
           </div>
           <Button
             className="bg-[#5C8E77] hover:bg-[#406E58] text-white border-none flex items-center gap-2"
             onClick={() => setIsAddModalOpen(true)}
+            disabled={loading}
           >
             <Plus className="h-4 w-4" /> Add Instructor
           </Button>
@@ -472,6 +513,7 @@ export default function InstructorPage() {
                           variant="ghost"
                           className="h-8 w-8 text-[#5C8E77] hover:bg-[#e6f7eb]"
                           onClick={() => handleEditClick(instructor)}
+                          disabled={loading}
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -479,7 +521,8 @@ export default function InstructorPage() {
                           size="icon"
                           variant="ghost"
                           className={`h-8 w-8 ${instructor.archived ? "text-green-600 hover:bg-green-50" : "text-orange-600 hover:bg-orange-50"}`}
-                          onClick={() => handleArchiveInstructor(instructor.id)}
+                          onClick={() => handleArchiveInstructor(instructor)}
+                          disabled={loading}
                           title={instructor.archived ? "Unarchive instructor" : "Archive instructor"}
                         >
                           {instructor.archived ? (
@@ -509,7 +552,7 @@ export default function InstructorPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12 text-gray-500">
-                    No instructors found.
+                    {showArchived ? "No archived instructors found." : "No instructors found."}
                   </TableCell>
                 </TableRow>
               )}
@@ -661,8 +704,12 @@ export default function InstructorPage() {
             <Button variant="outline" onClick={handleAddModalClose} className="border-gray-300 bg-transparent">
               Cancel
             </Button>
-            <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={handleAddInstructor}>
-              Add Instructor
+            <Button 
+              className="bg-[#5C8E77] hover:bg-[#406E58] text-white" 
+              onClick={handleAddInstructor}
+              disabled={loading}
+            >
+              {loading ? "Adding..." : "Add Instructor"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -809,8 +856,12 @@ export default function InstructorPage() {
                 <Button variant="outline" onClick={handleEditModalClose} className="border-gray-300 bg-transparent">
                   Cancel
                 </Button>
-                <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white" onClick={handleUpdateInstructor}>
-                  Update Instructor
+                <Button 
+                  className="bg-[#5C8E77] hover:bg-[#406E58] text-white" 
+                  onClick={handleUpdateInstructor}
+                  disabled={loading}
+                >
+                  {loading ? "Updating..." : "Update Instructor"}
                 </Button>
               </DialogFooter>
             </>
