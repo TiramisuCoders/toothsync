@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, Clock, Plus, Trash2, Users, Sun, Sunset, Search, Filter } from "lucide-react"
+import { Calendar, Clock, Plus, Trash2, Users, Sun, Sunset, Search, Filter, ChevronLeft, ChevronRight } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import UnifiedScheduleModal from "@/components/modals/add-schedule-modal"
 
 interface ScheduleRecord {
@@ -31,6 +32,15 @@ export default function InstructorSchedulePage() {
   })
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const { toast } = useToast()
+
+  // Pagination states for each tab
+  const [currentPages, setCurrentPages] = useState({
+    thisWeek: 1,
+    upcoming: 1,
+    past: 1,
+    custom: 1,
+  })
+  const [itemsPerPage, setItemsPerPage] = useState(10)
 
   useEffect(() => {
     fetchScheduleRecords()
@@ -202,32 +212,6 @@ export default function InstructorSchedulePage() {
     }
   }
 
-  const getShiftTime = (shift: string) => {
-    switch (shift) {
-      case "Morning":
-      case "1st":
-        return "8:00 AM - 12:00 PM"
-      case "Afternoon":
-      case "2nd":
-        return "12:00 PM - 5:00 PM"
-      default:
-        return ""
-    }
-  }
-
-  const getShiftColor = (shift: string) => {
-    switch (shift) {
-      case "Morning":
-      case "1st":
-        return "bg-blue-100 text-blue-800"
-      case "Afternoon":
-      case "2nd":
-        return "bg-blue-100 text-blue-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
-
   const getShiftLabel = (shift: string) => {
     switch (shift) {
       case "1st":
@@ -319,6 +303,17 @@ export default function InstructorSchedulePage() {
     setIsFilterOpen(false)
   }
 
+  // Reset to page 1 when tab changes
+  const handleTabChange = (value: string) => {
+    setActiveTab(value)
+    setCurrentPages({
+      thisWeek: 1,
+      upcoming: 1,
+      past: 1,
+      custom: 1,
+    })
+  }
+
   const renderScheduleCard = (record: ScheduleRecord) => (
     <div
       key={record.id}
@@ -357,7 +352,7 @@ export default function InstructorSchedulePage() {
     </div>
   )
 
-  const renderScheduleList = (schedules: ScheduleRecord[], emptyMessage: string) => {
+  const renderScheduleList = (schedules: ScheduleRecord[], emptyMessage: string, tabKey: keyof typeof currentPages) => {
     if (schedules.length === 0) {
       return (
         <div className="text-center py-12">
@@ -367,7 +362,97 @@ export default function InstructorSchedulePage() {
       )
     }
 
-    return <div className="space-y-3">{schedules.map(renderScheduleCard)}</div>
+    // Pagination calculations
+    const currentPage = currentPages[tabKey]
+    const totalPages = Math.ceil(schedules.length / itemsPerPage)
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+    const currentSchedules = schedules.slice(startIndex, endIndex)
+
+    return (
+      <>
+        <div className="space-y-3">{currentSchedules.map(renderScheduleCard)}</div>
+        
+        {/* Pagination Controls */}
+        {schedules.length > 0 && (
+          <div className="flex items-center justify-between px-2 py-4 border-t border-gray-200 mt-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Show</span>
+              <Select
+                value={itemsPerPage.toString()}
+                onValueChange={(value) => {
+                  setItemsPerPage(Number(value))
+                  setCurrentPages({ thisWeek: 1, upcoming: 1, past: 1, custom: 1 })
+                }}
+              >
+                <SelectTrigger className="w-[70px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-sm text-gray-600">entries</span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">
+                Showing {startIndex + 1} to {Math.min(endIndex, schedules.length)} of {schedules.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPages(prev => ({ ...prev, [tabKey]: Math.max(1, prev[tabKey] - 1) }))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(page => {
+                    if (totalPages <= 7) return true
+                    if (page === 1 || page === totalPages) return true
+                    if (Math.abs(page - currentPage) <= 1) return true
+                    return false
+                  })
+                  .map((page, index, array) => (
+                    <div key={page} className="flex items-center">
+                      {index > 0 && array[index - 1] !== page - 1 && (
+                        <span className="px-2 text-gray-400">...</span>
+                      )}
+                      <Button
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPages(prev => ({ ...prev, [tabKey]: page }))}
+                        className={`h-8 w-8 p-0 ${
+                          currentPage === page ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""
+                        }`}
+                      >
+                        {page}
+                      </Button>
+                    </div>
+                  ))}
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPages(prev => ({ ...prev, [tabKey]: Math.min(totalPages, prev[tabKey] + 1) }))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    )
   }
 
   const { weekStart, weekEnd } = getWeekBounds()
@@ -450,7 +535,7 @@ export default function InstructorSchedulePage() {
           </CardContent>
         </Card>
       ) : (
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="grid grid-cols-4">
             <TabsTrigger value="this-week">
               This Week
@@ -498,7 +583,7 @@ export default function InstructorSchedulePage() {
                   {weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </CardDescription>
               </CardHeader>
-              <CardContent>{renderScheduleList(filteredSchedules.thisWeek, "No schedules for this week")}</CardContent>
+              <CardContent>{renderScheduleList(filteredSchedules.thisWeek, "No schedules for this week", "thisWeek")}</CardContent>
             </Card>
           </TabsContent>
 
@@ -514,7 +599,7 @@ export default function InstructorSchedulePage() {
                   {weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </CardDescription>
               </CardHeader>
-              <CardContent>{renderScheduleList(filteredSchedules.upcoming, "No upcoming schedules")}</CardContent>
+              <CardContent>{renderScheduleList(filteredSchedules.upcoming, "No upcoming schedules", "upcoming")}</CardContent>
             </Card>
           </TabsContent>
 
@@ -530,7 +615,7 @@ export default function InstructorSchedulePage() {
                   {weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </CardDescription>
               </CardHeader>
-              <CardContent>{renderScheduleList(filteredSchedules.past, "No past schedules")}</CardContent>
+              <CardContent>{renderScheduleList(filteredSchedules.past, "No past schedules", "past")}</CardContent>
             </Card>
           </TabsContent>
 
@@ -552,7 +637,7 @@ export default function InstructorSchedulePage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {renderScheduleList(filteredSchedules.custom, "No schedules in the selected date range")}
+                {renderScheduleList(filteredSchedules.custom, "No schedules in the selected date range", "custom")}
               </CardContent>
             </Card>
           </TabsContent>
