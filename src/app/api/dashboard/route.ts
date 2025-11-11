@@ -25,7 +25,7 @@ export async function GET() {
     });
 
     // ⚙️ Run heavy queries *in parallel*
-    const [recordsRes, countsRes, distRes] = await Promise.all([
+    const [recordsRes, countsRes, distRes, instRes] = await Promise.all([
       supabase.rpc("get_activity_overview_dashboard", {
         p_role: userRole.role,
         p_user_id: userRole.auth_user_id,
@@ -36,6 +36,7 @@ export async function GET() {
         p_role: userRole.role,
       }),
       supabase.rpc("get_clinician_distribution", { p_date: today }),
+      supabase.rpc('get_instructors_on_duty_by_shift'),
     ]);
 
     // 🧱 Handle errors centrally
@@ -153,6 +154,7 @@ export async function GET() {
         }))
       }];
 
+
       // Remove the temporary statuses array
       const { statuses, procedures, procedureDetails, ...activityWithoutStatuses } = activity;
       
@@ -164,6 +166,64 @@ export async function GET() {
         allRecords,  // ✅ Sorted allRecords
       };
     });
+
+      // Access the data correctly - Supabase returns data in instRes.data
+    const rawData = instRes.data?.[0]?.get_instructors_on_duty_by_shift || instRes.data;
+
+    // If your function returns the object directly (not in an array), use:
+    // const rawData = instRes.data;
+
+    const transformInstructors = (instructorsList: any[]) => {
+      if (!Array.isArray(instructorsList)) {
+        return [];
+      }
+      
+      const grouped: Record<string, any> = {};
+      
+      instructorsList.forEach(item => {
+        const name = item.instructor_name;
+        
+        if (!name) {
+          return;
+        }
+        
+        if (!grouped[name]) {
+          grouped[name] = {
+            // id: name.replace(/\s+/g, '-').toLowerCase(),
+            name: name,
+            departments: [] as string[],
+            shift: ''
+            // timeIn: new Date().toLocaleTimeString('en-US', {
+            //   hour: '2-digit',
+            //   minute: '2-digit',
+            //   hour12: true,
+            //   timeZone: 'Asia/Manila'
+            // })
+          };
+        }
+        
+        if (item.department_name && !grouped[name].departments.includes(item.department_name)) {
+          grouped[name].departments.push(item.department_name);
+        }
+      });
+      
+      return Object.values(grouped);
+    };
+
+    // Transform both shifts
+    const firstShift = transformInstructors(rawData?.first_shift || []).map(inst => ({
+      ...inst,
+      shift: 'Shift 1'
+    }));
+
+    const secondShift = transformInstructors(rawData?.second_shift || []).map(inst => ({
+      ...inst,
+      shift: 'Shift 2'
+    }));
+
+    const availableInstructors = [...firstShift, ...secondShift];
+
+    console.log(availableInstructors)
 
     const transformedClinicianDistribution =
       distRes.data?.map((item) => ({
@@ -186,6 +246,7 @@ export async function GET() {
       success: true,
       data: transformedRecords,
       distribution: transformedClinicianDistribution,
+      availableInstructors: availableInstructors,
       dashboard: countsRes.data,
       user: {
         id: user.id,
