@@ -20,7 +20,6 @@ export default function UpdatePasswordPage() {
   const [hasError, setHasError] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isVerifying, setIsVerifying] = useState(true)
-  const [sessionEmail, setSessionEmail] = useState<string>("")
   const [passwordStrength, setPasswordStrength] = useState<{
     score: number
     feedback: string
@@ -35,93 +34,63 @@ export default function UpdatePasswordPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Verify session and handle recovery
+  // Handle password recovery session
   useEffect(() => {
-    let mounted = true
-
-    const verifyRecoverySession = async () => {
+    const handlePasswordRecovery = async () => {
       try {
-        console.log('Starting recovery session verification...')
-        
-        // Check URL for errors first
+        // Parse hash parameters
         const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get('access_token')
+        const refreshToken = hashParams.get('refresh_token')
+        const type = hashParams.get('type')
         const error = hashParams.get('error')
         const errorCode = hashParams.get('error_code')
-        const errorDescription = hashParams.get('error_description')
 
+        // Check for errors
         if (error || errorCode) {
-          if (!mounted) return
-          
-          let message = 'The password reset link is invalid or has expired.'
-          if (errorCode === 'otp_expired') {
-            message = 'This password reset link has expired. Please request a new one.'
-          } else if (errorDescription) {
-            message = errorDescription.replace(/\+/g, ' ')
-          }
-          
-          setErrorMessage(message)
+          setErrorMessage('The password reset link is invalid or has expired.')
           setHasError(true)
           setIsVerifying(false)
           return
         }
 
-        // Give Supabase time to process the hash fragment
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        // Verify we have the right tokens
+        if (!accessToken || type !== 'recovery') {
+          setErrorMessage('Invalid password reset link.')
+          setHasError(true)
+          setIsVerifying(false)
+          return
+        }
 
-        // Check for session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-
-        if (!mounted) return
+        // Set the session using the tokens
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken || '',
+        })
 
         if (sessionError) {
           console.error('Session error:', sessionError)
-          setErrorMessage('Unable to verify your session. Please request a new password reset link.')
+          setErrorMessage('Unable to establish session. Please request a new reset link.')
           setHasError(true)
           setIsVerifying(false)
           return
         }
 
-        if (!session) {
-          console.error('No session found after recovery')
-          setErrorMessage('Could not establish session. Please click the reset link from your email again.')
-          setHasError(true)
-          setIsVerifying(false)
-          return
-        }
-
-        console.log('✓ Recovery session verified for:', session.user.email)
-        setSessionEmail(session.user.email || '')
+        console.log('✓ Recovery session established')
         setIsVerifying(false)
+
+        // Clean URL
+        window.history.replaceState(null, '', window.location.pathname)
 
       } catch (error) {
-        console.error('Recovery verification error:', error)
-        if (mounted) {
-          setErrorMessage('An error occurred. Please try clicking the reset link again.')
-          setHasError(true)
-          setIsVerifying(false)
-        }
-      }
-    }
-
-    verifyRecoverySession()
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!mounted) return
-      
-      console.log('Auth state:', event, session?.user?.email || 'no session')
-      
-      if (event === 'PASSWORD_RECOVERY' && session) {
-        console.log('✓ Password recovery session established')
-        setSessionEmail(session.user.email || '')
+        console.error('Recovery error:', error)
+        setErrorMessage('An error occurred. Please try again.')
+        setHasError(true)
         setIsVerifying(false)
       }
-    })
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
     }
+
+    handlePasswordRecovery()
   }, [])
 
   // Password strength validator
@@ -180,7 +149,7 @@ export default function UpdatePasswordPage() {
     }
 
     if (passwordStrength.score < 3) {
-      setErrorMessage("Please use a stronger password")
+      setErrorMessage("Please use a stronger password with uppercase, lowercase, numbers, and symbols")
       setHasError(true)
       triggerShakeAnimation()
       return
@@ -189,44 +158,35 @@ export default function UpdatePasswordPage() {
     setIsLoading(true)
 
     try {
-      // Double-check session
+      // Verify session exists
       const { data: { session } } = await supabase.auth.getSession()
       
       if (!session) {
         throw new Error('Session expired. Please request a new reset link.')
       }
 
-      console.log('Updating password for:', session.user.email)
-
-      // Update password
+      // Update the user's password
       const { error } = await supabase.auth.updateUser({
         password: password,
       })
 
-      if (error) throw error
+      if (error) {
+        throw error
+      }
 
-      console.log('✓ Password updated successfully')
-      setSuccessMessage("Password updated successfully! Redirecting...")
+      setSuccessMessage("Password updated successfully! Redirecting to login...")
       
       // Sign out
       await supabase.auth.signOut()
       
-      // Redirect
+      // Redirect to login after 2 seconds
       setTimeout(() => {
         router.push("/landing")
       }, 2000)
 
     } catch (error: any) {
-      console.error("Password update error:", error)
-      
-      let errorMsg = "Failed to update password."
-      if (error.message?.includes('session') || error.message?.includes('Session')) {
-        errorMsg = "Your session expired. Please request a new reset link."
-      } else if (error.message) {
-        errorMsg = error.message
-      }
-      
-      setErrorMessage(errorMsg)
+      console.error("Error updating password:", error)
+      setErrorMessage(error.message || "Failed to update password. Please try again or request a new reset link.")
       setHasError(true)
       triggerShakeAnimation()
     } finally {
@@ -237,10 +197,6 @@ export default function UpdatePasswordPage() {
   const clearError = () => {
     setErrorMessage("")
     setHasError(false)
-  }
-
-  const handleRequestNewLink = () => {
-    router.push("/landing")
   }
 
   const getStrengthColor = () => {
@@ -254,13 +210,13 @@ export default function UpdatePasswordPage() {
     return `${(passwordStrength.score / 5) * 100}%`
   }
 
+  // Show loading while verifying
   if (isVerifying) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-emerald-600">
         <div className="text-center text-white">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
           <p className="text-lg">Verifying your reset link...</p>
-          <p className="text-sm mt-2 opacity-80">This may take a moment</p>
         </div>
       </div>
     )
@@ -306,11 +262,6 @@ export default function UpdatePasswordPage() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-2xl font-semibold text-gray-800 mb-2">Set New Password</h1>
-            {sessionEmail && (
-              <p className="text-gray-600 text-sm mb-2">
-                for <span className="font-medium">{sessionEmail}</span>
-              </p>
-            )}
             <p className="text-gray-600 text-sm">
               Please create a strong password for your account
             </p>
@@ -323,14 +274,6 @@ export default function UpdatePasswordPage() {
                 <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm text-red-700 font-medium">{errorMessage}</p>
-                  {hasError && (
-                    <button
-                      onClick={handleRequestNewLink}
-                      className="mt-2 text-sm text-emerald-600 hover:text-emerald-700 font-medium underline"
-                    >
-                      Go back to login
-                    </button>
-                  )}
                 </div>
                 <button onClick={clearError} className="ml-2 text-red-400 hover:text-red-600 transition-colors">
                   <X className="h-4 w-4" />
@@ -351,7 +294,7 @@ export default function UpdatePasswordPage() {
             </div>
           )}
 
-          {/* Show form only if no error */}
+          {/* Password Form - Only show if no error */}
           {!hasError && (
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* New Password */}
