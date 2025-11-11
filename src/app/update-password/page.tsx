@@ -2,13 +2,16 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, CheckCircle, Lock, X } from "lucide-react"
 import { createClient } from "@supabase/supabase-js"
 
 export default function UpdatePasswordPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const recoveryCode = searchParams.get("code")
+  
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -103,6 +106,14 @@ export default function UpdatePasswordPage() {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       )
+
+      // If there's a recovery code, exchange it first to establish a session
+      if (recoveryCode) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(recoveryCode)
+        if (exchangeError) {
+          throw new Error(`Session exchange failed: ${exchangeError.message}`)
+        }
+      }
 
       // Update the user's password
       const { error } = await supabase.auth.updateUser({
