@@ -1,7 +1,7 @@
 "use client"
 import type React from "react"
 import { useState, useRef, useEffect } from "react"
-import { Plus, Edit, Upload, User, Eye } from "lucide-react"
+import { Plus, Edit, Upload, User, Eye, Search, X, ChevronRight, ChevronLeft } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -89,6 +89,9 @@ export default function CliniciansPage() {
   const [selectedClinician, setSelectedClinician] = useState<Clinician | null>(null)
   // const [activeTab, setActiveTab] = useState<"activities" | "attendance">("activities")
 
+  const [searchQuery, setSearchQuery] = useState("") // search state already exists
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
   
 // Add these new state variables at the top of your component
 const [clinicianActivities, setClinicianActivities] = useState<any>(null);
@@ -202,33 +205,6 @@ const [selectedAcademicYearTab, setSelectedAcademicYearTab] = useState<string>("
     setIsLoadingActivities(false);
   }
 };
-
-  // const [attendanceData] = useState<AttendanceRecord[]>([
-  //   {
-  //     id: 1,
-  //     date: "2025-05-08",
-  //     timeIn: "08:15 AM",
-  //     timeOut: "04:30 PM",
-  //     sanitized: "Yes",
-  //     status: "Present",
-  //   },
-  // ])
-
-  // const [activitiesData] = useState<Activity[]>([
-  //   {
-  //     id: "A001",
-  //     date: "2025-05-08",
-  //     procedure: "Root Canal Treatment",
-  //     chair: "Chair 05",
-  //     instructor: "Dr. Reyes",
-  //     patient: "Juan Dela Cruz",
-  //     grade: "85",
-  //     remarks: "Good work on canal preparation",
-  //     status: "Completed",
-  //     firstName: "Maria",
-  //     lastName: "Santos",
-  //   },
-  // ])
 
   const handleEditClick = (clinician: Clinician) => {
     setCurrentClinician(clinician)
@@ -410,10 +386,27 @@ const [selectedAcademicYearTab, setSelectedAcademicYearTab] = useState<string>("
   }
 
   const filteredClinicians = clinicians.filter((clinician) => {
-    if (activeFilter === "all") return true
-    if (activeFilter === "enrolled") return clinician.status === "Enrolled"
-    if (activeFilter === "not-enrolled") return clinician.status === "Not Enrolled"
-    return true
+    let matchesStatus = true
+    let matchesSearch = true
+
+    // Status filtering
+    if (activeFilter === "all") matchesStatus = true
+    else if (activeFilter === "enrolled") matchesStatus = clinician.status === "Enrolled"
+    else if (activeFilter === "not-enrolled") matchesStatus = clinician.status === "Not Enrolled"
+
+    // Search filtering (searches across multiple fields)
+    if (searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase()
+      matchesSearch =
+        clinician.studentId?.toLowerCase().includes(query) ||
+        clinician.firstName?.toLowerCase().includes(query) ||
+        clinician.lastName?.toLowerCase().includes(query) ||
+        clinician.email?.toLowerCase().includes(query) ||
+        clinician.yearLevel?.toLowerCase().includes(query) ||
+        clinician.gender?.toLowerCase().includes(query)
+    }
+
+    return matchesStatus && matchesSearch
   })
 
   const getSelectedAcademicYearStatus = () => {
@@ -422,24 +415,148 @@ const [selectedAcademicYearTab, setSelectedAcademicYearTab] = useState<string>("
     return selectedYear?.status || null
   }
 
+  const totalPages = Math.ceil(filteredClinicians.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const currentCliniciansPage = filteredClinicians.slice(startIndex, endIndex)
+
   const isSelectedAcademicYearActive = getSelectedAcademicYearStatus() === "Active"
 
   return (
     <>
-      <div className="mb-6">
-        <div className="bg-[#5C8E77]/10 border border-[#5C8E77]/20 rounded-lg px-4 py-3 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-semibold text-[#333]">Academic Year</h2>
-              <span className="font-medium text-[#333]">AY 2024-2025, 1st Semester</span>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4">
+        {/* Header Row */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          {/* Left: Title */}
+          <h1 className="text-2xl font-semibold text-gray-800">List of Clinicians</h1>
+
+          {/* Right: Search + Add Clinician */}
+          <div className="flex items-center gap-3">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search clinicians..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#5C8E77] focus:border-transparent w-[250px]"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
-            <p className="text-sm text-gray-500 mt-1">Viewing clinicians for the current academic year and semester</p>
+
+            {/* Add Clinician Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="bg-[#5C8E77] hover:bg-[#406E58] text-white border-none flex items-center gap-2">
+                  <Plus className="h-4 w-4" /> Add Clinician
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    resetForm()
+                    setIsAddModalOpen(true)
+                  }}
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Add Manually</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsUploadModalOpen(true)}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  <span>Upload CSV</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <Badge className="bg-[#5C8E77]">Active</Badge>
         </div>
+
+        {/* Active Filters Summary */}
+        {(searchQuery || activeFilter !== "all") && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-gray-600">Active filters:</span>
+            {searchQuery && (
+              <Badge variant="outline" className="gap-1 pr-1">
+                Search: {searchQuery}
+                <button onClick={() => setSearchQuery("")} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            {activeFilter !== "all" && (
+              <Badge variant="outline" className="gap-1 pr-1">
+                Status: {activeFilter}
+                <button onClick={() => setActiveFilter("all")} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchQuery("")
+                setActiveFilter("all")
+              }}
+              className="h-7 text-xs text-gray-600 hover:text-gray-900"
+            >
+              Clear all
+            </Button>
+          </div>
+        )}
+
+        {/* Search Results Info */}
+        {searchQuery && (
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Search className="h-4 w-4" />
+            <span>
+              Found <strong>{filteredClinicians.length}</strong> result
+              {filteredClinicians.length !== 1 ? "s" : ""} for "{searchQuery}"
+            </span>
+            <button onClick={() => setSearchQuery("")} className="text-[#5C8E77] hover:underline font-medium">
+              Clear search
+            </button>
+          </div>
+        )}
       </div>
+
+      <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg w-fit">
+        <Button
+          variant={activeFilter === "all" ? "default" : "ghost"}
+          size="sm"
+          className={activeFilter === "all" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+          onClick={() => setActiveFilter("all")}
+        >
+          All
+        </Button>
+        <Button
+          variant={activeFilter === "enrolled" ? "default" : "ghost"}
+          size="sm"
+          className={activeFilter === "enrolled" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+          onClick={() => setActiveFilter("enrolled")}
+        >
+          Enrolled
+        </Button>
+        <Button
+          variant={activeFilter === "not-enrolled" ? "default" : "ghost"}
+          size="sm"
+          className={activeFilter === "not-enrolled" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+          onClick={() => setActiveFilter("not-enrolled")}
+        >
+          Not Enrolled
+        </Button>
+      </div>
+      
       <Card className="bg-white border border-gray-200 shadow-sm mb-6">
-        <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
+        {/* <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-200">
           <div className="flex items-center gap-4">
             <CardTitle className="text-xl font-semibold text-[#333]">List of Clinicians</CardTitle>
             <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
@@ -491,7 +608,7 @@ const [selectedAcademicYearTab, setSelectedAcademicYearTab] = useState<string>("
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </CardHeader>
+        </CardHeader> */}
         <CardContent className="p-0">
           <Table>
             <TableHeader className="bg-white border-b border-gray-200">
@@ -506,8 +623,8 @@ const [selectedAcademicYearTab, setSelectedAcademicYearTab] = useState<string>("
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredClinicians.length > 0 ? (
-                filteredClinicians.map((clinician) => (
+              {currentCliniciansPage.length > 0 ? (
+                currentCliniciansPage.map((clinician) => (
                   <TableRow key={clinician.id} className="hover:bg-gray-50 border-b border-gray-200">
                     <TableCell className="font-medium text-[#333]">{clinician.studentId}</TableCell>
                     <TableCell className="text-[#333]">{clinician.firstName}</TableCell>
@@ -554,8 +671,93 @@ const [selectedAcademicYearTab, setSelectedAcademicYearTab] = useState<string>("
               )}
             </TableBody>
           </Table>
+          {filteredClinicians.length > 0 && (
+                      <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600">Show</span>
+                          <Select
+                            value={itemsPerPage.toString()}
+                            onValueChange={(value) => {
+                              setItemsPerPage(Number(value))
+                              setCurrentPage(1)
+                            }}
+                          >
+                            <SelectTrigger className="w-[70px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="10">10</SelectItem>
+                              <SelectItem value="20">20</SelectItem>
+                              <SelectItem value="50">50</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <span className="text-sm text-gray-600">entries</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600">
+                            Showing {startIndex + 1} to {Math.min(endIndex, filteredClinicians.length)} of{" "}
+                            {filteredClinicians.length}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                              disabled={currentPage === 1}
+                              className="h-8 w-8 p-0"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                              .filter((page) => {
+                                if (totalPages <= 7) return true
+                                if (page === 1 || page === totalPages) return true
+                                if (Math.abs(page - currentPage) <= 1) return true
+                                return false
+                              })
+                              .map((page, index, array) => (
+                                <div key={page} className="flex items-center">
+                                  {index > 0 && array[index - 1] !== page - 1 && <span className="px-2 text-gray-400">...</span>}
+                                  <Button
+                                    variant={currentPage === page ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => setCurrentPage(page)}
+                                    className={`h-8 w-8 p-0 ${currentPage === page ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}`}
+                                  >
+                                    {page}
+                                  </Button>
+                                </div>
+                              ))}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                              disabled={currentPage === totalPages}
+                              className="h-8 w-8 p-0"
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
         </CardContent>
       </Card>
+    </div>
+
+      {/* <div className="mb-6">
+        <div className="bg-[#5C8E77]/10 border border-[#5C8E77]/20 rounded-lg px-4 py-3 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold text-[#333]">Academic Year</h2>
+              <span className="font-medium text-[#333]">AY 2024-2025, 1st Semester</span>
+            </div>
+            <p className="text-sm text-gray-500 mt-1">Viewing clinicians for the current academic year and semester</p>
+          </div>
+          <Badge className="bg-[#5C8E77]">Active</Badge>
+        </div>
+      </div>
+       */}
 
       <>
         {/* Edit Clinician Modal */}
