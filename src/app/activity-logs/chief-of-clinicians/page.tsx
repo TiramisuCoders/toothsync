@@ -3,11 +3,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Download, Search, AlertTriangle, AlertCircle, Info } from "lucide-react"
+import { Download, Search, AlertTriangle, AlertCircle, Info, FileText } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
 type SeverityLevel = "All" | "INFO" | "WARN" | "ERROR"
@@ -30,6 +31,7 @@ interface ActivityLog {
 }
 
 export default function ChiefOfClinicianActivityLogs() {
+  const router = useRouter()
   const [logs, setLogs] = useState<ActivityLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -119,6 +121,22 @@ export default function ChiefOfClinicianActivityLogs() {
     a.click()
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
+  }
+
+  const handleCreateReport = (log: ActivityLog) => {
+    // Prepare the data to be passed via query params
+    const ticketData = {
+      title: `Warning Report: ${log.action}`,
+      description: `Activity Log Warning Report\n\nAction: ${log.action}\nUser: ${log.user_display} (${log.user_email})\nRole: ${log.role}\nTimestamp: ${new Date(log.created_at).toLocaleString()}\nCategory: ${log.category}\nIP Address: ${log.ip_address}\nLocation: ${log.city}, ${log.country}\n\nDetails:\n${log.details || 'No additional details'}\n\nAction Key: ${log.action_key}\nLog ID: ${log.id}`,
+      affectedModule: "Activity Logs",
+      category: "System Warning"
+    }
+
+    // Store in sessionStorage for the form to pick up
+    sessionStorage.setItem('ticketPrefill', JSON.stringify(ticketData))
+    
+    // Navigate to the ticket form
+    router.push('/support/faq/new-ticket')
   }
 
   return (
@@ -211,13 +229,14 @@ export default function ChiefOfClinicianActivityLogs() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader className="bg-gray-50 border-b border-gray-200">
-  <TableRow className="hover:bg-gray-50">
-    <TableHead className="flex-1"></TableHead>
-    <TableHead className="flex-1">Timestamp</TableHead>
-    <TableHead className="flex-1">User</TableHead>
-    <TableHead className="flex-1">Action</TableHead>
-  </TableRow>
-</TableHeader>
+                  <TableRow className="hover:bg-gray-50">
+                    <TableHead className="flex-1"></TableHead>
+                    <TableHead className="flex-1">Timestamp</TableHead>
+                    <TableHead className="flex-1">User</TableHead>
+                    <TableHead className="flex-1">Action</TableHead>
+                    <TableHead className="flex-1"></TableHead>
+                  </TableRow>
+                </TableHeader>
 
                 <TableBody>
                   {filteredLogs.length > 0 ? (
@@ -242,11 +261,24 @@ export default function ChiefOfClinicianActivityLogs() {
                         <TableCell className="text-sm text-[#333]">
                           {log.action}
                         </TableCell>
+                        <TableCell>
+                          {log.severity === "WARN" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-orange-600 border-orange-600 hover:bg-orange-50"
+                              onClick={() => handleCreateReport(log)}
+                            >
+                              <FileText className="h-4 w-4 mr-2" />
+                              Create Report
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-12 text-gray-500">
+                      <TableCell colSpan={5} className="text-center py-12 text-gray-500">
                         {error ? "Unable to load activity logs." : "No activity logs found matching your criteria."}
                       </TableCell>
                     </TableRow>

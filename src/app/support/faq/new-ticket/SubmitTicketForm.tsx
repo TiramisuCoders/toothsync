@@ -113,6 +113,44 @@ export default function SubmitTicketForm() {
     fetchCurrentUser()
   }, [])
 
+  // --- Load prefilled data from sessionStorage (for Activity Log warnings) ---
+  useEffect(() => {
+    const prefillData = sessionStorage.getItem('ticketPrefill')
+    if (prefillData) {
+      try {
+        const data = JSON.parse(prefillData)
+        
+        // Set the form data with prefilled values
+        setFormData(prev => ({
+          ...prev,
+          title: data.title || prev.title,
+          description: data.description || prev.description,
+          affectedModule: data.affectedModule || prev.affectedModule,
+          category: data.category || prev.category,
+        }))
+        
+        // If affectedModule is set, find and set the module ID
+        if (data.affectedModule && modules.length > 0) {
+          const module = modules.find(m => m.module_name === data.affectedModule)
+          if (module) {
+            setSelectedModuleId(module.module_id)
+          }
+        }
+        
+        // Clear the sessionStorage after loading
+        sessionStorage.removeItem('ticketPrefill')
+        
+        // Show success message
+        toast({
+          title: "Form Pre-filled",
+          description: "Activity log warning data has been loaded into the form.",
+        })
+      } catch (error) {
+        console.error('Error loading prefill data:', error)
+      }
+    }
+  }, [modules]) // Depends on modules to ensure they're loaded first
+
   // --- Data Fetching ---
 
   useEffect(() => {

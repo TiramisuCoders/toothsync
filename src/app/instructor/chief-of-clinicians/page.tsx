@@ -304,12 +304,23 @@ export default function InstructorPage() {
     }))
   }
 
-  const handleArchiveInstructor = (instructorId: string) => {
-    setInstructors(
-      instructors.map((instructor: Instructor) =>
-        instructor.id === instructorId ? { ...instructor, archived: !instructor.archived } : instructor,
-      ),
-    )
+const handleArchiveInstructor = async (instructor: Instructor) => {
+  try {
+    setLoading(true)
+    const action = instructor.archived ? 'unarchive' : 'archive'
+    
+    console.log(`Attempting to ${action} instructor:`, instructor.id, instructor.firstName, instructor.lastName)
+    
+    const response = await fetch("/api/instructors", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: instructor.id,
+        action: action
+      }),
+    })
 
     const result = await response.json()
     console.log(`${action} response:`, result)
