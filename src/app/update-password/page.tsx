@@ -5,7 +5,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Eye, EyeOff, AlertCircle, CheckCircle, Lock, X } from "lucide-react"
-import { createClient } from "@supabase/supabase-js"
+import { supabase } from "@/lib/supabase/client"
 
 export default function UpdatePasswordPage() {
   const router = useRouter()
@@ -20,18 +20,13 @@ export default function UpdatePasswordPage() {
   const [hasError, setHasError] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isVerifying, setIsVerifying] = useState(true)
+  const [sessionEmail, setSessionEmail] = useState<string>("")
   const [passwordStrength, setPasswordStrength] = useState<{
     score: number
     feedback: string
   }>({ score: 0, feedback: "" })
 
   const backgroundImages = ["/images/landing-page/school-1.png", "/images/landing-page/school-2.png"]
-
-  // Initialize Supabase client
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -40,90 +35,92 @@ export default function UpdatePasswordPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Handle auth state change and session setup
+  // Verify session and handle recovery
   useEffect(() => {
-    const setupSession = async () => {
+    let mounted = true
+
+    const verifyRecoverySession = async () => {
       try {
-        // First, let Supabase automatically handle the hash fragment
-        // This is crucial - Supabase needs to process the URL hash on page load
-        const { data, error } = await supabase.auth.getSession()
+        console.log('Starting recovery session verification...')
         
-        if (error) {
-          console.error('Session error:', error)
+        // Check URL for errors first
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const error = hashParams.get('error')
+        const errorCode = hashParams.get('error_code')
+        const errorDescription = hashParams.get('error_description')
+
+        if (error || errorCode) {
+          if (!mounted) return
+          
+          let message = 'The password reset link is invalid or has expired.'
+          if (errorCode === 'otp_expired') {
+            message = 'This password reset link has expired. Please request a new one.'
+          } else if (errorDescription) {
+            message = errorDescription.replace(/\+/g, ' ')
+          }
+          
+          setErrorMessage(message)
+          setHasError(true)
+          setIsVerifying(false)
+          return
+        }
+
+        // Give Supabase time to process the hash fragment
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        // Check for session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+        if (!mounted) return
+
+        if (sessionError) {
+          console.error('Session error:', sessionError)
           setErrorMessage('Unable to verify your session. Please request a new password reset link.')
           setHasError(true)
           setIsVerifying(false)
           return
         }
 
-        // Check if we have a valid session
-        if (!data.session) {
-          // Parse hash to check for errors
-          const hashParams = new URLSearchParams(window.location.hash.substring(1))
-          const error = hashParams.get('error')
-          const errorDescription = hashParams.get('error_description')
-          const errorCode = hashParams.get('error_code')
-          
-          if (error || errorCode) {
-            let message = 'The password reset link is invalid or has expired.'
-            
-            if (errorCode === 'otp_expired') {
-              message = 'This password reset link has expired. Please request a new one.'
-            } else if (errorDescription) {
-              message = errorDescription.replace(/\+/g, ' ')
-            }
-            
-            setErrorMessage(message)
-            setHasError(true)
-          } else {
-            setErrorMessage('No valid session found. Please request a new password reset link.')
-            setHasError(true)
-          }
-          
-          setIsVerifying(false)
-          return
-        }
-
-        // Verify this is a recovery session
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const type = hashParams.get('type')
-        
-        if (type !== 'recovery') {
-          setErrorMessage('Invalid reset link type. Please request a new password reset.')
+        if (!session) {
+          console.error('No session found after recovery')
+          setErrorMessage('Could not establish session. Please click the reset link from your email again.')
           setHasError(true)
           setIsVerifying(false)
           return
         }
 
-        console.log('Session established successfully:', data.session.user.email)
+        console.log('✓ Recovery session verified for:', session.user.email)
+        setSessionEmail(session.user.email || '')
         setIsVerifying(false)
 
       } catch (error) {
-        console.error('Setup error:', error)
-        setErrorMessage('An error occurred while setting up your session.')
-        setHasError(true)
-        setIsVerifying(false)
+        console.error('Recovery verification error:', error)
+        if (mounted) {
+          setErrorMessage('An error occurred. Please try clicking the reset link again.')
+          setHasError(true)
+          setIsVerifying(false)
+        }
       }
     }
 
-    setupSession()
+    verifyRecoverySession()
 
-    // Also listen for auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.email)
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return
       
-      if (event === 'PASSWORD_RECOVERY') {
-        console.log('Password recovery event detected')
+      console.log('Auth state:', event, session?.user?.email || 'no session')
+      
+      if (event === 'PASSWORD_RECOVERY' && session) {
+        console.log('✓ Password recovery session established')
+        setSessionEmail(session.user.email || '')
         setIsVerifying(false)
-      }
-      
-      if (event === 'SIGNED_OUT') {
-        console.log('User signed out')
       }
     })
 
     return () => {
-      authListener.subscription.unsubscribe()
+      mounted = false
+      subscription.unsubscribe()
     }
   }, [])
 
@@ -183,7 +180,7 @@ export default function UpdatePasswordPage() {
     }
 
     if (passwordStrength.score < 3) {
-      setErrorMessage("Please use a stronger password with uppercase, lowercase, numbers, and symbols")
+      setErrorMessage("Please use a stronger password")
       setHasError(true)
       triggerShakeAnimation()
       return
@@ -192,46 +189,41 @@ export default function UpdatePasswordPage() {
     setIsLoading(true)
 
     try {
-      // Double-check we have a session before updating
-      const { data: sessionData } = await supabase.auth.getSession()
+      // Double-check session
+      const { data: { session } } = await supabase.auth.getSession()
       
-      if (!sessionData.session) {
-        throw new Error('No active session. Please request a new password reset link.')
+      if (!session) {
+        throw new Error('Session expired. Please request a new reset link.')
       }
 
-      console.log('Updating password for user:', sessionData.session.user.email)
+      console.log('Updating password for:', session.user.email)
 
-      // Update the user's password
-      const { data, error } = await supabase.auth.updateUser({
+      // Update password
+      const { error } = await supabase.auth.updateUser({
         password: password,
       })
 
-      if (error) {
-        throw error
-      }
+      if (error) throw error
 
-      console.log('Password updated successfully:', data)
-      setSuccessMessage("Password updated successfully! Redirecting to login...")
+      console.log('✓ Password updated successfully')
+      setSuccessMessage("Password updated successfully! Redirecting...")
       
-      // Sign out the user after password update
+      // Sign out
       await supabase.auth.signOut()
       
-      // Redirect to login after 2 seconds
+      // Redirect
       setTimeout(() => {
         router.push("/landing")
       }, 2000)
 
     } catch (error: any) {
-      console.error("Error updating password:", error)
+      console.error("Password update error:", error)
       
-      let errorMsg = "Failed to update password. Please try again or request a new reset link."
-      
-      if (error.message) {
+      let errorMsg = "Failed to update password."
+      if (error.message?.includes('session') || error.message?.includes('Session')) {
+        errorMsg = "Your session expired. Please request a new reset link."
+      } else if (error.message) {
         errorMsg = error.message
-      }
-      
-      if (error.message?.includes('session')) {
-        errorMsg = "Your session has expired. Please request a new password reset link."
       }
       
       setErrorMessage(errorMsg)
@@ -248,7 +240,7 @@ export default function UpdatePasswordPage() {
   }
 
   const handleRequestNewLink = () => {
-    router.push("/landing?showForgotPassword=true")
+    router.push("/landing")
   }
 
   const getStrengthColor = () => {
@@ -262,13 +254,13 @@ export default function UpdatePasswordPage() {
     return `${(passwordStrength.score / 5) * 100}%`
   }
 
-  // Show loading state while verifying
   if (isVerifying) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-emerald-600">
         <div className="text-center text-white">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Verifying your reset link...</p>
+          <p className="text-lg">Verifying your reset link...</p>
+          <p className="text-sm mt-2 opacity-80">This may take a moment</p>
         </div>
       </div>
     )
@@ -314,6 +306,11 @@ export default function UpdatePasswordPage() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-2xl font-semibold text-gray-800 mb-2">Set New Password</h1>
+            {sessionEmail && (
+              <p className="text-gray-600 text-sm mb-2">
+                for <span className="font-medium">{sessionEmail}</span>
+              </p>
+            )}
             <p className="text-gray-600 text-sm">
               Please create a strong password for your account
             </p>
@@ -331,7 +328,7 @@ export default function UpdatePasswordPage() {
                       onClick={handleRequestNewLink}
                       className="mt-2 text-sm text-emerald-600 hover:text-emerald-700 font-medium underline"
                     >
-                      Request a new reset link
+                      Go back to login
                     </button>
                   )}
                 </div>
@@ -460,7 +457,7 @@ export default function UpdatePasswordPage() {
             </form>
           )}
 
-          {/* Back to Login Button - always visible */}
+          {/* Back to Login */}
           <button
             type="button"
             onClick={() => router.push("/landing")}
