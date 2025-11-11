@@ -19,6 +19,7 @@ export default function UpdatePasswordPage() {
   const [isShaking, setIsShaking] = useState(false)
   const [hasError, setHasError] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(true)
   const [passwordStrength, setPasswordStrength] = useState<{
     score: number
     feedback: string
@@ -26,11 +27,104 @@ export default function UpdatePasswordPage() {
 
   const backgroundImages = ["/images/landing-page/school-1.png", "/images/landing-page/school-2.png"]
 
+  // Initialize Supabase client
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentImageIndex((prevIndex) => (prevIndex + 1) % backgroundImages.length)
     }, 4000)
     return () => clearInterval(interval)
+  }, [])
+
+  // Handle auth state change and session setup
+  useEffect(() => {
+    const setupSession = async () => {
+      try {
+        // First, let Supabase automatically handle the hash fragment
+        // This is crucial - Supabase needs to process the URL hash on page load
+        const { data, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('Session error:', error)
+          setErrorMessage('Unable to verify your session. Please request a new password reset link.')
+          setHasError(true)
+          setIsVerifying(false)
+          return
+        }
+
+        // Check if we have a valid session
+        if (!data.session) {
+          // Parse hash to check for errors
+          const hashParams = new URLSearchParams(window.location.hash.substring(1))
+          const error = hashParams.get('error')
+          const errorDescription = hashParams.get('error_description')
+          const errorCode = hashParams.get('error_code')
+          
+          if (error || errorCode) {
+            let message = 'The password reset link is invalid or has expired.'
+            
+            if (errorCode === 'otp_expired') {
+              message = 'This password reset link has expired. Please request a new one.'
+            } else if (errorDescription) {
+              message = errorDescription.replace(/\+/g, ' ')
+            }
+            
+            setErrorMessage(message)
+            setHasError(true)
+          } else {
+            setErrorMessage('No valid session found. Please request a new password reset link.')
+            setHasError(true)
+          }
+          
+          setIsVerifying(false)
+          return
+        }
+
+        // Verify this is a recovery session
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const type = hashParams.get('type')
+        
+        if (type !== 'recovery') {
+          setErrorMessage('Invalid reset link type. Please request a new password reset.')
+          setHasError(true)
+          setIsVerifying(false)
+          return
+        }
+
+        console.log('Session established successfully:', data.session.user.email)
+        setIsVerifying(false)
+
+      } catch (error) {
+        console.error('Setup error:', error)
+        setErrorMessage('An error occurred while setting up your session.')
+        setHasError(true)
+        setIsVerifying(false)
+      }
+    }
+
+    setupSession()
+
+    // Also listen for auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.email)
+      
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('Password recovery event detected')
+        setIsVerifying(false)
+      }
+      
+      if (event === 'SIGNED_OUT') {
+        console.log('User signed out')
+      }
+    })
+
+    return () => {
+      authListener.subscription.unsubscribe()
+    }
   }, [])
 
   // Password strength validator
@@ -98,14 +192,17 @@ export default function UpdatePasswordPage() {
     setIsLoading(true)
 
     try {
-      // Initialize Supabase client
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
+      // Double-check we have a session before updating
+      const { data: sessionData } = await supabase.auth.getSession()
+      
+      if (!sessionData.session) {
+        throw new Error('No active session. Please request a new password reset link.')
+      }
+
+      console.log('Updating password for user:', sessionData.session.user.email)
 
       // Update the user's password
-      const { error } = await supabase.auth.updateUser({
+      const { data, error } = await supabase.auth.updateUser({
         password: password,
       })
 
@@ -113,7 +210,11 @@ export default function UpdatePasswordPage() {
         throw error
       }
 
+      console.log('Password updated successfully:', data)
       setSuccessMessage("Password updated successfully! Redirecting to login...")
+      
+      // Sign out the user after password update
+      await supabase.auth.signOut()
       
       // Redirect to login after 2 seconds
       setTimeout(() => {
@@ -122,7 +223,18 @@ export default function UpdatePasswordPage() {
 
     } catch (error: any) {
       console.error("Error updating password:", error)
-      setErrorMessage(error.message || "Failed to update password. Please try again or request a new reset link.")
+      
+      let errorMsg = "Failed to update password. Please try again or request a new reset link."
+      
+      if (error.message) {
+        errorMsg = error.message
+      }
+      
+      if (error.message?.includes('session')) {
+        errorMsg = "Your session has expired. Please request a new password reset link."
+      }
+      
+      setErrorMessage(errorMsg)
       setHasError(true)
       triggerShakeAnimation()
     } finally {
@@ -135,6 +247,10 @@ export default function UpdatePasswordPage() {
     setHasError(false)
   }
 
+  const handleRequestNewLink = () => {
+    router.push("/landing?showForgotPassword=true")
+  }
+
   const getStrengthColor = () => {
     if (passwordStrength.score <= 2) return "bg-red-500"
     if (passwordStrength.score === 3) return "bg-yellow-500"
@@ -144,6 +260,18 @@ export default function UpdatePasswordPage() {
 
   const getStrengthWidth = () => {
     return `${(passwordStrength.score / 5) * 100}%`
+  }
+
+  // Show loading state while verifying
+  if (isVerifying) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-emerald-600">
+        <div className="text-center text-white">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p>Verifying your reset link...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -198,6 +326,14 @@ export default function UpdatePasswordPage() {
                 <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm text-red-700 font-medium">{errorMessage}</p>
+                  {hasError && (
+                    <button
+                      onClick={handleRequestNewLink}
+                      className="mt-2 text-sm text-emerald-600 hover:text-emerald-700 font-medium underline"
+                    >
+                      Request a new reset link
+                    </button>
+                  )}
                 </div>
                 <button onClick={clearError} className="ml-2 text-red-400 hover:text-red-600 transition-colors">
                   <X className="h-4 w-4" />
@@ -218,123 +354,121 @@ export default function UpdatePasswordPage() {
             </div>
           )}
 
-          {/* Password Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* New Password */}
-            <div className="space-y-2">
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                New Password
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={`w-full px-3 py-3 pr-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 ${
-                    hasError ? "border-red-300 bg-red-50 focus:ring-red-500" : "border-gray-300"
-                  }`}
-                  placeholder="Enter your new password"
-                  required
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  disabled={isLoading}
-                >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                </button>
-              </div>
-
-              {/* Password Strength Indicator */}
-              {password.length > 0 && (
-                <div className="space-y-2">
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className={`h-2 rounded-full transition-all duration-300 ${getStrengthColor()}`}
-                      style={{ width: getStrengthWidth() }}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-600">{passwordStrength.feedback}</p>
+          {/* Show form only if no error */}
+          {!hasError && (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* New Password */}
+              <div className="space-y-2">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  New Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3 py-3 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+                    placeholder="Enter your new password"
+                    required
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    disabled={isLoading}
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
                 </div>
-              )}
 
-              {/* Password Requirements */}
-              <div className="text-xs text-gray-600 space-y-1 mt-2">
-                <p className="font-medium">Password must contain:</p>
-                <ul className="list-disc list-inside space-y-0.5 ml-2">
-                  <li className={password.length >= 8 ? "text-green-600" : ""}>
-                    At least 8 characters
-                  </li>
-                  <li className={/[A-Z]/.test(password) && /[a-z]/.test(password) ? "text-green-600" : ""}>
-                    Uppercase and lowercase letters
-                  </li>
-                  <li className={/\d/.test(password) ? "text-green-600" : ""}>
-                    At least one number
-                  </li>
-                  <li className={/[^a-zA-Z0-9]/.test(password) ? "text-green-600" : ""}>
-                    At least one special character
-                  </li>
-                </ul>
+                {/* Password Strength Indicator */}
+                {password.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-300 ${getStrengthColor()}`}
+                        style={{ width: getStrengthWidth() }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-600">{passwordStrength.feedback}</p>
+                  </div>
+                )}
+
+                {/* Password Requirements */}
+                <div className="text-xs text-gray-600 space-y-1 mt-2">
+                  <p className="font-medium">Password must contain:</p>
+                  <ul className="list-disc list-inside space-y-0.5 ml-2">
+                    <li className={password.length >= 8 ? "text-green-600" : ""}>
+                      At least 8 characters
+                    </li>
+                    <li className={/[A-Z]/.test(password) && /[a-z]/.test(password) ? "text-green-600" : ""}>
+                      Uppercase and lowercase letters
+                    </li>
+                    <li className={/\d/.test(password) ? "text-green-600" : ""}>
+                      At least one number
+                    </li>
+                    <li className={/[^a-zA-Z0-9]/.test(password) ? "text-green-600" : ""}>
+                      At least one special character
+                    </li>
+                  </ul>
+                </div>
               </div>
-            </div>
 
-            {/* Confirm Password */}
-            <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                Confirm New Password
-              </label>
-              <div className="relative">
-                <input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className={`w-full px-3 py-3 pr-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 ${
-                    hasError ? "border-red-300 bg-red-50 focus:ring-red-500" : "border-gray-300"
-                  }`}
-                  placeholder="Confirm your new password"
-                  required
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  disabled={isLoading}
-                >
-                  {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                </button>
+              {/* Confirm Password */}
+              <div className="space-y-2">
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+                  Confirm New Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-3 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+                    placeholder="Confirm your new password"
+                    required
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    disabled={isLoading}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+                {confirmPassword && password !== confirmPassword && (
+                  <p className="text-xs text-red-600">Passwords do not match</p>
+                )}
+                {confirmPassword && password === confirmPassword && (
+                  <p className="text-xs text-green-600">Passwords match ✓</p>
+                )}
               </div>
-              {confirmPassword && password !== confirmPassword && (
-                <p className="text-xs text-red-600">Passwords do not match</p>
-              )}
-              {confirmPassword && password === confirmPassword && (
-                <p className="text-xs text-green-600">Passwords match ✓</p>
-              )}
-            </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading || successMessage !== ""}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-4 rounded-md font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? "Updating Password..." : "Update Password"}
-            </button>
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={isLoading || successMessage !== ""}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-4 rounded-md font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? "Updating Password..." : "Update Password"}
+              </button>
+            </form>
+          )}
 
-            {/* Back to Login */}
-            <button
-              type="button"
-              onClick={() => router.push("/landing")}
-              disabled={isLoading}
-              className="w-full border-2 border-emerald-600 text-emerald-600 hover:bg-emerald-50 py-3 px-4 rounded-md font-medium transition-colors duration-200 bg-transparent focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Back to Login
-            </button>
-          </form>
+          {/* Back to Login Button - always visible */}
+          <button
+            type="button"
+            onClick={() => router.push("/landing")}
+            disabled={isLoading}
+            className="w-full mt-4 border-2 border-emerald-600 text-emerald-600 hover:bg-emerald-50 py-3 px-4 rounded-md font-medium transition-colors duration-200 bg-transparent focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Back to Login
+          </button>
         </div>
       </div>
 
