@@ -71,6 +71,7 @@ const publicRoutes = [
   "/incident-management", 
   "/api/support", 
   "/api/feedback-form",
+  "/update-password",
   "/api/instructor-signup",
   "/api/clerk-signup"  // Add this line
 ]

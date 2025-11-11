@@ -15,11 +15,53 @@ const RESTRICTED_MODULES = [
     'System Operations'
 ];
 
+// 🟢 NEW: Issue types that should ONLY be available on the external (landing page) form
+const EXTERNAL_ONLY_ISSUE_TYPES = [
+    'Unable to Log In',
+    'Forgotten Password'
+];
+
+const SUPPORT_TEAM_EMAIL = "judeemmanuel.flores.cics@ust.edu.ph";
+
+// 🔑 CONSTANT: Expected issue type name for password reset tickets
+const PASSWORD_RESET_ISSUE_TYPE = "Forgotten Password"; 
+
+
 // ===============================================
 // HELPER FUNCTIONS
 // ===============================================
 
-// Get an available user with role 'R04' to be the assignee
+async function getSupportTeamUser(supabase: any): Promise<{ id: string, email: string } | null> {
+    try {
+        console.log('🔍 Searching for designated Support Team User...');
+        
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('auth_user_id, email')
+            .eq('email', SUPPORT_TEAM_EMAIL.toLowerCase())
+            .single();
+
+        if (error) {
+            console.error('Error finding Support Team User:', error);
+            return null;
+        }
+
+        if (!user) {
+            console.warn('⚠️ Designated Support Team User not found in DB.');
+            return null;
+        }
+
+        return {
+            id: user.auth_user_id,
+            email: user.email
+        };
+
+    } catch (error) {
+        console.error('💥 Error in getSupportTeamUser:', error);
+        return null;
+    }
+}
+
 async function findAssignee(supabase: any): Promise<{ id: string, email: string } | null> {
     try {
         console.log('🔍 Searching for available assignee with role R04 via RPC...');
@@ -48,7 +90,6 @@ async function findAssignee(supabase: any): Promise<{ id: string, email: string 
     }
 }
 
-// Get module_id from module name
 async function getModuleId(supabase: any, moduleName: string): Promise<string | null> {
     const { data, error } = await supabase
         .from('affected_module')
@@ -65,7 +106,6 @@ async function getModuleId(supabase: any, moduleName: string): Promise<string | 
     return data?.module_id || null;
 }
 
-// Get issue_type_id
 async function getIssueTypeId(supabase: any, issueTypeName: string, moduleId: string): Promise<string | null> {
     const { data, error } = await supabase
         .from('issue_type')
@@ -83,7 +123,6 @@ async function getIssueTypeId(supabase: any, issueTypeName: string, moduleId: st
     return data?.issue_type_id || null;
 }
 
-// Get or create user
 async function getOrCreateUser(supabase: any, email: string): Promise<string | null> {
     const lowerCaseEmail = email.toLowerCase();
     
@@ -111,7 +150,6 @@ async function getOrCreateUser(supabase: any, email: string): Promise<string | n
     return null;
 }
 
-// Handle file uploads - ALIGNED WITH OTHER ROUTES
 async function handleFileUploads(
     supabase: any,
     incidentId: string,
@@ -121,12 +159,11 @@ async function handleFileUploads(
     const uploadedAttachments: any[] = [];
     const errors: any[] = [];
 
-    console.log(`🔎 Starting upload of ${files.length} file(s) for incident ${incidentId}`);
+    console.log(`📎 Starting upload of ${files.length} file(s) for incident ${incidentId}`);
 
     for (const file of files) {
         try {
-            // Validate file size (10MB limit)
-            const maxSize = 10 * 1024 * 1024; // 10MB
+            const maxSize = 10 * 1024 * 1024;
             if (file.size > maxSize) {
                 console.warn(`⚠️ File ${file.name} exceeds 10MB limit`);
                 errors.push({
@@ -136,20 +173,15 @@ async function handleFileUploads(
                 continue;
             }
 
-            // Generate unique filename
             const timestamp = Date.now();
             const sanitizedFilename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-            
-            // 🟢 FIXED: Now matches NewTickets and MyTickets structure
             const storagePath = `incident-attachments/${incidentId}/${timestamp}-${sanitizedFilename}`;
 
             console.log(`📤 Uploading file: ${file.name} to path: ${storagePath}`);
 
-            // Convert File to ArrayBuffer then to Buffer
             const arrayBuffer = await file.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
 
-            // Upload to Supabase Storage
             const { data: uploadData, error: uploadError } = await supabase
                 .storage
                 .from('attachments')
@@ -167,7 +199,6 @@ async function handleFileUploads(
                 continue;
             }
 
-            // Get public URL
             const { data: urlData } = supabase
                 .storage
                 .from('attachments')
@@ -177,7 +208,6 @@ async function handleFileUploads(
 
             console.log(`✅ File uploaded to storage: ${storage_url}`);
 
-            // Insert attachment record into database
             const { data: attachmentData, error: dbError } = await supabase
                 .from('incident_attachment')
                 .insert({
@@ -195,7 +225,6 @@ async function handleFileUploads(
             if (dbError) {
                 console.error(`❌ Database insert error for ${file.name}:`, dbError);
                 
-                // Clean up uploaded file if DB insert fails
                 await supabase.storage
                     .from('attachments')
                     .remove([storagePath]);
@@ -245,6 +274,7 @@ export async function POST(request: NextRequest) {
         const description = formData.get('description') as string;
         const reportedBy = formData.get('reportedBy') as string;
         const files = formData.getAll('files') as File[];
+        const isChiefOfCliniciansFlag = formData.get('isChiefOfClinicians') === 'true';
 
         if (!title || !affectedModule || !category || !description || !reportedBy) {
             return NextResponse.json(
@@ -286,6 +316,34 @@ export async function POST(request: NextRequest) {
             );
         }
         
+        // =======================================================
+        // 🔑 Supabase Password Reset Trigger 
+        // =======================================================
+        
+        if (category === PASSWORD_RESET_ISSUE_TYPE) {
+            console.log(`🔑 Detected issue type: ${PASSWORD_RESET_ISSUE_TYPE}. Triggering Supabase reset flow for ${reportedBy}.`);
+            
+            // NOTE: Replace this placeholder with your actual update password URL
+            const resetRedirectUrl = 'https://your-app-domain.com/auth/update-password'; 
+
+            const { error: resetError } = await supabasePrivileged.auth.resetPasswordForEmail(
+                reportedBy, // The user's email address
+                {
+                    redirectTo: resetRedirectUrl, 
+                }
+            );
+
+            if (resetError) {
+                console.error("❌ Supabase Password Reset Error:", resetError.message);
+            } else {
+                console.log("✅ Supabase reset email successfully triggered.");
+            }
+        }
+        
+        // =======================================================
+        // 🔚 END PASSWORD RESET BLOCK
+        // =======================================================
+
         // Generate ticket number
         const { data: ticketNumResult, error: rpcError } = await supabasePrivileged.rpc('generate_ticket_number');
 
@@ -300,17 +358,37 @@ export async function POST(request: NextRequest) {
         const ticketNumber = ticketNumResult as string;
         console.log('Generated ticket number:', ticketNumber);
         
-        // Find assignee
-        const assignee = await findAssignee(supabasePrivileged);
+        // 🟢 MODIFIED ASSIGNEE LOGIC
+        let assigneeUserId = null;
+        let assigneeUserEmail = null;
 
-        let assigneeUserId = assignee ? assignee.id : null;
-        let assigneeUserEmail = assignee ? assignee.email : null;
+        if (isChiefOfCliniciansFlag) {
+            // LOGIC 1: If R04 flag is present, assign to the specific Support Team User
+            const supportTeamUser = await getSupportTeamUser(supabasePrivileged);
+            if (supportTeamUser) {
+                assigneeUserId = supportTeamUser.id;
+                assigneeUserEmail = supportTeamUser.email;
+                console.log(`👑 R04 Ticket: FORCING assignment to Support Team: ${assigneeUserEmail}`);
+            } else {
+                // FALLBACK
+                const defaultAssignee = await findAssignee(supabasePrivileged);
+                assigneeUserId = defaultAssignee ? defaultAssignee.id : null;
+                assigneeUserEmail = defaultAssignee ? defaultAssignee.email : null;
+                console.warn('⚠️ Designated Support Team User not found. Falling back to default R04 assignee.');
+            }
+        } else {
+            // LOGIC 2: For non-R04 tickets, use the default random R04 assignment
+            const defaultAssignee = await findAssignee(supabasePrivileged);
+            assigneeUserId = defaultAssignee ? defaultAssignee.id : null;
+            assigneeUserEmail = defaultAssignee ? defaultAssignee.email : null;
+        }
 
         if (assigneeUserId) {
-            console.log(`✅ Assigning ticket to: ${assigneeUserEmail} (${assigneeUserId})`);
+            console.log(`✅ Final Assigning ticket to: ${assigneeUserEmail} (${assigneeUserId})`);
         } else {
-            console.log('⚠️ Could not find a default assignee. Ticket will be unassigned (Pending).');
+            console.log('⚠️ Could not find an assignee. Ticket will be unassigned (Pending).');
         }
+
 
         // Insert incident
         const { data: newIncident, error: incidentInsertError } = await supabasePrivileged
@@ -327,6 +405,7 @@ export async function POST(request: NextRequest) {
                 priority: 'Medium Priority', 
                 requires_manual_severity_review: true,
                 submitted_at: new Date().toISOString(),
+                // ⬅️ These now hold the correct assigned user/email based on the R04 flag
                 assignee_user_id: assigneeUserId,
                 assignee_user_email: assigneeUserEmail, 
             })
@@ -351,8 +430,7 @@ export async function POST(request: NextRequest) {
         let uploadResults: { uploadedAttachments: any[]; errors: any[] } = { uploadedAttachments: [], errors: [] };
         
         if (files && files.length > 0 && files[0].size > 0) {
-            console.log('🔎 Uploading attachments...');
-            // 🟢 CHANGED: Use privileged client for file uploads (matches NewTickets)
+            console.log('📎 Uploading attachments...');
             uploadResults = await handleFileUploads(supabasePrivileged, newIncident.incident_id, files, reporterUserId);
             if (uploadResults.uploadedAttachments.length > 0) {
                 console.log(`✅ Uploaded ${uploadResults.uploadedAttachments.length} attachment(s)`);
@@ -421,7 +499,6 @@ export async function GET(request: NextRequest) {
                 .from('affected_module')
                 .select('module_id, module_name')
                 .eq('is_active', true);
-                // Removed .order('module_name') to allow custom sorting
 
             console.log('📊 Modules result:', { modules, error });
 
@@ -443,10 +520,8 @@ export async function GET(request: NextRequest) {
                 });
             }
 
-            // 🟢 FILTER MODULES BASED ON USER ROLE
             let filteredModules = modules;
             
-            // Only Chief of Clinicians can see restricted modules
             if (userRole !== 'chief-of-clinicians') {
                 filteredModules = modules.filter(
                     (module: { module_name: string }) => !RESTRICTED_MODULES.includes(module.module_name)
@@ -456,27 +531,22 @@ export async function GET(request: NextRequest) {
                 console.log(`👑 Chief of Clinicians - showing all ${modules.length} modules`);
             }
             
-            // 🆕 CUSTOM SORTING LOGIC: Sort alphabetically, but move 'Others' to the end.
             const othersModuleIndex = filteredModules.findIndex(
                 (module: { module_name: string }) => module.module_name.toLowerCase() === 'others'
             );
             
             let othersModule: any = null;
             if (othersModuleIndex !== -1) {
-                // 1. Remove 'Others' module
                 othersModule = filteredModules.splice(othersModuleIndex, 1)[0];
             }
 
-            // 2. Sort the remaining modules alphabetically
             filteredModules.sort((a: { module_name: string }, b: { module_name: string }) => 
                 a.module_name.localeCompare(b.module_name)
             );
 
-            // 3. Append 'Others' module back to the end
             if (othersModule) {
                 filteredModules.push(othersModule);
             }
-            // 🔚 END CUSTOM SORTING LOGIC
 
             console.log(`✅ Successfully fetched modules for role: ${userRole || 'unknown'}`);
             return NextResponse.json({ success: true, modules: filteredModules });
@@ -494,13 +564,11 @@ export async function GET(request: NextRequest) {
 
             console.log('🔥 Fetching issue types for module:', moduleId);
 
-            // 1. Fetch data WITHOUT database ordering
             const { data: issueTypes, error } = await supabasePrivileged
                 .from('issue_type')
                 .select('issue_type_id, issue_type_name')
                 .eq('module_id', moduleId)
                 .eq('is_active', true);
-                // Removed .order('issue_type_name');
 
             console.log('📊 Issue types result:', { issueTypes, error });
 
@@ -522,32 +590,43 @@ export async function GET(request: NextRequest) {
                 });
             }
 
-            // 🆕 CUSTOM SORTING LOGIC: Sort alphabetically, but move 'Others' to the end.
-            if (issueTypes && issueTypes.length > 0) {
-                const othersIssueTypeIndex = issueTypes.findIndex(
+            // =======================================================
+            // 🟢 NEW FILTERING LOGIC FOR INTERNAL FORM (GET Request)
+            // =======================================================
+            // Filter out issue types meant only for external users (like login/password reset)
+            let filteredIssueTypes = issueTypes.filter(
+                (issueType: { issue_type_name: string }) => 
+                    !EXTERNAL_ONLY_ISSUE_TYPES.includes(issueType.issue_type_name)
+            );
+
+            console.log(`🔒 Filtered external-only issue types. Total: ${issueTypes.length}, Available: ${filteredIssueTypes.length}`);
+            // =======================================================
+            // 🔚 END NEW FILTERING
+            // =======================================================
+
+
+            // CUSTOM SORTING LOGIC
+            if (filteredIssueTypes && filteredIssueTypes.length > 0) {
+                const othersIssueTypeIndex = filteredIssueTypes.findIndex(
                     (issueType: { issue_type_name: string }) => issueType.issue_type_name.toLowerCase() === 'others'
                 );
                 
                 let othersIssueType: any = null;
                 if (othersIssueTypeIndex !== -1) {
-                    // Remove 'Others' issue type
-                    othersIssueType = issueTypes.splice(othersIssueTypeIndex, 1)[0];
+                    othersIssueType = filteredIssueTypes.splice(othersIssueTypeIndex, 1)[0];
                 }
 
-                // Sort the remaining issue types alphabetically
-                issueTypes.sort((a: { issue_type_name: string }, b: { issue_type_name: string }) => 
+                filteredIssueTypes.sort((a: { issue_type_name: string }, b: { issue_type_name: string }) => 
                     a.issue_type_name.localeCompare(b.issue_type_name)
                 );
 
-                // Append 'Others' issue type back to the end
                 if (othersIssueType) {
-                    issueTypes.push(othersIssueType);
+                    filteredIssueTypes.push(othersIssueType);
                 }
             }
-            // 🔚 END CUSTOM SORTING LOGIC
             
-            console.log(`✅ Successfully fetched ${issueTypes.length} issue types`);
-            return NextResponse.json({ success: true, issueTypes });
+            console.log(`✅ Successfully fetched ${filteredIssueTypes.length} issue types (external-only filtered)`);
+            return NextResponse.json({ success: true, issueTypes: filteredIssueTypes });
         }
 
         return NextResponse.json({ 
