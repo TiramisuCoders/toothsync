@@ -13,8 +13,7 @@ export async function GET(request: Request) {
 
     let query = supabase
       .from("activity_logs")
-      .select(
-        `
+      .select(`
         id,
         created_at,
         action_key,
@@ -26,10 +25,8 @@ export async function GET(request: Request) {
         city,
         country,
         severity,
-        category,
-        users:users(first_name, last_name, email)
-        `
-      )
+        category
+      `)
       .order("created_at", { ascending: false })
 
     // Apply severity filter if provided
@@ -37,32 +34,57 @@ export async function GET(request: Request) {
       query = query.eq('severity', severityFilter)
     }
 
-    const { data, error } = await query
+    const { data: logs, error: logsError } = await query
 
-    if (error) {
-      console.error("[ActivityLogs] Supabase error:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (logsError) {
+      console.error("[ActivityLogs] Supabase error:", logsError)
+      return NextResponse.json({ error: logsError.message }, { status: 500 })
     }
 
-    // Map to frontend format
-    const mappedData = data.map((log: any) => ({
-      id: log.id,
-      created_at: log.created_at,
-      user_id: log.user_id,
-      action: log.action,           // Display the formatted action message
-      action_key: log.action_key,   // Include action_key for reference
-      details: log.details || '{}', // Raw JSON details
-      role: log.role || "unknown",
-      severity: log.severity || "INFO",
-      category: log.category || "USER_ACTION",
-      user_display: log.users 
-        ? `${log.users.first_name} ${log.users.last_name}` 
-        : "Unknown User",
-      user_email: log.users?.email || "N/A",
-      ip_address: log.ip_address || "N/A",
-      city: log.city || "Unknown",
-      country: log.country || "Unknown",
-    }))
+    // Get unique user IDs that are not null
+    const userIds = [...new Set(logs
+      .map(log => log.user_id)
+      .filter(id => id !== null)
+    )]
+
+    // Fetch user data separately if there are any user IDs
+    let usersMap = new Map()
+    if (userIds.length > 0) {
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('auth_user_id, first_name, last_name, email')
+        .in('auth_user_id', userIds)
+
+      if (!usersError && users) {
+        users.forEach(user => {
+          usersMap.set(user.auth_user_id, user)
+        })
+      }
+    }
+
+    // Map to frontend format with manual join
+    const mappedData = logs.map((log: any) => {
+      const user = log.user_id ? usersMap.get(log.user_id) : null
+
+      return {
+        id: log.id,
+        created_at: log.created_at,
+        user_id: log.user_id,
+        action: log.action,
+        action_key: log.action_key,
+        details: log.details || '{}',
+        role: log.role || "unknown",
+        severity: log.severity || "INFO",
+        category: log.category || "USER_ACTION",
+        user_display: user 
+          ? `${user.first_name} ${user.last_name}` 
+          : log.user_id ? "Deleted User" : "System",
+        user_email: user?.email || (log.user_id ? "N/A" : "system"),
+        ip_address: log.ip_address || "N/A",
+        city: log.city || "Unknown",
+        country: log.country || "Unknown",
+      }
+    })
 
     return NextResponse.json(mappedData)
   } catch (error) {
