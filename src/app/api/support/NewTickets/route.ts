@@ -15,6 +15,9 @@ const RESTRICTED_MODULES = [
     'System Operations'
 ];
 
+// Issue type that triggers password reset email
+const FORGOTTEN_PASSWORD_ISSUE_TYPE = 'Forgotten Password';
+
 // ===============================================
 // HELPER FUNCTIONS
 // ===============================================
@@ -113,7 +116,7 @@ async function getOrCreateUser(supabase: any, email: string): Promise<string | n
     return null;
 }
 
-// 🆕 NEW FUNCTION: Send password reset email via Supabase
+// Send password reset email via Supabase
 async function sendPasswordResetEmail(
     supabase: any, 
     userEmail: string
@@ -123,9 +126,9 @@ async function sendPasswordResetEmail(
 
         const { data, error } = await supabase.auth.resetPasswordForEmail(
             userEmail,
-                {
-                    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/update-password`, // ← Make sure this is correct
-                }
+            {
+                redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/update-password`,
+            }
         );
 
         if (error) {
@@ -394,12 +397,19 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // 🆕 SEND PASSWORD RESET EMAIL VIA SUPABASE
-        const passwordResetResult = await sendPasswordResetEmail(supabasePrivileged, reportedBy);
+        // 🔐 CONDITIONAL PASSWORD RESET EMAIL - Only for "Forgotten Password" issue type
+        let passwordResetResult = { success: false };
         
-        if (!passwordResetResult.success) {
-            console.warn('⚠️ Password reset email failed to send:', passwordResetResult.error);
-            // Note: We still return success for the ticket, just log the email failure
+        if (category === FORGOTTEN_PASSWORD_ISSUE_TYPE) {
+            console.log('🔑 Issue type is "Forgotten Password" - sending password reset email...');
+            passwordResetResult = await sendPasswordResetEmail(supabasePrivileged, reportedBy);
+            
+            if (!passwordResetResult.success) {
+                console.warn('⚠️ Password reset email failed to send:', passwordResetResult.error);
+                // Note: We still return success for the ticket, just log the email failure
+            }
+        } else {
+            console.log(`ℹ️ Issue type is "${category}" - skipping password reset email`);
         }
 
         const submissionDate = new Date(newIncident.submitted_at).toLocaleString('en-US', {
@@ -418,7 +428,7 @@ export async function POST(request: NextRequest) {
             incidentId: newIncident.incident_id,
             attachmentsUploaded: uploadResults.uploadedAttachments.length,
             attachmentErrors: uploadResults.errors.length > 0 ? uploadResults.errors : undefined,
-            passwordResetEmailSent: passwordResetResult.success // 🆕 Include this info
+            passwordResetEmailSent: category === FORGOTTEN_PASSWORD_ISSUE_TYPE ? passwordResetResult.success : false
         });
 
     } catch (error) {
