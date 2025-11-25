@@ -110,42 +110,29 @@ export default function ClerkAttendance() {
 
   // Function to handle confirm attendance
   const handleConfirmAttendance = async (id: string) => {
-    try {
-      console.log('Confirming attendance for record ID:', id)
-      
-      // Optimistically update UI
-      setAttendanceRecords(prev =>
-        prev.map(record =>
-          record.id === id ? { ...record, status: "Confirmed" } : record
-        )
+  try {
+    console.log('Confirming attendance for record ID:', id)
+    
+    // Optimistically update UI
+    setAttendanceRecords(prev =>
+      prev.map(record =>
+        record.id === id ? { ...record, status: "Confirmed" } : record
       )
+    )
 
-      const response = await fetch('/api/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          request_id: id  // ✅ FIXED: Send request_id (matches backend expectation)
-        })
+    const response = await fetch('/api/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        request_id: id
       })
+    })
 
-      const result = await response.json()
-      console.log('Confirmation response:', result)
+    const result = await response.json()
+    console.log('Confirmation response:', result)
 
-      if (!response.ok) {
-        alert(result.message || 'Something went wrong')
-        throw new Error(result.error || 'Failed to confirm attendance')
-        return
-      }
-
-      toast({
-        title: "Attendance Confirmed",
-        description: "The clinician has been marked as present.",
-      })
-
-    } catch (error) {
-      console.error("Failed to confirm attendance:", error)
-      
+    if (!response.ok) {
       // Revert optimistic update on error
       setAttendanceRecords(prev =>
         prev.map(record =>
@@ -153,13 +140,40 @@ export default function ClerkAttendance() {
         )
       )
 
+      // Display the error message from the edge function
+      const errorMessage = result.message || result.error || 'Failed to confirm attendance'
+      
       toast({
         title: "Update Failed",
-        description: error instanceof Error ? error.message : "There was a problem confirming the attendance.",
+        description: errorMessage,
         variant: "destructive",
       })
+      
+      return
     }
+
+    toast({
+      title: "Attendance Confirmed",
+      description: "The clinician has been marked as present.",
+    })
+
+  } catch (error) {
+    console.error("Failed to confirm attendance:", error)
+    
+    // Revert optimistic update on error
+    setAttendanceRecords(prev =>
+      prev.map(record =>
+        record.id === id ? { ...record, status: "Pending" } : record
+      )
+    )
+
+    toast({
+      title: "Update Failed",
+      description: error instanceof Error ? error.message : "There was a problem confirming the attendance.",
+      variant: "destructive",
+    })
   }
+}
 
   // Function to handle sanitization update
   const handleSanitizeChange = (id: string, value: string) => {
@@ -285,6 +299,8 @@ export default function ClerkAttendance() {
     switch (status) {
       case "Confirmed":
         return <Badge className="bg-[#5C8E77] hover:bg-[#406E58]">{status}</Badge>
+      case "Cancelled":
+  return <Badge className="bg-[#DC2626] hover:bg-[#B91C1C]">{status}</Badge>
       case "Pending":
         return (
           <Badge variant="outline" className="text-amber-600 border-amber-600">
@@ -419,6 +435,14 @@ export default function ClerkAttendance() {
               >
                 Confirmed
               </Button>
+              <Button
+                variant={activeFilter === "present" ? "default" : "ghost"}
+                size="sm"
+                className={activeFilter === "present" ? "bg-[#5C8E77] hover:bg-[#406E58]" : ""}
+                onClick={() => setActiveFilter("cancelled")}
+              >
+                Cancelled
+              </Button>
             </div>
           </div>
 
@@ -450,9 +474,12 @@ export default function ClerkAttendance() {
                       <Select
                         value={record.sanitize.toLowerCase()}
                         onValueChange={(value) => handleSanitizeChange(record.id, value)}
+                        disabled={record.status === "Cancelled"}
                       >
                         <SelectTrigger
-                          className={`w-20 h-7 ${record.sanitize === "Yes" ? "text-[#5C8E77]" : "text-red-500"}`}
+                          className={`w-20 h-7 ${
+                            record.sanitize === "Yes" ? "text-[#5C8E77]" : "text-red-500"
+                          } ${record.status === "Cancelled" ? "opacity-50 cursor-not-allowed" : ""}`}
                         >
                           <SelectValue />
                         </SelectTrigger>
@@ -461,6 +488,7 @@ export default function ClerkAttendance() {
                           <SelectItem value="no">No</SelectItem>
                         </SelectContent>
                       </Select>
+
                     </TableCell>
                     <TableCell>{getStatusBadge(record.status)}</TableCell>
                     <TableCell>
@@ -497,14 +525,14 @@ export default function ClerkAttendance() {
                                 )}
                               </Tooltip>
                             </TooltipProvider>
-                            {/* <Button
+                            <Button
                               size="icon"
                               variant="ghost"
                               className="h-8 w-8 text-red-600 hover:bg-red-50"
                               onClick={() => handleDeleteClick(record)}
                             >
                               <X className="h-4 w-4" />
-                            </Button> */}
+                            </Button> 
                           </>
                         ) : (
                           <>
@@ -617,15 +645,17 @@ export default function ClerkAttendance() {
             <DialogTitle className="text-xl font-semibold text-[#5C8E77]">Confirm Deletion</DialogTitle>
           </DialogHeader>
           <div className="px-6 py-4">
-            <p className="text-[#333]">Are you sure you want to delete this attendance record?</p>
+            <p className="text-[#333]">Are you sure you want to cancel this request?</p>
             {attendanceToDelete && (
               <div className="mt-3 p-3 bg-[#f8f9fa] rounded-md border border-gray-200">
                 <p className="font-medium text-[#333]">
                   {attendanceToDelete.firstName} {attendanceToDelete.lastName}
                 </p>
                 <p className="text-sm text-gray-500">
-                  {attendanceToDelete.date} • {attendanceToDelete.timeIn} to{" "}
-                  {attendanceToDelete.timeOut || "Not timed out"}
+                  {attendanceToDelete.id}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {attendanceToDelete.date}
                 </p>
               </div>
             )}

@@ -80,7 +80,6 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
 
     setIsSubmitting(true)
 
-    // 🟢 Step 1: Prepare Payloads
     const feedbackPayload = {
       incident_id: ticketId,
       overall_experience: overallExperience,
@@ -88,50 +87,51 @@ export function FeedbackFormModal({ isOpen, onClose, ticketId }: FeedbackFormMod
       support_responsiveness: supportResponsiveness,
       additional_comments: additionalComments.trim(),
     }
-    
-    const statusUpdatePayload = {
-        incident_id: ticketId,
-        status: "Resolved"
-    };
 
     try {
-      // 🟢 Step 2: Submit Feedback API Call
-      const feedbackResponse = await fetch('/api/feedback-form', {
-        method: 'POST',
+      console.log('📝 Submitting feedback:', feedbackPayload);
+      
+      // Submit Feedback
+  const feedbackResponse = await fetch('/api/feedback-form', {
+          method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(feedbackPayload),
       });
 
-      if (!feedbackResponse.ok) {
-        throw new Error('Failed to submit feedback.');
-      }
-      
-      // 🟢 Step 3: Execute Deferred Status Update API Call
-      // Mark the ticket as Resolved ONLY AFTER feedback submission succeeds
-      const statusResponse = await fetch("/api/support/MyTickets", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(statusUpdatePayload),
-      });
-      
-      if (!statusResponse.ok) {
-          // Log an error but proceed with success modal since the user finished their job
-          console.error("Warning: Feedback submitted, but status update failed. The ticket might not show as resolved yet.");
+      // Check if response is actually JSON
+      const contentType = feedbackResponse.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const textResponse = await feedbackResponse.text();
+        console.error('❌ Non-JSON response:', textResponse.substring(0, 500));
+        throw new Error('Server returned an invalid response. Check the Network tab for details.');
       }
 
-      // 🟢 Step 4: Success
+      const result = await feedbackResponse.json();
+      
+      if (!feedbackResponse.ok) {
+        console.error('❌ API Error:', result);
+        throw new Error(result.error || result.details || 'Failed to submit feedback.');
+      }
+
+      console.log('✅ Feedback submitted successfully:', result);
+
+      // Success
       handleClearForm() 
-      onClose() // Closes the FeedbackFormModal
+      onClose()
       setShowFeedbackSuccessModal(true)
       
     } catch (error) {
-      // 🟢 Step 5: Failure
-      console.error("Error submitting process:", error)
+      console.error("❌ Error submitting feedback:", error)
       
-      handleClearForm()
-      onClose() 
+      toast({
+        title: "Submission Failed",
+        description: error instanceof Error ? error.message : "Failed to submit feedback. Please try again.",
+        variant: "destructive",
+      })
+      
+      // Keep form filled so user can retry
       setShowFeedbackFailureModal(true)
       
     } finally {

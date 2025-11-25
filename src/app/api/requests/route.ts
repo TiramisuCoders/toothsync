@@ -29,19 +29,9 @@ export async function GET() {
     }
 
     // Fetch attendance records
-    const { data: attendance, error: err } = await supabase
-      .from('request')
-      .select(`
-        request_id,
-        created_at,
-        is_sanitized,
-        status,
-        clinician:clinician_id(
-          first_name,
-          last_name
-        )
-      `)
-      .order('created_at', { ascending: false })
+    const { data: attendance, error:err } = await supabase
+  .rpc('get_recent_attendance', { limit_count: 100 })
+
 
     console.log('- Attendance query result:', attendance)
     console.log('- Attendance query error:', err)
@@ -53,8 +43,8 @@ export async function GET() {
     // Transform data to match your interface
     const transformedData = attendance?.map(record => ({
       id: record.request_id,
-      firstName: record.clinician?.first_name || '',
-      lastName: record.clinician?.last_name || '',
+      firstName: record.clinician_first_name || '',
+      lastName: record.clinician_last_name || '',
       date: new Date(record.created_at).toISOString().split('T')[0],
       sanitize: record.is_sanitized ? 'Yes' : 'No',
       status: record.status || 'Pending'
@@ -124,7 +114,10 @@ export async function POST(request: NextRequest) {
 
     if (fetchError || !currentRequest) {
       console.error('[v0] Request not found:', request_id)
-      return Response.json({ error: 'Request not found' }, { status: 404 })
+      return Response.json({ 
+        error: 'Request not found',
+        message: 'The requested record could not be found'
+      }, { status: 404 })
     }
 
     const oldStatus = currentRequest.status
@@ -172,8 +165,10 @@ export async function POST(request: NextRequest) {
 
       console.error('[v0] Edge function error:', errorDetails)
 
+      // Return the edge function's message to the frontend
       return Response.json({
         error: 'Resource matching failed',
+        message: result.message || 'Failed to find compatible resources',
         details: errorDetails,
         success: false
       }, { status: response.status || 400 })
@@ -232,26 +227,41 @@ export async function POST(request: NextRequest) {
       newStatus
     }, { status: 200 })
 
-    await logRequestApproved(
-      user.id,
-      userRole?.role,
-      userEmail?.email || "unknown@example.com",
-      clinicianEmail?.email || "unknown@example.com",
-      idToProcess,
-    )
-
-    return Response.json(
-      {
-        success: true,
-        result: result,
-      },
-      { status: 200 },
-    )
   } catch (error) {
     console.error('[v0] Error in POST /api/requests:', error)
     return Response.json({
       error: error.message || 'Failed to process confirmation',
+      message: error.message || 'An unexpected error occurred',
       details: error.message
     }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createAuthenticatedSupabaseClient()  
+    const { request_id } = await request.json()
+
+    if (!request_id) {
+      return Response.json({ error: 'Missing request_id' }, { status: 400 })
+    }
+
+    // Update the status instead of deleting the record
+    const { error } = await supabase
+      .from('request')
+      .update({ status: 'Cancelled' }) // or 'cancel' depending on your schema
+      .eq('request_id', request_id)
+
+    if (error) {
+      console.error('Supabase error:', error)
+      return Response.json({ error: error.message }, { status: 500 })
+    }
+
+    return Response.json({
+      message: 'Request status updated to Cancelled successfully.',
+    })
+  } catch (err) {
+    console.error('Server error:', err)
+    return Response.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }

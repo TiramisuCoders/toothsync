@@ -3,6 +3,20 @@ import { NextResponse, NextRequest } from 'next/server';
 
 export const dynamic = "force-dynamic"; // prevents build from executing this API route
 
+// Helper function to initialize Supabase client at request time
+function getSupabaseClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!, // Use consistent naming with your other route
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
+  );
+}
+
 // ✅ Use the public URL + anon key
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -11,7 +25,11 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // 📨 POST /api/feedback-form
+
+// Handles POST requests to /api/feedback-form
 export async function POST(req: NextRequest) {
+  const supabase = getSupabaseClient(); // Initialize here, at request time
+  
   try {
     const payload = await req.json();
 
@@ -73,3 +91,4 @@ export async function GET() {
     { status: 405 }
   );
 }
+

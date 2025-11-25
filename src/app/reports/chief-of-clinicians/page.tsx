@@ -310,7 +310,7 @@ export default function ReportsPage() {
         title: "Export Failed",
         description: "There was an error exporting the data. Please try again.",
         variant: "destructive",
-      })
+      })  
     } finally {
       setIsLoading(false)
     }
@@ -659,12 +659,12 @@ export default function ReportsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
+      <div className="mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Admin Reports</h1>
-          <p className="text-gray-600">
+          {/* <p className="text-gray-600">
             Manage academic years and generate comprehensive reports for dental clinic operations
-          </p>
+          </p> */}
         </div>
 
         <Tabs defaultValue="academic-year" className="w-full">
@@ -791,7 +791,7 @@ export default function ReportsPage() {
                           <TableHead className="font-medium text-gray-900">Academic Year</TableHead>
                           <TableHead className="font-medium text-gray-900">Semester</TableHead>
                           <TableHead className="font-medium text-gray-900">Status</TableHead>
-                          <TableHead className="font-medium text-gray-900">Actions</TableHead>
+                          {/* <TableHead className="font-medium text-gray-900">Actions</TableHead> */}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -811,7 +811,7 @@ export default function ReportsPage() {
                                 {year.status}
                               </Badge>
                             </TableCell>
-                            <TableCell>
+                            {/* <TableCell>
                               <Dialog
                                 open={showEditModal && selectedAcademicYear?.id === year.id}
                                 onOpenChange={(open) => {
@@ -878,7 +878,7 @@ export default function ReportsPage() {
                                         <Label htmlFor="edit-semester" className="text-sm font-medium text-gray-900">
                                           Semester
                                         </Label>
-                                        {/* Fix semester selection to update the selectedAcademicYear state */}
+                                      
                                         <Select
                                           defaultValue={selectedAcademicYear.semester}
                                           onValueChange={(value) => {
@@ -938,7 +938,7 @@ export default function ReportsPage() {
                                   )}
                                 </DialogContent>
                               </Dialog>
-                            </TableCell>
+                            </TableCell> */}
                           </TableRow>
                         ))}
                       </TableBody>

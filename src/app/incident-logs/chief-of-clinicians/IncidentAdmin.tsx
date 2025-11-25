@@ -86,12 +86,25 @@ export default function IncidentLogsPage() {
     fetchIncidents()
   }, [])
 
+  const handleRefresh = async () => {
+  await fetchIncidents()
+  toast({
+    title: "Refreshed",
+    description: "Incident list has been updated",
+  })
+}
+
   const fetchIncidents = async () => {
     try {
       setLoading(true)
       console.log('🔥 Fetching incidents...')
       
-      const response = await fetch('/api/incidents')
+      const response = await fetch('/api/incidents', {
+        cache: 'no-store',  // Add this for extra cache busting
+        headers: {
+          'Cache-Control': 'no-cache',
+        }
+      })
       
       if (!response.ok) {
         const errorData = await response.json()
@@ -102,6 +115,7 @@ export default function IncidentLogsPage() {
       console.log('✅ Incidents fetched:', data.count)
       
       setIncidents(data.incidents || [])
+      return data.incidents || []  // ✅ RETURN the fresh data
     } catch (error) {
       console.error('❌ Error fetching incidents:', error)
       toast({
@@ -109,19 +123,28 @@ export default function IncidentLogsPage() {
         description: error instanceof Error ? error.message : "Failed to load incidents. Please try again.",
         variant: "destructive"
       })
+      return []  // Return empty array on error
     } finally {
       setLoading(false)
     }
   }
+
 
   const fetchIncidentDetails = async (incidentId: string) => {
     try {
       setLoadingDetails(true)
       console.log('🔥 Fetching details for incident:', incidentId)
       
+      const timestamp = Date.now()  // Cache buster
       const [notesResponse, attachmentsResponse] = await Promise.all([
-        fetch(`/api/incidents?type=notes&incident_id=${incidentId}`),
-        fetch(`/api/incidents?type=attachments&incident_id=${incidentId}`)
+        fetch(`/api/incidents?type=notes&incident_id=${incidentId}&_t=${timestamp}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        }),
+        fetch(`/api/incidents?type=attachments&incident_id=${incidentId}&_t=${timestamp}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        })
       ])
 
       if (notesResponse.ok) {
@@ -141,6 +164,7 @@ export default function IncidentLogsPage() {
       setLoadingDetails(false)
     }
   }
+
 
   const getPriorityValue = (priority: string): number => {
     switch (priority.toLowerCase()) {
@@ -243,17 +267,28 @@ export default function IncidentLogsPage() {
     setIsModalOpen(false)
     setSelectedIncident(null)
   }
-
-  const handleIncidentUpdated = async () => {
-    await fetchIncidents()
-    if (selectedIncident) {
-      await fetchIncidentDetails(selectedIncident.incident_id)
-      const updatedIncident = incidents.find(i => i.incident_id === selectedIncident.incident_id)
-      if (updatedIncident) {
-        setSelectedIncident(updatedIncident)
-      }
+const handleIncidentUpdated = async () => {
+  // Fetch fresh incidents and get the data directly
+  const freshIncidents = await fetchIncidents()
+  
+  if (selectedIncident) {
+    // Fetch fresh details for the selected incident
+    await fetchIncidentDetails(selectedIncident.incident_id)
+    
+    // Find the updated incident from the FRESH data, not stale state
+    const updatedIncident = freshIncidents.find(
+      i => i.incident_id === selectedIncident.incident_id
+    )
+    
+    if (updatedIncident) {
+      console.log('✅ Updating selected incident with fresh data')
+      setSelectedIncident(updatedIncident)
+    } else {
+      console.warn('⚠️ Updated incident not found in fresh data')
     }
   }
+}
+
 
   return (
     <div className="flex flex-col gap-6">
