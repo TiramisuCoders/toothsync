@@ -1,3 +1,5 @@
+//app/landing/clinician/page.tsx
+
 "use client"
 
 import type React from "react"
@@ -12,7 +14,7 @@ export default function ClinicianLoginPage() {
   const router = useRouter()
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState("")
+  const [studentId, setStudentId] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
@@ -38,8 +40,8 @@ export default function ClinicianLoginPage() {
         e.preventDefault()
     
         startTransition(async () => {
-          // Pass "R04" as the allowed role for chief of clinicians login
-          const { error } = await loginAction(email, password, "R01")
+          // Pass "R01" for clinician login with student_id
+          const { error } = await loginAction(studentId, password, "R01")
     
           if (error) {
             setErrorMessage(error.message)
@@ -48,7 +50,7 @@ export default function ClinicianLoginPage() {
           } else {
             setErrorMessage("")
             setHasError(false)
-            router.push("/dashboard/clinical-instructor")
+            router.push("/dashboard/clinician")
           }
         })
       }
@@ -131,17 +133,18 @@ export default function ClinicianLoginPage() {
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
+              <label htmlFor="studentId" className="block text-sm font-medium text-gray-700">
+                Student ID
               </label>
               <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="studentId"
+                type="text"
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value)}
                 className={`w-full px-3 py-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 ${
                   hasError ? "border-red-300 bg-red-50 focus:ring-red-500" : "border-gray-300"
                 }`}
+                placeholder="Enter your student ID"
                 required
               />
             </div>
@@ -186,12 +189,11 @@ export default function ClinicianLoginPage() {
 
             <button
               type="submit"
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-4 rounded-md font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2"
+              disabled={isPending}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-4 rounded-md font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Sign in
+              {isPending ? "Signing in..." : "Sign in"}
             </button>
-
-           
 
             <button
               type="button"

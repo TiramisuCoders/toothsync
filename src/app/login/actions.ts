@@ -27,10 +27,17 @@ async function getClientIp(): Promise<string> {
 }
 
 export async function loginAction(
-  email: string,
+  identifier: string, // student_id, employee_id, or email
   password: string,
   loginAsRole: string
 ) {
+  console.log('[LoginDebug] Login attempt:', {
+    identifier,
+    hasPassword: !!password,
+    passwordLength: password?.length,
+    loginAsRole
+  });
+
   const cookieStore = await cookies();
   const clientIp = await getClientIp();
 
@@ -51,52 +58,224 @@ export async function loginAction(
   await supabase.auth.signOut();
   await supabase.auth.refreshSession();
 
+  let userEmail: string | null = null;
+  let userId: string | null = null;
+  let userRole: string | null = null;
+  let identifierType: string;
+
+  // ============================================================================
+  // LOGIN FLOW:
+  // 1. User enters student_id/instructor_id
+  // 2. Find ID in appropriate table (clinicians/instructors/clerks)
+  // 3. Get user_id (UUID) from that table
+  // 4. Look up user_id in auth.users (via users table) to get email
+  // 5. Authenticate with email + password against auth.users table
+  // ============================================================================
+
+  if (loginAsRole === "R01") {
+    // CLINICIAN LOGIN FLOW
+    // ====================
+    identifierType = "student ID";
+    
+    console.log('[LoginDebug] R01 - Looking up student_id:', identifier);
+    
+    // Step 1-3: Find student_id in clinicians table, get user_id (UUID)
+    const { data: clinicianData, error: clinicianError } = await supabase
+      .from("clinicians")
+      .select("user_id, student_id")
+      .eq("student_id", identifier)
+      .maybeSingle(); // Use maybeSingle() instead of single() to handle no results gracefully
+
+    console.log('[LoginDebug] R01 - Clinician lookup result:', { 
+      found: !!clinicianData, 
+      error: clinicianError?.message,
+      user_id: clinicianData?.user_id,
+      student_id: clinicianData?.student_id
+    });
+
+    if (clinicianError) {
+      console.log('[LoginDebug] R01 - Database error:', clinicianError);
+      await logFailedLogin(identifier, loginAsRole, undefined, clientIp);
+      return { error: { message: `Database error. Please contact support.` } };
+    }
+
+    if (!clinicianData) {
+      console.log('[LoginDebug] R01 - Failed: student_id not found in clinicians table');
+      await logFailedLogin(identifier, loginAsRole, undefined, clientIp);
+      return { error: { message: `Invalid ${identifierType} or password.` } };
+    }
+
+    // Step 4: Use user_id to get email from users table (which links to auth.users)
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("email, role")
+      .eq("auth_user_id", clinicianData.user_id)
+      .maybeSingle();
+
+    console.log('[LoginDebug] R01 - User lookup result:', { 
+      found: !!userData, 
+      error: userError?.message,
+      email: userData?.email,
+      role: userData?.role
+    });
+
+    if (userError) {
+      console.log('[LoginDebug] R01 - Database error fetching user');
+      await logFailedLogin(identifier, loginAsRole, clinicianData.user_id, clientIp);
+      return { error: { message: `Database error. Please contact support.` } };
+    }
+
+    if (!userData) {
+      console.log('[LoginDebug] R01 - Failed: user_id not found in users table');
+      await logFailedLogin(identifier, loginAsRole, clinicianData.user_id, clientIp);
+      return { error: { message: `Invalid ${identifierType} or password.` } };
+    }
+
+    userEmail = userData.email;
+    userId = clinicianData.user_id;
+    userRole = userData.role;
+
+  } else if (loginAsRole === "R02") {
+    // CLERK LOGIN FLOW
+    // ================
+    identifierType = "student ID";
+    
+    // Step 1-3: Find student_id in clinicians table, get user_id (UUID)
+    const { data: clinicianData, error: clinicianError } = await supabase
+      .from("clinicians")
+      .select("user_id, student_id")
+      .eq("student_id", identifier)
+      .single();
+
+    if (clinicianError || !clinicianData) {
+      await logFailedLogin(identifier, loginAsRole, undefined, clientIp);
+      return { error: { message: `Invalid ${identifierType} or password.` } };
+    }
+
+    // Additional verification: Must exist in clerks table
+    const { data: clerkData, error: clerkError } = await supabase
+      .from("clerks")
+      .select("user_id")
+      .eq("user_id", clinicianData.user_id)
+      .single();
+
+    if (clerkError || !clerkData) {
+      await logFailedLogin(identifier, loginAsRole, clinicianData.user_id, clientIp);
+      return { error: { message: "Not authorized to log in as clerk." } };
+    }
+
+    // Step 4: Use user_id to get email from users table (which links to auth.users)
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("email, role")
+      .eq("auth_user_id", clinicianData.user_id)
+      .single();
+
+    if (userError || !userData) {
+      await logFailedLogin(identifier, loginAsRole, clinicianData.user_id, clientIp);
+      return { error: { message: `Invalid ${identifierType} or password.` } };
+    }
+
+    userEmail = userData.email;
+    userId = clinicianData.user_id;
+    userRole = userData.role;
+
+  } else if (loginAsRole === "R03") {
+    // CLINICAL INSTRUCTOR LOGIN FLOW
+    // ===============================
+    identifierType = "instructor ID";
+    
+    // Step 1-3: Find instructor_id in instructors table, get user_id (UUID)
+    const { data: instructorData, error: instructorError } = await supabase
+      .from("instructors")
+      .select("user_id, instructor_id")
+      .eq("instructor_id", parseInt(identifier))
+      .single();
+
+    if (instructorError || !instructorData) {
+      await logFailedLogin(identifier, loginAsRole, undefined, clientIp);
+      return { error: { message: `Invalid ${identifierType} or password.` } };
+    }
+
+    // Step 4: Use user_id to get email from users table (which links to auth.users)
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("email, role")
+      .eq("auth_user_id", instructorData.user_id)
+      .single();
+
+    if (userError || !userData) {
+      await logFailedLogin(identifier, loginAsRole, instructorData.user_id, clientIp);
+      return { error: { message: `Invalid ${identifierType} or password.` } };
+    }
+
+    userEmail = userData.email;
+    userId = instructorData.user_id;
+    userRole = userData.role;
+
+  } else {
+    // CHIEF OF CLINICIANS LOGIN FLOW (R04)
+    // =====================================
+    identifierType = "email";
+    
+    // Direct lookup: email is entered, find in users table
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("email, auth_user_id, role")
+      .eq("email", identifier)
+      .single();
+
+    if (userError || !userData) {
+      await logFailedLogin(identifier, loginAsRole, undefined, clientIp);
+      return { error: { message: `Invalid ${identifierType} or password.` } };
+    }
+
+    userEmail = userData.email;
+    userId = userData.auth_user_id;
+    userRole = userData.role;
+  }
+
+  // Step 5: Authenticate with auth.users using email + password
+  // ============================================================
+  // This verifies the password against the hash stored in auth.users table
+  // The auth.users table is linked to users table via auth_user_id = auth.users.id
+  
+  console.log('[LoginDebug] Attempting authentication with:', {
+    email: userEmail,
+    hasPassword: !!password,
+    userId: userId,
+    role: userRole
+  });
+  
   const { data, error } = await supabase.auth.signInWithPassword({
-    email,
+    email: userEmail,
     password,
   });
   const user = data.user;
 
+  console.log('[LoginDebug] Authentication result:', {
+    success: !!user,
+    error: error?.message,
+    userId: user?.id
+  });
+
   // Failed login
   if (error || !user) {
-    const { data: existingUser } = await supabase
-      .from("users")
-      .select("auth_user_id")
-      .eq("email", email)
-      .single();
-
-    // Log failed login with role_id instead of role name
-    await logFailedLogin(
-      email,
-      loginAsRole, // This is the role_id (R01, R02, etc.)
-      existingUser?.auth_user_id,
-      clientIp
-    );
-
-    return { error: { message: "Invalid email or password." } };
-  }
-
-  // Fetch user role
-  const { data: userRecord, error: roleError } = await supabase
-    .from("users")
-    .select("role")
-    .eq("auth_user_id", user.id)
-    .single();
-
-  if (roleError || !userRecord) {
-    return { error: { message: "User role not found" } };
+    console.log('[LoginDebug] Failed: Authentication error -', error?.message);
+    await logFailedLogin(identifier, loginAsRole, userId || undefined, clientIp);
+    return { error: { message: `Invalid ${identifierType} or password.` } };
   }
 
   // Role validation
-  const canLoginAs = (userRole: string, loginAs: string) =>
-    userRole === loginAs || (userRole === "R02" && loginAs === "R01");
+  const canLoginAs = (actualRole: string, attemptedRole: string) =>
+    actualRole === attemptedRole || (actualRole === "R02" && attemptedRole === "R01");
 
-  if (!canLoginAs(userRecord.role, loginAsRole)) {
+  if (!canLoginAs(userRole!, loginAsRole)) {
     // Log unauthorized access with role_ids
     await logUnauthorizedAccess(
       user.id,
-      userRecord.role, // Actual role_id
-      email,
+      userRole!, // Actual role_id
+      identifier,
       loginAsRole, // Attempted role_id
       clientIp
     );
@@ -130,7 +309,7 @@ export async function loginAction(
   await logSuccessfulLogin(
     user.id,
     loginAsRole, // Pass role_id instead of role name
-    email,
+    identifier,
     clientIp
   );
 
@@ -153,7 +332,7 @@ export async function loginAction(
     path: "/",
   });
 
-  cookieStore.set("user_email", email, {
+  cookieStore.set("user_identifier", identifier, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -195,14 +374,14 @@ export async function logoutAction() {
 
   const { data: { user } } = await supabase.auth.getUser();
   const roleIdCookie = cookieStore.get("role_id"); // Get role_id instead of role name
-  const emailCookie = cookieStore.get("user_email");
+  const identifierCookie = cookieStore.get("user_identifier");
 
   // Log logout with role_id
   if (user && roleIdCookie) {
     await logLogout(
       user.id,
       roleIdCookie.value, // This is now role_id (R01, R02, etc.)
-      emailCookie?.value,
+      identifierCookie?.value,
       clientIp
     );
   }
@@ -210,7 +389,7 @@ export async function logoutAction() {
   await supabase.auth.signOut();
   cookieStore.delete("role");
   cookieStore.delete("role_id");
-  cookieStore.delete("user_email");
+  cookieStore.delete("user_identifier");
 
   return { success: true };
 }
