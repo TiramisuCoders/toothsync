@@ -211,7 +211,7 @@ export async function GET(request: Request) {
       yearDisplay: clerk.academic_year_info?.academic_year || clerk.academic_year || '',
       semester: clerk.academic_year_info?.semester || '',
       section: ['A', 'B', 'C', 'D'][index % 4],
-      status: clerk.status === 'Active' ? 'On Duty' : 'Not On Duty',
+      status: clerk.status, // Return the actual DB status
       archived: clerk.archived || false
     }))
 
@@ -324,13 +324,13 @@ export async function POST(request: Request) {
 
     console.log('✅ User role updated successfully to R02')
 
-    // STEP 2: Add to clerks table (now the trigger will have the correct role)
+    // STEP 2: Add to clerks table
     console.log('Step 2: Adding clerk record...')
     const { data: newClerk, error: insertError } = await adminClient
       .from('clerks')
       .insert({
         user_id: user_id,
-        status: status === 'On Duty' ? 'Active' : 'Inactive',
+        status: status || 'Not On Duty', // Use exact status from frontend
         academic_year: academic_year,
         archived: false
       })
@@ -355,7 +355,7 @@ export async function POST(request: Request) {
 
     console.log('✅ Clerk record added successfully:', newClerk)
 
-    // STEP 3: Log the activity via edge function
+    // STEP 3: Log the activity
     console.log('Step 3: Logging promotion activity...')
     const clientIp = await getClientIp();
     await logClerkPromoted(
@@ -388,13 +388,13 @@ export async function POST(request: Request) {
   }
 }
 
-// PATCH - Update clerk status
-export async function PATCH(request: Request) {
+// PUT - Update clerk information
+export async function PUT(request: Request) {
   const supabase = await createSupabaseServerClient()
   const adminClient = getAdminClient()
   
   try {
-    console.log('🔄 Updating clerk status...')
+    console.log('🔄 Updating clerk information...')
     
     const authResult = await checkAuthorization(supabase)
     if (!authResult.authorized) {
@@ -402,81 +402,117 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json()
-    const { clerk_id, status } = body
+    const { clerk_id, firstName, lastName, email, year, status } = body
 
-    if (!clerk_id || !status) {
+    console.log('PUT request body:', { clerk_id, firstName, lastName, email, year, status })
+
+    if (!clerk_id) {
       return Response.json({ 
-        error: 'Missing required fields',
-        details: 'clerk_id and status are required'
+        error: 'Missing required field',
+        details: 'clerk_id is required'
       }, { status: 400 })
     }
 
-    // Check if clerk exists and get current status
+    // Check if clerk exists
     const { data: existingClerk, error: clerkCheckError } = await supabase
       .from('clerks')
-      .select('user_id, status')
+      .select('user_id, status, academic_year')
       .eq('user_id', clerk_id)
       .single()
 
     if (clerkCheckError || !existingClerk) {
+      console.log('Clerk not found:', clerkCheckError)
       return Response.json({ 
         error: 'Clerk not found',
         details: 'No clerk found with the provided ID'
       }, { status: 404 })
     }
 
-    // Get user info for logging
-    const { data: userInfo } = await supabase
-      .from('users')
-      .select('first_name, last_name, email')
-      .eq('auth_user_id', clerk_id)
-      .single()
+    console.log('Existing clerk found:', existingClerk)
 
-    const oldStatus = existingClerk.status === 'Active' ? 'On Duty' : 'Not On Duty';
-    const newStatus = status;
+    // Update user information in users table
+    if (firstName || lastName || email) {
+      const userUpdateData: any = {}
+      if (firstName) userUpdateData.first_name = firstName
+      if (lastName) userUpdateData.last_name = lastName
+      if (email) userUpdateData.email = email
 
-    // Update clerk status using admin client
-    const dbStatus = status === 'On Duty' ? 'Active' : 'Inactive'
-    const { data: updatedClerk, error: updateError } = await adminClient
+      console.log('Updating user table with:', userUpdateData)
+
+      const { error: userUpdateError } = await adminClient
+        .from('users')
+        .update(userUpdateData)
+        .eq('auth_user_id', clerk_id)
+
+      if (userUpdateError) {
+        console.log('Failed to update user:', userUpdateError)
+        return Response.json({ 
+          error: 'Failed to update user information',
+          details: userUpdateError.message
+        }, { status: 500 })
+      }
+
+      console.log('✅ User information updated')
+    }
+
+    // Update clerk information in clerks table
+    const clerkUpdateData: any = { 
+      updatedat: new Date().toISOString() 
+    }
+    
+    if (year) clerkUpdateData.academic_year = year
+    if (status) clerkUpdateData.status = status
+
+    console.log('Updating clerks table with:', clerkUpdateData)
+
+    const { data: updatedClerk, error: clerkUpdateError } = await adminClient
       .from('clerks')
-      .update({ 
-        status: dbStatus,
-        updatedat: new Date().toISOString()
-      })
+      .update(clerkUpdateData)
       .eq('user_id', clerk_id)
       .select()
       .single()
 
-    if (updateError) {
+    if (clerkUpdateError) {
+      console.log('Failed to update clerk:', clerkUpdateError)
       return Response.json({ 
-        error: 'Failed to update clerk status',
-        details: updateError.message
+        error: 'Failed to update clerk',
+        details: clerkUpdateError.message
       }, { status: 500 })
     }
 
-    // Log the activity
-    const clientIp = await getClientIp();
-    await logClerkStatusChanged(
-      authResult.user.id,
-      'R04',
-      authResult.userInfo.email,
-      clerk_id,
-      userInfo?.email || 'unknown',
-      oldStatus,
-      newStatus,
-      clientIp
-    );
+    console.log('✅ Clerk information updated:', updatedClerk)
 
-    console.log('✅ Successfully updated clerk status:', updatedClerk)
+    // Log status change if status was updated
+    if (status && status !== existingClerk.status) {
+      const { data: userInfo } = await supabase
+        .from('users')
+        .select('email')
+        .eq('auth_user_id', clerk_id)
+        .single()
+
+      const clientIp = await getClientIp();
+      await logClerkStatusChanged(
+        authResult.user.id,
+        'R04',
+        authResult.userInfo.email,
+        clerk_id,
+        userInfo?.email || 'unknown',
+        existingClerk.status,
+        status,
+        clientIp
+      );
+
+      console.log('✅ Status change logged')
+    }
 
     return Response.json({ 
       success: true, 
-      message: 'Clerk status updated successfully',
+      message: 'Clerk updated successfully',
       data: updatedClerk
     })
 
   } catch (error) {
-    console.error('💥 Error in PATCH /api/clerks:', error)
+    console.error('💥 Error in PUT /api/clerks:', error)
     return Response.json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -553,7 +589,7 @@ export async function DELETE(request: Request) {
       .from('clerks')
       .update({ 
         archived: newArchivedStatus,
-        status: newArchivedStatus ? 'Inactive' : 'Active',
+        status: newArchivedStatus ? 'Not On Duty' : 'On Duty',
         updatedat: new Date().toISOString()
       })
       .eq('user_id', clerk_id)
