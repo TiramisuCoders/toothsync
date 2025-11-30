@@ -249,7 +249,7 @@ export async function DELETE(request: NextRequest) {
     // Update the status instead of deleting the record
     const { error } = await supabase
       .from('request')
-      .update({ status: 'Cancelled' }) // or 'cancel' depending on your schema
+      .update({ status: 'Denied' }) // or 'cancel' depending on your schema
       .eq('request_id', request_id)
 
     if (error) {
@@ -258,7 +258,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     return Response.json({
-      message: 'Request status updated to Cancelled successfully.',
+      message: 'Request status updated to Denied successfully.',
     })
   } catch (err) {
     console.error('Server error:', err)
