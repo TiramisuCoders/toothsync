@@ -501,14 +501,13 @@ export default function ClinicianForm() {
     setIsChangingStatus(true)
     try {
       const response = await fetch(`/api/form/submitted-requests`, {
-        method: "PATCH",
+        method: "DELETE",
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          request_id: statusChangeRequest.activity.id,
-          status: statusChangeRequest.newStatus,
+          request_id: statusChangeRequest.activity.id
         }),
       })
 
@@ -574,7 +573,7 @@ export default function ClinicianForm() {
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50">
-              <TableHead className="font-semibold">Request ID</TableHead>
+              <TableHead className="font-semibold">ID</TableHead>
               <TableHead className="font-semibold">Patient</TableHead>
               <TableHead className="font-semibold">Procedure Type</TableHead>
               <TableHead className="font-semibold">Date</TableHead>
@@ -716,7 +715,7 @@ export default function ClinicianForm() {
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50">
-              <TableHead className="font-semibold">Request ID</TableHead>
+              <TableHead className="font-semibold">ID</TableHead>
               <TableHead className="font-semibold">Patient</TableHead>
               <TableHead className="font-semibold">Procedure Type</TableHead>
               <TableHead className="font-semibold">Date</TableHead>
@@ -756,8 +755,7 @@ export default function ClinicianForm() {
                     <SelectTrigger
                       className={`w-[130px] ${getStatusColor(activity.status)} border ${
                         activity.status === "Approved" ||
-                        activity.status === "Cancelled" ||
-                        activity.status === "Denied"
+                        activity.status === "Cancelled"
                           ? "opacity-70 cursor-not-allowed"
                           : ""
                       }`}
@@ -769,7 +767,7 @@ export default function ClinicianForm() {
                         <>
                           <SelectItem value="Pending">Pending</SelectItem>
                           <SelectItem value="Cancelled">Cancelled</SelectItem>
-                          <SelectItem value="Denied">Denied</SelectItem> {/* Add Denied option */}
+                          {/* <SelectItem value="Denied">Denied</SelectItem> Add Denied option */}
                         </>
                       )}
                       {activity.status === "Approved" && <SelectItem value="Approved">Approved</SelectItem>}
@@ -868,6 +866,7 @@ export default function ClinicianForm() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-800">Requests</h1>
+          <p>Requests IDs are system-generated.</p>
         </div>
         <Button onClick={openNewRequestModal} className="bg-[#5C8E77] hover:bg-[#406E58] text-white">
           <Plus className="h-4 w-4 mr-2" />
